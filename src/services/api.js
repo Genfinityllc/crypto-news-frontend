@@ -1,0 +1,171 @@
+import axios from 'axios';
+
+// Create axios instance with base configuration
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
+  timeout: 10000,
+});
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('firebaseToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor to handle errors
+api.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    console.error('API Error:', error);
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('firebaseToken');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error.response?.data || error);
+  }
+);
+
+// Auth API calls
+export const createProfile = (idToken, profileData) => {
+  return api.post('/firebase-auth/create-profile', profileData, {
+    headers: { Authorization: `Bearer ${idToken}` }
+  });
+};
+
+export const getUserProfile = (idToken) => {
+  return api.get('/firebase-auth/profile', {
+    headers: { Authorization: `Bearer ${idToken}` }
+  });
+};
+
+export const updateUserProfile = (profileData) => {
+  return api.put('/firebase-auth/profile', profileData);
+};
+
+export const verifyToken = (idToken) => {
+  return api.post('/firebase-auth/verify-token', { idToken });
+};
+
+// News API calls
+export const getNews = (params = {}) => {
+  return api.get('/news', { params });
+};
+
+export const getBreakingNews = () => {
+  return api.get('/news', { params: { breaking: true, limit: 10 } });
+};
+
+export const searchNews = (query, options = {}) => {
+  return api.get('/news', { 
+    params: { 
+      search: query,
+      ...options 
+    } 
+  });
+};
+
+export const getArticleById = (id) => {
+  return api.get(`/news/${id}`);
+};
+
+// Bookmark API calls
+export const addBookmark = (articleId) => {
+  return api.post('/firebase-auth/bookmarks', { articleId });
+};
+
+export const getBookmarks = () => {
+  return api.get('/firebase-auth/bookmarks');
+};
+
+export const removeBookmark = (bookmarkId) => {
+  return api.delete(`/firebase-auth/bookmarks/${bookmarkId}`);
+};
+
+// AI API calls
+export const generateAISummary = (articleId) => {
+  return api.post(`/news/summarize/${articleId}`);
+};
+
+export const generateAIRewrite = (articleId) => {
+  return api.post(`/enhanced-news/${articleId}/rewrite`);
+};
+
+// Crypto Market API calls
+export const getCryptoMarketData = () => {
+  return api.get('/crypto-market/top50');
+};
+
+export const getCryptoBySymbol = (symbol) => {
+  return api.get(`/crypto-market/symbol/${symbol}`);
+};
+
+export const getTrendingCryptos = (limit = 10) => {
+  return api.get('/crypto-market/trending', { params: { limit } });
+};
+
+export const getCryptoDropdownOptions = () => {
+  return api.get('/crypto-market/dropdown');
+};
+
+// Enhanced News API calls
+export const getViralNews = (minScore = 75, limit = 20) => {
+  return api.get('/enhanced-news/viral', { params: { min_score: minScore, limit } });
+};
+
+export const getHighReadabilityNews = (minScore = 97, limit = 20) => {
+  return api.get('/enhanced-news/high-readability', { params: { min_score: minScore, limit } });
+};
+
+export const rewriteArticle = (articleId) => {
+  return api.post(`/enhanced-news/${articleId}/rewrite`);
+};
+
+export const getNewsAnalytics = () => {
+  return api.get('/enhanced-news/analytics');
+};
+
+// Admin API calls (if user has admin access)
+export const getSystemStatus = () => {
+  return api.get('/admin/status');
+};
+
+export const getArticlesOverview = () => {
+  return api.get('/admin/articles');
+};
+
+export const adminSearch = (query, filters = {}) => {
+  return api.get('/admin/search', { 
+    params: { 
+      query,
+      ...filters 
+    } 
+  });
+};
+
+export const triggerCronJob = (jobName) => {
+  return api.post(`/admin/trigger/${jobName}`);
+};
+
+// Image Generation API calls
+export const generateCardImage = (articleId, size = 'medium') => {
+  return api.post(`/news/generate-card-image/${articleId}`, { size });
+};
+
+export const generateCardImageFromData = (articleData, size = 'medium') => {
+  return api.post('/news/generate-card-image', { ...articleData, size });
+};
+
+export const batchGenerateCardImages = (articleIds, size = 'medium') => {
+  return api.post('/news/generate-card-images/batch', { articleIds, size });
+};
+
+export default api;
