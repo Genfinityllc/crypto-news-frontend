@@ -238,7 +238,6 @@ export default function Navigation() {
     <Nav>
       <NavContainer>
         <Logo to="/" onClick={closeMobileMenu}>
-          <LogoIcon>₿</LogoIcon>
           CryptoCurator
         </Logo>
 

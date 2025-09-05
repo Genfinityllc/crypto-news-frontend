@@ -283,6 +283,36 @@ const PageInfo = styled.span`
   font-family: Arial, Helvetica, sans-serif;
 `;
 
+const SectionNavigation = styled.div`
+  display: flex;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #333;
+`;
+
+const SectionButton = styled.button`
+  background: ${props => props.active ? '#007bff' : 'transparent'};
+  color: ${props => props.active ? '#fff' : '#ccc'};
+  border: 1px solid ${props => props.active ? '#007bff' : '#555'};
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: ${props => props.active ? '600' : 'normal'};
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: ${props => props.active ? '#0056b3' : '#007bff20'};
+    border-color: #007bff;
+    color: #fff;
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+`;
+
 export default function Dashboard() {
   const { currentUser, userProfile } = useAuth();
   const { breakingNews, loading: breakingLoading } = useBreakingNews();
@@ -296,6 +326,7 @@ export default function Dashboard() {
     crypto: 'all'
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSection, setActiveSection] = useState('latest');
   // const [showEnhanced, setShowEnhanced] = useState(false);
   const [rewritingArticles, setRewritingArticles] = useState(new Set());
   
@@ -303,6 +334,20 @@ export default function Dashboard() {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSectionChange = (section) => {
+    setActiveSection(section);
+    // Apply filters based on section
+    if (section === 'breaking') {
+      setFilters(prev => ({ ...prev, category: 'breaking' }));
+    } else if (section === 'client') {
+      // Filter for client networks
+      setFilters(prev => ({ ...prev, network: 'all', category: 'all' }));
+    } else {
+      // Latest - show all
+      setFilters(prev => ({ ...prev, category: 'all', network: 'all' }));
+    }
   };
 
   const handleSearch = () => {
@@ -369,6 +414,28 @@ export default function Dashboard() {
         )}
       </Header>
 
+      {/* Section Navigation */}
+      <SectionNavigation>
+        <SectionButton 
+          active={activeSection === 'latest'}
+          onClick={() => handleSectionChange('latest')}
+        >
+          📰 Latest News
+        </SectionButton>
+        <SectionButton 
+          active={activeSection === 'breaking'}
+          onClick={() => handleSectionChange('breaking')}
+        >
+          🚨 Breaking
+        </SectionButton>
+        <SectionButton 
+          active={activeSection === 'client'}
+          onClick={() => handleSectionChange('client')}
+        >
+          🌟 Client News
+        </SectionButton>
+      </SectionNavigation>
+
       {/* Breaking News Section */}
       {breakingNews.length > 0 && (
         <Section>
@@ -394,33 +461,76 @@ export default function Dashboard() {
       {/* Enhanced Filters */}
       <EnhancedFiltersContainer>
         <FilterGroup>
-          <FilterLabel>Crypto</FilterLabel>
-          <CryptoSelect
-            value={filters.crypto}
-            onChange={(e) => handleFilterChange('crypto', e.target.value)}
-            disabled={cryptoLoading}
-          >
-            <option value="all">All Cryptocurrencies</option>
-            {cryptoOptions.map(crypto => (
-              <option key={crypto.value} value={crypto.value}>
-                {crypto.label} - ${crypto.price?.toFixed(2) || 'N/A'}
-              </option>
-            ))}
-          </CryptoSelect>
-        </FilterGroup>
-
-        <FilterGroup>
           <FilterLabel>Network</FilterLabel>
           <FilterSelect
             value={filters.network}
             onChange={(e) => handleFilterChange('network', e.target.value)}
           >
             <option value="all">All Networks</option>
-            <option value="Bitcoin">Bitcoin</option>
-            <option value="Ethereum">Ethereum</option>
-            <option value="Solana">Solana</option>
-            <option value="Cardano">Cardano</option>
-            <option value="Polygon">Polygon</option>
+            
+            {/* Client Networks - Always at top */}
+            <optgroup label="🌟 Client Networks">
+              <option value="Hedera">Hedera (HBAR)</option>
+              <option value="Algorand">Algorand (ALGO)</option>
+              <option value="XDC">XDC Network (XDC)</option>
+              <option value="Constellation">Constellation (DAG)</option>
+              <option value="XRP">XRP</option>
+            </optgroup>
+            
+            {/* Top Networks */}
+            <optgroup label="📈 Major Networks">
+              <option value="Bitcoin">Bitcoin (BTC)</option>
+              <option value="Ethereum">Ethereum (ETH)</option>
+              <option value="Binance">Binance Coin (BNB)</option>
+              <option value="Solana">Solana (SOL)</option>
+              <option value="Cardano">Cardano (ADA)</option>
+              <option value="Avalanche">Avalanche (AVAX)</option>
+              <option value="Polkadot">Polkadot (DOT)</option>
+              <option value="Polygon">Polygon (MATIC)</option>
+              <option value="Chainlink">Chainlink (LINK)</option>
+              <option value="Uniswap">Uniswap (UNI)</option>
+            </optgroup>
+            
+            {/* Other Popular Networks */}
+            <optgroup label="🔥 Popular Networks">
+              <option value="Litecoin">Litecoin (LTC)</option>
+              <option value="Cosmos">Cosmos (ATOM)</option>
+              <option value="Near">NEAR Protocol (NEAR)</option>
+              <option value="Fantom">Fantom (FTM)</option>
+              <option value="Arbitrum">Arbitrum (ARB)</option>
+              <option value="Optimism">Optimism (OP)</option>
+              <option value="Sui">Sui (SUI)</option>
+              <option value="Aptos">Aptos (APT)</option>
+              <option value="Injective">Injective Protocol (INJ)</option>
+              <option value="Sei">Sei (SEI)</option>
+            </optgroup>
+            
+            {/* Layer 2 & Scaling */}
+            <optgroup label="⚡ Layer 2 & Scaling">
+              <option value="Base">Base</option>
+              <option value="Mantle">Mantle (MNT)</option>
+              <option value="Blast">Blast</option>
+              <option value="Starknet">Starknet (STRK)</option>
+              <option value="zkSync">zkSync Era</option>
+            </optgroup>
+            
+            {/* DeFi Tokens */}
+            <optgroup label="💰 DeFi Ecosystem">
+              <option value="Aave">Aave (AAVE)</option>
+              <option value="Compound">Compound (COMP)</option>
+              <option value="Maker">MakerDAO (MKR)</option>
+              <option value="Curve">Curve (CRV)</option>
+              <option value="SushiSwap">SushiSwap (SUSHI)</option>
+              <option value="PancakeSwap">PancakeSwap (CAKE)</option>
+            </optgroup>
+            
+            {/* Meme & Community */}
+            <optgroup label="🐕 Community Tokens">
+              <option value="Dogecoin">Dogecoin (DOGE)</option>
+              <option value="Shiba">Shiba Inu (SHIB)</option>
+              <option value="Pepe">Pepe (PEPE)</option>
+              <option value="Bonk">Bonk (BONK)</option>
+            </optgroup>
           </FilterSelect>
         </FilterGroup>
 
