@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { addBookmark, removeBookmark, generateCardImage, generateAIRewrite } from '../../services/api';
+import { addBookmark, removeBookmark, generateCardImage, generateAIRewrite, rewriteRSSArticle, addRSSBookmark, removeRSSBookmark } from '../../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -635,14 +635,46 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
 
     setBookmarking(true);
     try {
-      if (isBookmarked) {
-        const bookmark = bookmarks.find(b => b.articleId === article.id);
-        await removeBookmark(bookmark.id);
-        toast.success('Bookmark removed');
+      // Check if this is an RSS article (no database ID) or database article
+      if (article.id && typeof article.id === 'number') {
+        // Database article with proper ID - use Firebase bookmark system
+        if (isBookmarked) {
+          const bookmark = bookmarks.find(b => b.articleId === article.id);
+          await removeBookmark(bookmark.id);
+          toast.success('Bookmark removed');
+        } else {
+          await addBookmark(article.id);
+          toast.success('Article bookmarked');
+        }
       } else {
-        await addBookmark(article.id);
-        toast.success('Article bookmarked');
+        // RSS article - use RSS bookmark system
+        const userId = currentUser.uid;
+        
+        if (isBookmarked) {
+          // Find the RSS bookmark to remove
+          const bookmark = bookmarks.find(b => b.rssId === article.rssId || b.url === article.url);
+          if (bookmark) {
+            await removeRSSBookmark(bookmark.bookmarkId, userId);
+            toast.success('RSS bookmark removed');
+          }
+        } else {
+          // Add RSS bookmark
+          const articleData = {
+            title: article.title,
+            url: article.url,
+            content: article.content || article.description || article.summary,
+            source: article.source,
+            network: article.network,
+            category: article.category,
+            published_at: article.published_at,
+            image_url: article.image_url || article.cover_image
+          };
+          
+          await addRSSBookmark(articleData, userId);
+          toast.success('RSS article bookmarked');
+        }
       }
+      
       if (onBookmarkChange) onBookmarkChange();
     } catch (error) {
       toast.error('Failed to update bookmark');
@@ -655,7 +687,25 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const handleGenerateRewrite = async () => {
     setLoadingRewrite(true);
     try {
-      const response = await generateAIRewrite(article.id);
+      let response;
+      
+      // Check if this is an RSS article (no database ID) or database article
+      if (article.id && typeof article.id === 'number') {
+        // Database article with proper ID
+        response = await generateAIRewrite(article.id);
+      } else {
+        // RSS article - use direct rewrite with article data
+        const articleData = {
+          title: article.title,
+          content: article.content || article.description || article.summary || '',
+          url: article.url,
+          source: article.source,
+          network: article.network,
+          category: article.category
+        };
+        response = await rewriteRSSArticle(articleData);
+      }
+      
       setAiRewrite(response.data);
       setRewriteExpanded(true);
       toast.success('AI rewrite generated successfully!');
@@ -862,31 +912,17 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
             Read Full Article →
           </ActionButton>
           
-          {onRewrite && article.needs_rewrite && (
-            <ActionButton
-              onClick={onRewrite}
-              disabled={isRewriting}
-              style={{ 
-                background: isRewriting ? '#f59e0b80' : 'linear-gradient(45deg, #f59e0b, #fbbf24)',
-                opacity: isRewriting ? 0.7 : 1
-              }}
-            >
-              {isRewriting ? '🔄 Rewriting...' : '✨ AI Rewrite'}
-            </ActionButton>
-          )}
-          
-          {!articleImage && (
-            <ActionButton
-              onClick={handleGenerateImage}
-              disabled={generatingImage}
-              style={{ 
-                background: generatingImage ? '#8b5cf680' : 'linear-gradient(45deg, #8b5cf6, #a78bfa)',
-                opacity: generatingImage ? 0.7 : 1
-              }}
-            >
-              {generatingImage ? '🎨 Generating...' : '🎨 Generate Image'}
-            </ActionButton>
-          )}
+          {/* Always show image generation button */}
+          <ActionButton
+            onClick={handleGenerateImage}
+            disabled={generatingImage}
+            style={{ 
+              background: generatingImage ? '#22c55e80' : 'linear-gradient(45deg, #22c55e, #4ade80)',
+              opacity: generatingImage ? 0.7 : 1
+            }}
+          >
+            {generatingImage ? '🎨 Generating...' : '🎨 Generate Image'}
+          </ActionButton>
           
           <CopyButton 
             onClick={() => handleCopy('title')}

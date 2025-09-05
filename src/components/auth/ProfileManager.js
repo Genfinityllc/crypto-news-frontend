@@ -351,7 +351,37 @@ export default function ProfileManager() {
         <FormGroup>
           <Label>Favorite Networks</Label>
           <CheckboxGroup>
-            {['Bitcoin', 'Ethereum', 'Solana', 'Cardano', 'Polygon', 'Chainlink'].map(network => (
+            {/* Client Networks - Priority */}
+            <CheckboxItem style={{ backgroundColor: '#1f2937', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.5rem' }}>
+              <strong style={{ color: '#22d3ee', fontSize: '0.9rem' }}>🌟 CLIENT NETWORKS</strong>
+            </CheckboxItem>
+            {['XRP', 'XDC Network', 'Hedera', 'Constellation', 'Algorand'].map(network => (
+              <CheckboxItem key={network}>
+                <input
+                  type="checkbox"
+                  checked={formData.preferences.favoriteNetworks.includes(network)}
+                  onChange={() => handleNetworkChange(network)}
+                />
+                <span style={{ fontWeight: '500', color: '#22d3ee' }}>{network}</span>
+              </CheckboxItem>
+            ))}
+            
+            {/* Popular Networks */}
+            <CheckboxItem style={{ backgroundColor: '#1f2937', padding: '0.5rem', borderRadius: '4px', margin: '1rem 0 0.5rem 0' }}>
+              <strong style={{ color: '#fbbf24', fontSize: '0.9rem' }}>🔥 POPULAR NETWORKS</strong>
+            </CheckboxItem>
+            {[
+              'Bitcoin', 'Ethereum', 'BNB', 'Solana', 'Cardano', 'Dogecoin', 'Avalanche', 'Polygon', 
+              'Chainlink', 'Toncoin', 'Shiba Inu', 'Wrapped Bitcoin', 'Polkadot', 'Bitcoin Cash', 
+              'TRON', 'Near Protocol', 'Uniswap', 'Litecoin', 'Pepe', 'Internet Computer', 
+              'Kaspa', 'Aptos', 'Stellar', 'Cronos', 'Mantle', 'Ethereum Classic', 'Arbitrum',
+              'VeChain', 'Filecoin', 'Cosmos', 'Maker', 'Optimism', 'Injective', 'Render',
+              'Sei', 'Theta Network', 'Immutable', 'Hedera', 'Fantom', 'Rocket Pool ETH',
+              'The Graph', 'Aave', 'Bonk', 'Flow', 'Lido DAO', 'MultiversX', 'Arweave',
+              'Flare', 'ORDI', 'Sandbox', 'Quant', 'BitTorrent', 'Sui', 'Mina',
+              'dYdX', 'Axie Infinity', 'Decentraland', 'Gala', 'Enjin Coin', 'Chiliz',
+              'Kava', 'IOTA', '1inch Network', 'eCash', 'Conflux', 'SafeMoon V2'
+            ].map(network => (
               <CheckboxItem key={network}>
                 <input
                   type="checkbox"

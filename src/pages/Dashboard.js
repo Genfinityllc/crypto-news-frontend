@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useBookmarks } from '../hooks/useBookmarks';
@@ -225,19 +225,45 @@ const EmptyState = styled.div`
   }
 `;
 
-const LoadingSpinner = styled.div`
+const LoadingContainer = styled.div`
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
+  padding: 3rem;
+  text-align: center;
+  background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+  border-radius: 20px;
+  border: 1px solid #333;
+  margin: 2rem 0;
+`;
 
+const LoadingSpinner = styled.div`
+  position: relative;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 2rem;
+  
   div {
-    border: 4px solid #333;
-    border-top: 4px solid #00aaff;
+    border: 3px solid transparent;
+    border-top: 3px solid #00aaff;
+    border-right: 3px solid #00b4d8;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
+    width: 60px;
+    height: 60px;
+    animation: spin 1.2s linear infinite;
+    position: absolute;
+  }
+  
+  div:nth-child(2) {
+    border: 3px solid transparent;
+    border-bottom: 3px solid #22c55e;
+    border-left: 3px solid #4ade80;
+    animation: spin 1.8s linear infinite reverse;
+    width: 45px;
+    height: 45px;
+    top: 7.5px;
+    left: 7.5px;
   }
 
   @keyframes spin {
@@ -245,6 +271,65 @@ const LoadingSpinner = styled.div`
     100% { transform: rotate(360deg); }
   }
 `;
+
+const LoadingMessage = styled.p`
+  color: #e5e7eb;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 0 0 1rem 0;
+  font-family: Arial, Helvetica, sans-serif;
+  animation: fadeInOut 3s infinite;
+  min-height: 1.5rem;
+  
+  @keyframes fadeInOut {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+`;
+
+const LoadingSubtext = styled.p`
+  color: #9ca3af;
+  font-size: 0.9rem;
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+`;
+
+// Enhanced Loading Component with rotating messages
+function EnhancedLoadingSpinner() {
+  const loadingMessages = [
+    "🔍 Scanning global crypto news feeds...",
+    "📊 Analyzing market trends and sentiment...",
+    "🚀 Fetching breaking news from top sources...",
+    "💎 Discovering viral cryptocurrency stories...",
+    "⚡ Processing real-time market data...",
+    "🎯 Curating the most relevant news for you...",
+    "🔄 Synchronizing with live RSS feeds...",
+    "✨ AI is enhancing content readability...",
+    "🌐 Aggregating news from 50+ sources...",
+    "📈 Loading the latest price movements..."
+  ];
+
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 2000); // Change message every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [loadingMessages.length]);
+
+  return (
+    <LoadingContainer>
+      <LoadingSpinner>
+        <div />
+        <div />
+      </LoadingSpinner>
+      <LoadingMessage>{loadingMessages[messageIndex]}</LoadingMessage>
+      <LoadingSubtext>This usually takes 5-10 seconds...</LoadingSubtext>
+    </LoadingContainer>
+  );
+}
 
 const Pagination = styled.div`
   display: flex;
@@ -563,7 +648,7 @@ export default function Dashboard() {
             Latest Breaking News
           </SectionTitle>
           {breakingLoading ? (
-            <LoadingSpinner><div /></LoadingSpinner>
+            <EnhancedLoadingSpinner />
           ) : (
             breakingNews.slice(0, 3).map(article => (
               <NewsCard
@@ -584,7 +669,7 @@ export default function Dashboard() {
         </SectionTitle>
         
         {loading ? (
-          <LoadingSpinner><div /></LoadingSpinner>
+          <EnhancedLoadingSpinner />
         ) : articles.length > 0 ? (
           <>
             {articles.map(article => (

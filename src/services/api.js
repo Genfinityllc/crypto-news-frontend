@@ -90,6 +90,19 @@ export const removeBookmark = (bookmarkId) => {
   return api.delete(`/firebase-auth/bookmarks/${bookmarkId}`);
 };
 
+// RSS Article Bookmarks
+export const addRSSBookmark = (articleData, userId) => {
+  return api.post('/news/bookmark-rss-article', { articleData, userId });
+};
+
+export const getRSSBookmarks = (userId) => {
+  return api.get(`/news/rss-bookmarks/${userId}`);
+};
+
+export const removeRSSBookmark = (bookmarkId, userId) => {
+  return api.delete(`/news/rss-bookmarks/${bookmarkId}?userId=${userId}`);
+};
+
 // AI API calls
 export const generateAISummary = (articleId) => {
   return api.post(`/news/summarize/${articleId}`);
@@ -127,6 +140,10 @@ export const getHighReadabilityNews = (minScore = 97, limit = 20) => {
 
 export const rewriteArticle = (articleId) => {
   return api.post(`/enhanced-news/${articleId}/rewrite`);
+};
+
+export const rewriteRSSArticle = (articleData) => {
+  return api.post('/news/rewrite-rss-article', articleData);
 };
 
 export const getNewsAnalytics = () => {
