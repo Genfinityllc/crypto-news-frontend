@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getBookmarks } from '../services/api';
 
@@ -8,7 +8,7 @@ export function useBookmarks() {
   const [error, setError] = useState(null);
   const { currentUser } = useAuth();
 
-  const fetchBookmarks = async () => {
+  const fetchBookmarks = useCallback(async () => {
     if (!currentUser) {
       setBookmarks([]);
       return;
@@ -26,7 +26,7 @@ export function useBookmarks() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     fetchBookmarks();
