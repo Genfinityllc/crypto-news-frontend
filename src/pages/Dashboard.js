@@ -427,29 +427,7 @@ export default function Dashboard() {
         </SectionButton>
       </SectionNavigation>
 
-      {/* Breaking News Section */}
-      {breakingNews.length > 0 && (
-        <Section>
-          <SectionTitle>
-            <BreakingBadge>Breaking</BreakingBadge>
-            Latest Breaking News
-          </SectionTitle>
-          {breakingLoading ? (
-            <LoadingSpinner><div /></LoadingSpinner>
-          ) : (
-            breakingNews.slice(0, 3).map(article => (
-              <NewsCard
-                key={article.id}
-                article={article}
-                bookmarks={bookmarks}
-                onBookmarkChange={refetchBookmarks}
-              />
-            ))
-          )}
-        </Section>
-      )}
-
-      {/* Enhanced Filters */}
+      {/* Enhanced Filters - Moved to top */}
       <EnhancedFiltersContainer>
         <FilterGroup>
           <FilterLabel>Network</FilterLabel>
@@ -576,6 +554,28 @@ export default function Dashboard() {
           📖 High Readability
         </ActionButton>
       </FiltersContainer>
+
+      {/* Breaking News Section */}
+      {breakingNews.length > 0 && (
+        <Section>
+          <SectionTitle>
+            <BreakingBadge>Breaking</BreakingBadge>
+            Latest Breaking News
+          </SectionTitle>
+          {breakingLoading ? (
+            <LoadingSpinner><div /></LoadingSpinner>
+          ) : (
+            breakingNews.slice(0, 3).map(article => (
+              <NewsCard
+                key={article.id}
+                article={article}
+                bookmarks={bookmarks}
+                onBookmarkChange={refetchBookmarks}
+              />
+            ))
+          )}
+        </Section>
+      )}
 
       {/* News Articles */}
       <Section>
