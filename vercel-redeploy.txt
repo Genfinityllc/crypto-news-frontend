@@ -1,0 +1,2 @@
+Force Vercel redeploy - updated API URL to Railway backend
+Timestamp: 2025-09-04 17:28
