@@ -74,16 +74,7 @@ const FilterSelect = styled.select`
   }
 `;
 
-const CryptoSelect = styled(FilterSelect)`
-  min-width: 200px;
-  background: #2a2a2a;
-  border-color: #00aaff;
-  
-  &:focus {
-    border-color: #00aaff;
-    box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.3);
-  }
-`;
+// CryptoSelect removed - using expanded Networks dropdown instead
 
 const FilterGroup = styled.div`
   display: flex;
@@ -317,7 +308,7 @@ export default function Dashboard() {
   const { currentUser, userProfile } = useAuth();
   const { breakingNews, loading: breakingLoading } = useBreakingNews();
   const { bookmarks, refetch: refetchBookmarks } = useBookmarks();
-  const { options: cryptoOptions, loading: cryptoLoading } = useCryptoDropdown();
+  // Removed crypto dropdown - now using expanded network filter
   
   const [filters, setFilters] = useState({
     network: 'all',
