@@ -296,7 +296,7 @@ export default function Dashboard() {
     crypto: 'all'
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [showEnhanced, setShowEnhanced] = useState(false);
+  // const [showEnhanced, setShowEnhanced] = useState(false);
   const [rewritingArticles, setRewritingArticles] = useState(new Set());
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);

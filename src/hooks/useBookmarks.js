@@ -30,7 +30,7 @@ export function useBookmarks() {
 
   useEffect(() => {
     fetchBookmarks();
-  }, [currentUser]);
+  }, [currentUser, fetchBookmarks]);
 
   return {
     bookmarks,

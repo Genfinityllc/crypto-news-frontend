@@ -188,74 +188,74 @@ const MetaInfo = styled.div`
   flex-wrap: wrap;
 `;
 
-const Badge = styled.span`
-  background: ${props => {
-    switch (props.type) {
-      case 'breaking': return 'linear-gradient(45deg, #ff4444, #ff6666)';
-      case 'market': return 'linear-gradient(45deg, #0066cc, #0080ff)';
-      case 'technology': return 'linear-gradient(45deg, #22c55e, #4ade80)';
-      case 'regulation': return 'linear-gradient(45deg, #f59e0b, #fbbf24)';
-      case 'viral': return 'linear-gradient(45deg, #8b5cf6, #a78bfa)';
-      default: return 'linear-gradient(45deg, #6b7280, #9ca3af)';
-    }
-  }};
-  color: white;
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-`;
+// const Badge = styled.span`
+//   background: ${props => {
+//     switch (props.type) {
+//       case 'breaking': return 'linear-gradient(45deg, #ff4444, #ff6666)';
+//       case 'market': return 'linear-gradient(45deg, #0066cc, #0080ff)';
+//       case 'technology': return 'linear-gradient(45deg, #22c55e, #4ade80)';
+//       case 'regulation': return 'linear-gradient(45deg, #f59e0b, #fbbf24)';
+//       case 'viral': return 'linear-gradient(45deg, #8b5cf6, #a78bfa)';
+//       default: return 'linear-gradient(45deg, #6b7280, #9ca3af)';
+//     }
+//   }};
+//   color: white;
+//   padding: 0.375rem 0.75rem;
+//   border-radius: 20px;
+//   font-size: 0.7rem;
+//   font-weight: 700;
+//   text-transform: uppercase;
+//   letter-spacing: 0.05em;
+//   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+//   border: 1px solid rgba(255, 255, 255, 0.1);
+//   backdrop-filter: blur(10px);
+// `;
 
-const NetworkBadge = styled.span`
-  background: #374151;
-  color: #d1d5db;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-`;
+// const NetworkBadge = styled.span`
+//   background: #374151;
+//   color: #d1d5db;
+//   padding: 0.25rem 0.5rem;
+//   border-radius: 4px;
+//   font-size: 0.75rem;
+// `;
 
-const ViralScore = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(167, 139, 250, 0.2));
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 20px;
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #a78bfa;
-  backdrop-filter: blur(10px);
-  
-  &::before {
-    content: '🔥';
-    font-size: 0.8rem;
-  }
-`;
+// const ViralScore = styled.div`
+//   display: flex;
+//   align-items: center;
+//   gap: 0.5rem;
+//   background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(167, 139, 250, 0.2));
+//   border: 1px solid rgba(139, 92, 246, 0.3);
+//   border-radius: 20px;
+//   padding: 0.375rem 0.75rem;
+//   font-size: 0.75rem;
+//   font-weight: 600;
+//   color: #a78bfa;
+//   backdrop-filter: blur(10px);
+//   
+//   &::before {
+//     content: '🔥';
+//     font-size: 0.8rem;
+//   }
+// `;
 
-const ReadabilityScore = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(74, 222, 128, 0.2));
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: 20px;
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #4ade80;
-  backdrop-filter: blur(10px);
-  
-  &::before {
-    content: '📖';
-    font-size: 0.8rem;
-  }
-`;
+// const ReadabilityScore = styled.div`
+//   display: flex;
+//   align-items: center;
+//   gap: 0.5rem;
+//   background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(74, 222, 128, 0.2));
+//   border: 1px solid rgba(34, 197, 94, 0.3);
+//   border-radius: 20px;
+//   padding: 0.375rem 0.75rem;
+//   font-size: 0.75rem;
+//   font-weight: 600;
+//   color: #4ade80;
+//   backdrop-filter: blur(10px);
+//   
+//   &::before {
+//     content: '📖';
+//     font-size: 0.8rem;
+//   }
+// `;
 
 const Title = styled.h3`
   color: #f0f0f0;
