@@ -619,7 +619,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   
   const viralScore = article.viral_score || 0;
   const readabilityScore = article.readability_score || 0;
-  const articleImage = generatedImage || aiRewrite?.cardImage || article.card_images?.medium || article.cover_image || article.image_url || null;
+  const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null;
 
   const handleTitleClick = () => {
     if (article.url) {
