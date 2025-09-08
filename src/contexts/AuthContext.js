@@ -57,32 +57,39 @@ export function AuthProvider({ children }) {
 
   async function signin(email, password) {
     try {
+      console.log('AuthContext: Starting signin process');
       setError(null);
       const result = await signInWithEmailAndPassword(auth, email, password);
+      console.log('AuthContext: Firebase signin successful', result.user.uid);
       
       // Set currentUser immediately to prevent race condition
       setCurrentUser(result.user);
+      console.log('AuthContext: Set currentUser in state');
       
       // Get fresh token and store it
       const token = await result.user.getIdToken();
       localStorage.setItem('firebaseToken', token);
+      console.log('AuthContext: Stored Firebase token');
       
       // Fetch profile from Firestore
       try {
         const profileDoc = await getDoc(doc(db, 'profiles', result.user.uid));
         if (profileDoc.exists()) {
           setUserProfile(profileDoc.data());
+          console.log('AuthContext: Found and set user profile');
         } else {
-          console.warn('Profile not found, user may need to complete registration');
+          console.warn('AuthContext: Profile not found, user may need to complete registration');
           setUserProfile(null);
         }
       } catch (profileError) {
-        console.warn('Error fetching profile:', profileError);
+        console.warn('AuthContext: Error fetching profile:', profileError);
         setUserProfile(null);
       }
       
+      console.log('AuthContext: Signin process complete');
       return result;
     } catch (error) {
+      console.error('AuthContext: Signin failed:', error);
       setError(error.message);
       throw error;
     }
