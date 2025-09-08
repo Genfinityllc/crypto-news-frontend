@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useBookmarks } from '../hooks/useBookmarks';
-import { useCryptoDropdown } from '../hooks/useCryptoMarket';
 import NewsCard from '../components/news/NewsCard';
 import { rewriteArticle, getViralNews, getHighReadabilityNews } from '../services/api';
 import { toast } from 'react-toastify';

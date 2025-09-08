@@ -36,6 +36,7 @@ const Logo = styled(Link)`
   }
 `;
 
+// eslint-disable-next-line no-unused-vars
 const LogoIcon = styled.span`
   font-size: 1.75rem;
 `;
