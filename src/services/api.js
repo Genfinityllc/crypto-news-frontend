@@ -60,7 +60,7 @@ export const verifyToken = (idToken) => {
 
 // News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'rss', ...params } });
+  return api.get('/news', { params: { source: 'hybrid', ...params } });
 };
 
 export const getBreakingNews = () => {
