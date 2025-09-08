@@ -60,6 +60,13 @@ export function AuthProvider({ children }) {
       setError(null);
       const result = await signInWithEmailAndPassword(auth, email, password);
       
+      // Set currentUser immediately to prevent race condition
+      setCurrentUser(result.user);
+      
+      // Get fresh token and store it
+      const token = await result.user.getIdToken();
+      localStorage.setItem('firebaseToken', token);
+      
       // Fetch profile from Firestore
       try {
         const profileDoc = await getDoc(doc(db, 'profiles', result.user.uid));
@@ -67,9 +74,11 @@ export function AuthProvider({ children }) {
           setUserProfile(profileDoc.data());
         } else {
           console.warn('Profile not found, user may need to complete registration');
+          setUserProfile(null);
         }
       } catch (profileError) {
         console.warn('Error fetching profile:', profileError);
+        setUserProfile(null);
       }
       
       return result;
