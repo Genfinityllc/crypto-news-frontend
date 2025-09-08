@@ -114,7 +114,7 @@ export default function LoginForm() {
     try {
       await signin(formData.email, formData.password);
       toast.success('Successfully signed in!');
-      navigate('/dashboard');
+      navigate('/');
     } catch (error) {
       toast.error('Failed to sign in. Please check your credentials.');
     } finally {
