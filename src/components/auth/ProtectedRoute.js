@@ -29,12 +29,6 @@ export default function ProtectedRoute({ children, requireProfile = false }) {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();
 
-  console.log('ProtectedRoute render:', { 
-    currentUser: !!currentUser, 
-    loading, 
-    pathname: location.pathname 
-  });
-
   if (loading) {
     return (
       <LoadingContainer>
@@ -44,11 +38,6 @@ export default function ProtectedRoute({ children, requireProfile = false }) {
   }
 
   if (!currentUser) {
-    console.log('ProtectedRoute: No currentUser, redirecting to login');
-    // Don't redirect if we're already on login page
-    if (location.pathname === '/login') {
-      return children;
-    }
     // Redirect to login page with return url
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

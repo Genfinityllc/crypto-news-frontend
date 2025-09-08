@@ -27,12 +27,16 @@ api.interceptors.response.use(
     console.error('API Error:', error);
     if (error.response?.status === 401) {
       // Token expired or invalid
-      console.log('401 error - removing token but NOT redirecting');
       localStorage.removeItem('firebaseToken');
-      // TEMPORARILY DISABLED: Do not auto-redirect on 401 to debug login loop
-      // if (window.location.pathname !== '/login') {
-      //   window.location.href = '/login';
-      // }
+      // Only redirect if not on login/signup pages and user should be authenticated
+      const currentPath = window.location.pathname;
+      const isAuthPage = currentPath === '/login' || currentPath === '/signup';
+      const isPublicRoute = currentPath === '/' || currentPath === '/dashboard';
+      
+      if (!isAuthPage && !isPublicRoute) {
+        // Only redirect from protected routes that require authentication
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error.response?.data || error);
   }

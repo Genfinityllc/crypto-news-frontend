@@ -112,15 +112,10 @@ export default function LoginForm() {
 
     setLoading(true);
     try {
-      console.log('LoginForm: Calling signin');
       await signin(formData.email, formData.password);
-      console.log('LoginForm: Signin completed, showing success toast');
       toast.success('Successfully signed in!');
-      console.log('LoginForm: Navigating to /');
       navigate('/');
-      console.log('LoginForm: Navigation called');
     } catch (error) {
-      console.error('LoginForm: Signin error:', error);
       toast.error('Failed to sign in. Please check your credentials.');
     } finally {
       setLoading(false);
