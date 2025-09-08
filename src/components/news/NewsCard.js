@@ -633,6 +633,11 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       return;
     }
 
+    console.log('Bookmarking article:', article.title);
+    console.log('Current user:', currentUser);
+    console.log('Article ID type:', typeof article.id, 'ID value:', article.id);
+    console.log('Is bookmarked:', isBookmarked);
+    
     setBookmarking(true);
     try {
       // Check if this is an RSS article (no database ID) or database article
@@ -677,7 +682,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       
       if (onBookmarkChange) onBookmarkChange();
     } catch (error) {
-      toast.error('Failed to update bookmark');
+      toast.error('Failed to update bookmark: ' + (error.message || 'Unknown error'));
       console.error('Bookmark error:', error);
     } finally {
       setBookmarking(false);
@@ -687,12 +692,17 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const handleGenerateRewrite = async () => {
     setLoadingRewrite(true);
     try {
+      console.log('Generating rewrite for article:', article.title);
+      console.log('Article ID type:', typeof article.id, 'ID value:', article.id);
+      
       let response;
       
       // Check if this is an RSS article (no database ID) or database article
-      if (article.id && typeof article.id === 'number') {
-        // Database article with proper ID
-        response = await generateAIRewrite(article.id);
+      // Database articles have UUID strings, RSS articles have no ID or non-UUID format
+      if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
+        // Database article with proper UUID ID
+        console.log('Using database rewrite API for article ID:', article.id);
+        response = await rewriteArticle(article.id);
       } else {
         // RSS article - use direct rewrite with article data
         const articleData = {
@@ -703,14 +713,16 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
           network: article.network,
           category: article.category
         };
+        console.log('Using RSS rewrite API for article:', articleData.title);
         response = await rewriteRSSArticle(articleData);
       }
       
+      console.log('Rewrite response:', response);
       setAiRewrite(response.data);
       setRewriteExpanded(true);
       toast.success('AI rewrite generated successfully!');
     } catch (error) {
-      toast.error('Failed to generate AI rewrite');
+      toast.error('Failed to generate AI rewrite: ' + (error.message || 'Unknown error'));
       console.error('AI rewrite error:', error);
     } finally {
       setLoadingRewrite(false);
