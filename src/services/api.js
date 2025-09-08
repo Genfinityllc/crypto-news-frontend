@@ -55,20 +55,20 @@ export const verifyToken = (idToken) => {
   return api.post('/firebase-auth/verify-token', { idToken });
 };
 
-// News API calls
+// News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'rss', ...params } });
+  return api.get('/news', { params: { source: 'database', ...params } });
 };
 
 export const getBreakingNews = () => {
-  return api.get('/news', { params: { breaking: true, limit: 10, source: 'rss' } });
+  return api.get('/news', { params: { breaking: true, limit: 10, source: 'database' } });
 };
 
 export const searchNews = (query, options = {}) => {
   return api.get('/news', { 
     params: { 
       search: query,
-      source: 'rss',
+      source: 'database',
       ...options 
     } 
   });
