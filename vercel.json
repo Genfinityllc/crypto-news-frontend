@@ -22,6 +22,6 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://crypto-news-curator-backend.com/api"
+    "REACT_APP_API_URL": "https://crypto-news-curator-backend-production.up.railway.app/api"
   }
 }
