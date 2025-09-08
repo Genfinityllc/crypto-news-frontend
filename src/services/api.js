@@ -60,18 +60,18 @@ export const verifyToken = (idToken) => {
 
 // News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'database', ...params } });
+  return api.get('/news', { params: { source: 'rss', ...params } });
 };
 
 export const getBreakingNews = () => {
-  return api.get('/news', { params: { breaking: true, limit: 10, source: 'database' } });
+  return api.get('/news', { params: { breaking: true, limit: 10, source: 'rss' } });
 };
 
 export const searchNews = (query, options = {}) => {
   return api.get('/news', { 
     params: { 
       search: query,
-      source: 'database',
+      source: 'rss',
       ...options 
     } 
   });
