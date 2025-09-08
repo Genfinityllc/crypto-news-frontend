@@ -790,15 +790,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
           {bookmarking ? '...' : isBookmarked ? '★' : '☆'}
         </BookmarkButton>
       )}
-      {articleImage && (
-        <CardImage 
-          src={articleImage} 
-          alt={article.title}
-          onError={(e) => {
-            e.target.style.display = 'none';
-          }}
-        />
-      )}
       {generatedImage && (
         <>
           <AILabel>AI Generated Cover Image</AILabel>
