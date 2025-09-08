@@ -702,7 +702,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
         // Database article with proper UUID ID
         console.log('Using database rewrite API for article ID:', article.id);
-        response = await rewriteArticle(article.id);
+        response = await generateAIRewrite(article.id);
       } else {
         // RSS article - use direct rewrite with article data
         const articleData = {
