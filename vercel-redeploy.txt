@@ -1,4 +1,4 @@
-Force Vercel redeploy - updated API URL to Railway backend
+Force Vercel redeploy - fixed backend API URL configuration - timestamp: 2025-09-08T18:50:00Z
 Timestamp: 2025-09-04 17:28
 Manual env var update completed - forcing redeploy
 Timestamp: 2025-09-05 (current time)
