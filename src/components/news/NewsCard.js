@@ -619,7 +619,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   
   const viralScore = article.viral_score || 0;
   const readabilityScore = article.readability_score || 0;
-  const articleImage = generatedImage || article.card_images?.medium || article.cover_image || article.image_url || null;
+  const articleImage = generatedImage || aiRewrite?.cardImage || article.card_images?.medium || article.cover_image || article.image_url || null;
 
   const handleTitleClick = () => {
     if (article.url) {
@@ -641,8 +641,9 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
     setBookmarking(true);
     try {
       // Check if this is an RSS article (no database ID) or database article
-      if (article.id && typeof article.id === 'number') {
-        // Database article with proper ID - use Firebase bookmark system
+      // Database articles have UUID strings, RSS articles have no ID or non-UUID format
+      if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
+        // Database article with proper UUID ID - use Firebase bookmark system
         if (isBookmarked) {
           const bookmark = bookmarks.find(b => b.articleId === article.id);
           await removeBookmark(bookmark.id);
