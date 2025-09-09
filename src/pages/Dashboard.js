@@ -507,6 +507,60 @@ export default function Dashboard() {
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
 
+  // Client networks - your specific clients
+  const CLIENT_NETWORKS = [
+    'HBAR', 'Hedera', 'Hedera Hashgraph',
+    'DAG', 'Constellation', 'Constellation Network',
+    'XDC', 'XDC Network',
+    'ALGO', 'Algorand', 
+    'HashPack'
+  ];
+
+  // Filter articles based on active section
+  const getFilteredArticles = () => {
+    if (activeSection === 'client') {
+      // Filter for client-specific articles
+      return articles.filter(article => {
+        const title = (article.title || '').toLowerCase();
+        const content = (article.content || article.description || article.summary || '').toLowerCase();
+        const network = (article.network || '').toLowerCase();
+        
+        // Check if article mentions any client networks
+        return CLIENT_NETWORKS.some(clientNetwork => {
+          const networkLower = clientNetwork.toLowerCase();
+          return title.includes(networkLower) || 
+                 content.includes(networkLower) || 
+                 network.includes(networkLower);
+        });
+      });
+    }
+    
+    // For other sections, return all articles (already filtered by backend)
+    return articles;
+  };
+
+  const filteredArticles = getFilteredArticles();
+  
+  // Debug: Log client articles when client section is active
+  React.useEffect(() => {
+    if (activeSection === 'client') {
+      console.log('🌟 Client News Filter Active');
+      console.log('Total articles:', articles.length);
+      console.log('Filtered client articles:', filteredArticles.length);
+      console.log('Client networks:', CLIENT_NETWORKS);
+      filteredArticles.forEach((article, i) => {
+        console.log(`Client article ${i + 1}:`, {
+          title: article.title?.substring(0, 60),
+          network: article.network,
+          hasClientKeywords: CLIENT_NETWORKS.some(network => 
+            (article.title || '').toLowerCase().includes(network.toLowerCase()) ||
+            (article.content || '').toLowerCase().includes(network.toLowerCase())
+          )
+        });
+      });
+    }
+  }, [activeSection, filteredArticles.length]);
+
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
@@ -548,11 +602,12 @@ export default function Dashboard() {
         break;
         
       case 'client':
-        // Show news from major client networks (not general news)
+        // Show news from specific client networks only
+        // Client networks: HBAR/Hedera, DAG/Constellation, XDC, Algorand/ALGO, HashPack
         setFilters(prev => ({ 
           ...prev, 
           category: 'all',
-          network: 'all', // Will be refined to exclude 'general' 
+          network: 'all', // We'll filter in the display logic
           sortBy: 'date'
         }));
         break;
@@ -642,7 +697,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📊 All News</span>
             <ArticleCount active={activeSection === 'all'}>
-              {articles.length}
+              {activeSection === 'all' ? filteredArticles.length : articles.length}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -654,7 +709,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📰 Latest News</span>
             <ArticleCount active={activeSection === 'latest'}>
-              {activeSection === 'latest' ? articles.length : '•'}
+              {activeSection === 'latest' ? filteredArticles.length : '•'}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -678,7 +733,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>🌟 Client News</span>
             <ArticleCount active={activeSection === 'client'}>
-              {activeSection === 'client' ? articles.length : '•'}
+              {activeSection === 'client' ? filteredArticles.length : '•'}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -847,9 +902,9 @@ export default function Dashboard() {
         
         {loading ? (
           <EnhancedLoadingSpinner />
-        ) : articles.length > 0 ? (
+        ) : filteredArticles.length > 0 ? (
           <>
-            {articles.map(article => (
+            {filteredArticles.map(article => (
               <NewsCard
                 key={article.id}
                 article={article}
@@ -885,8 +940,12 @@ export default function Dashboard() {
           </>
         ) : (
           <EmptyState>
-            <h3>{error ? 'Error Loading Articles' : 'No articles found'}</h3>
-            <p>{error || 'Try adjusting your filters or search terms.'}</p>
+            <h3>{error ? 'Error Loading Articles' : 
+              activeSection === 'client' ? 'No client news found' : 
+              'No articles found'}</h3>
+            <p>{error || 
+              activeSection === 'client' ? 'No articles found for Hedera, Constellation, XDC, Algorand, or HashPack. Try another section.' :
+              'Try adjusting your filters or search terms.'}</p>
             {error && (
               <button 
                 onClick={() => window.location.reload()} 
