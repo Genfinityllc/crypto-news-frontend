@@ -63,20 +63,29 @@ export const verifyToken = (idToken) => {
   return api.post('/firebase-auth/verify-token', { idToken });
 };
 
+// =====================================================
+// 🔒 LOCKED CONFIGURATION - DO NOT MODIFY! 🔒
+// =====================================================
+// These API calls use 'source: hybrid' which is CRITICAL for:
+// - Image loading: RSS articles provide cover_image URLs
+// - AI rewrite: Smart matching to database articles by title
+// CHANGING THESE WILL BREAK IMAGES AND AI REWRITE!
+// =====================================================
+
 // News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'hybrid', ...params } });
+  return api.get('/news', { params: { source: 'hybrid', ...params } }); // 🔒 DO NOT CHANGE 'hybrid'
 };
 
 export const getBreakingNews = () => {
-  return api.get('/news', { params: { breaking: true, limit: 10, source: 'hybrid' } });
+  return api.get('/news', { params: { breaking: true, limit: 10, source: 'hybrid' } }); // 🔒 DO NOT CHANGE 'hybrid'
 };
 
 export const searchNews = (query, options = {}) => {
   return api.get('/news', { 
     params: { 
       search: query,
-      source: 'hybrid',
+      source: 'hybrid', // 🔒 DO NOT CHANGE 'hybrid' - needed for AI rewrite search
       ...options 
     } 
   });

@@ -619,7 +619,18 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   
   const viralScore = article.viral_score || 0;
   const readabilityScore = article.readability_score || 0;
-  const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null;
+  
+  // =====================================================
+  // 🔒 CRITICAL IMAGE LOADING LOGIC - DO NOT MODIFY! 🔒
+  // =====================================================
+  // This order is ESSENTIAL for images to display:
+  // 1. Generated image (from AI generation)
+  // 2. AI rewrite card image (from rewrite process)  
+  // 3. cover_image (from RSS hybrid source - MOST IMPORTANT)
+  // 4. image_url (fallback)
+  // CHANGING THIS ORDER WILL BREAK IMAGE DISPLAY!
+  // =====================================================
+  const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null; // 🔒 DO NOT MODIFY
   
 
   const handleTitleClick = () => {
@@ -696,25 +707,35 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
     try {
       let response;
       
+      // =====================================================
+      // 🔒 CRITICAL AI REWRITE LOGIC - DO NOT MODIFY! 🔒
+      // =====================================================
+      // This hybrid approach is ESSENTIAL for AI rewrite to work:
+      // 1. RSS articles (no UUID) → search database by title
+      // 2. Use database UUID for enhanced rewrite endpoint
+      // 3. Fallback to RSS rewrite if no match found
+      // CHANGING THIS LOGIC WILL BREAK AI REWRITE!
+      // =====================================================
+      
       // Check if this is an RSS article (no database ID) or database article
       if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
         // Database article with proper UUID ID - use enhanced rewrite
         response = await generateAIRewrite(article.id);
       } else {
-        // RSS article - try to find matching database article first
+        // 🔒 CRITICAL: RSS article - try to find matching database article first
         try {
           // Search for database article with same title
-          const searchResponse = await searchNews(article.title, { source: 'database', limit: 1 });
+          const searchResponse = await searchNews(article.title, { source: 'database', limit: 1 }); // 🔒 DO NOT CHANGE 'database'
           const dbArticle = searchResponse.data?.[0];
           
           if (dbArticle && dbArticle.id) {
             // Found matching database article, use its ID for enhanced rewrite
-            response = await generateAIRewrite(dbArticle.id);
+            response = await generateAIRewrite(dbArticle.id); // 🔒 CRITICAL: Use database UUID
           } else {
             throw new Error('No database article found');
           }
         } catch (dbError) {
-          // Fallback to RSS rewrite if database article not found
+          // 🔒 CRITICAL: Fallback to RSS rewrite if database article not found
           const articleData = {
             title: article.title,
             content: article.content || article.description || article.summary || '',
@@ -723,7 +744,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
             network: article.network,
             category: article.category
           };
-          response = await rewriteRSSArticle(articleData);
+          response = await rewriteRSSArticle(articleData); // 🔒 ESSENTIAL: RSS fallback
         }
       }
       

@@ -123,32 +123,77 @@ navigate('/'); // NOT '/dashboard'
 4. **Images Missing**: Verify using `cover_image` field from hybrid RSS articles
 5. **Railway Deploy Fails**: Check package-lock.json exists with all dependencies
 
-### 🔒 LOCKED IN: Working AI Rewrite Configuration (DO NOT CHANGE!)
+### 🚨🔒 CRITICAL: LOCKED CONFIGURATION - NEVER MODIFY! 🔒🚨
 
-The current working setup uses **smart hybrid approach**:
+**⚠️ WARNING: The following configuration is 100% WORKING and TESTED ⚠️**
+**🚫 CHANGING ANY PART OF THIS WILL BREAK THE APPLICATION! 🚫**
 
-1. **API Source**: `source: 'hybrid'` in all news API calls
-2. **AI Rewrite Logic**: RSS articles → search for database match by title → use database UUID for enhanced rewrite
-3. **Image Display**: RSS articles return valid `cover_image` URLs via CDN
-4. **Fallback**: If no database match found, use RSS rewrite endpoint
+## 🔐 Protected Components:
 
-**Critical NewsCard.js AI rewrite logic (lines 717-738)**:
+### 1. 🔒 API Source Configuration (api.js)
 ```javascript
-// RSS article - try to find matching database article first  
+// 🔒 LOCKED - DO NOT CHANGE 'hybrid' SOURCE
+source: 'hybrid'  // CRITICAL for both images AND AI rewrite
+```
+**Why hybrid is essential:**
+- RSS articles provide `cover_image` URLs for image display
+- Smart search finds database matches for AI rewrite UUIDs
+- Perfect balance of functionality
+
+### 2. 🔒 AI Rewrite Logic (NewsCard.js)
+```javascript
+// 🔒 CRITICAL LOGIC - DO NOT MODIFY
 const searchResponse = await searchNews(article.title, { source: 'database', limit: 1 });
 const dbArticle = searchResponse.data?.[0];
 
 if (dbArticle && dbArticle.id) {
-  // Found matching database article, use its ID for enhanced rewrite
-  response = await generateAIRewrite(dbArticle.id);
+  response = await generateAIRewrite(dbArticle.id); // Enhanced rewrite
 } else {
-  // Fallback to RSS rewrite if database article not found
-  const articleData = { title, content, url, source, network, category };
-  response = await rewriteRSSArticle(articleData);
+  response = await rewriteRSSArticle(articleData); // RSS fallback
 }
 ```
 
-**This configuration is WORKING and should NOT be changed!**
+### 3. 🔒 Image Loading Order (NewsCard.js)  
+```javascript
+// 🔒 DO NOT CHANGE THIS ORDER
+const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null;
+```
+**Critical:** `article.cover_image` from hybrid RSS source is primary image source!
+
+### 4. 🔒 Vercel CSP Configuration (vercel.json)
+```json
+{
+  "Content-Security-Policy": "img-src 'self' data: https: http:; connect-src 'self' https://crypto-news-curator-backend-production.up.railway.app https://images.weserv.nl"
+}
+```
+**Critical:** Allows `images.weserv.nl` CDN for image loading on production!
+
+## 🚫 WHAT NOT TO CHANGE:
+
+1. **NEVER** change `source: 'hybrid'` to `'database'` or `'rss'`
+2. **NEVER** modify the AI rewrite search logic in NewsCard.js
+3. **NEVER** change the image loading priority order
+4. **NEVER** remove CSP headers from vercel.json
+5. **NEVER** change the Railway API URL
+6. **NEVER** modify the searchNews database fallback logic
+
+## ✅ What You CAN Safely Modify:
+
+- UI styling and colors
+- Additional features that don't touch core news fetching
+- Non-critical components outside of NewsCard and api.js
+- Add new pages or routes
+
+## 🔥 EMERGENCY RESTORE:
+
+If something breaks, immediately restore these exact settings:
+1. API calls: `source: 'hybrid'` 
+2. AI rewrite: Search database by title → use UUID → fallback to RSS
+3. Images: `cover_image` from RSS hybrid response
+4. CSP: Allow `images.weserv.nl` domain
+
+**🎯 TESTED WORKING STATE: September 9, 2025**
+**📍 Last verified: AI rewrite ✅ | Images ✅ | Bookmarks ✅**
 
 ### 📝 Testing Commands
 
