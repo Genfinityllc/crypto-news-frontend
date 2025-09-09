@@ -621,18 +621,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const readabilityScore = article.readability_score || 0;
   const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null;
   
-  // Debug image loading
-  React.useEffect(() => {
-    console.log('=== ARTICLE IMAGE DEBUG ===');
-    console.log('Title:', article.title?.substring(0, 50));
-    console.log('Generated Image:', generatedImage);
-    console.log('AI Rewrite Card Image:', aiRewrite?.cardImage);
-    console.log('Cover Image:', article.cover_image);
-    console.log('Image URL:', article.image_url);
-    console.log('Final Article Image:', articleImage);
-    console.log('Article Image Truth Check:', Boolean(articleImage));
-    console.log('=============================');
-  }, [article.title, generatedImage, aiRewrite?.cardImage, article.cover_image, article.image_url, articleImage]);
 
   const handleTitleClick = () => {
     if (article.url) {
@@ -901,13 +889,11 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
                 src={articleImage} 
                 alt={article.title}
                 onError={(e) => {
-                  console.log('❌ Image failed to load:', articleImage);
-                  console.log('❌ Error event:', e);
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';
                 }}
                 onLoad={() => {
-                  console.log('✅ Image loaded successfully:', articleImage);
+                  // Image loaded successfully
                 }}
                 style={{ 
                   display: 'block',

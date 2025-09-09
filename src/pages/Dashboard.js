@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
-import ImageTest from '../components/debug/ImageTest';
 import { rewriteArticle, getViralNews, getHighReadabilityNews } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
@@ -490,8 +489,6 @@ export default function Dashboard() {
         )}
       </Header>
 
-      {/* DEBUG: Temporary image test - remove after testing */}
-      <ImageTest />
 
       {/* Section Navigation */}
       <SectionNavigation>
