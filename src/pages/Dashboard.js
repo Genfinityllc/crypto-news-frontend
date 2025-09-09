@@ -360,31 +360,131 @@ const PageInfo = styled.span`
 
 const SectionNavigation = styled.div`
   display: flex;
-  gap: 1rem;
-  margin: 1.5rem 0;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #333;
+  gap: 0.75rem;
+  margin: 2rem 0 1.5rem 0;
+  padding: 0.5rem;
+  background: #1e1e1e;
+  border-radius: 12px;
+  border: 1px solid #333;
+  flex-wrap: wrap;
+  
+  @media (max-width: 768px) {
+    gap: 0.5rem;
+    margin: 1.5rem 0 1rem 0;
+  }
+`;
+
+const ButtonContent = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ArticleCount = styled.span`
+  background: rgba(255, 255, 255, 0.15);
+  color: ${props => props.active ? '#fff' : '#888'};
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+  
+  ${props => props.active && `
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  `}
 `;
 
 const SectionButton = styled.button`
-  background: ${props => props.active ? '#007bff' : 'transparent'};
-  color: ${props => props.active ? '#fff' : '#ccc'};
-  border: 1px solid ${props => props.active ? '#007bff' : '#555'};
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  position: relative;
+  background: ${props => {
+    if (props.active) {
+      switch(props.variant) {
+        case 'breaking': return 'linear-gradient(135deg, #ff4757, #ff3742)';
+        case 'client': return 'linear-gradient(135deg, #ffa502, #ff9500)';  
+        case 'latest': return 'linear-gradient(135deg, #3742fa, #2f3542)';
+        case 'all': return 'linear-gradient(135deg, #2ed573, #1dd1a1)';
+        default: return 'linear-gradient(135deg, #007bff, #0056b3)';
+      }
+    }
+    return 'rgba(255, 255, 255, 0.05)';
+  }};
+  color: ${props => props.active ? '#fff' : '#aaa'};
+  border: 1px solid ${props => {
+    if (props.active) {
+      switch(props.variant) {
+        case 'breaking': return '#ff4757';
+        case 'client': return '#ffa502';
+        case 'latest': return '#3742fa'; 
+        case 'all': return '#2ed573';
+        default: return '#007bff';
+      }
+    }
+    return 'rgba(255, 255, 255, 0.1)';
+  }};
+  padding: 0.875rem 1.75rem;
+  border-radius: 10px;
   cursor: pointer;
   font-family: Arial, Helvetica, sans-serif;
-  font-weight: ${props => props.active ? '600' : 'normal'};
-  transition: all 0.3s ease;
+  font-weight: ${props => props.active ? '700' : '500'};
+  font-size: 0.9rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  box-shadow: ${props => props.active ? '0 4px 20px rgba(0, 123, 255, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)'};
+  
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: ${props => {
+      switch(props.variant) {
+        case 'breaking': return 'linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 55, 66, 0.05))';
+        case 'client': return 'linear-gradient(135deg, rgba(255, 165, 2, 0.1), rgba(255, 149, 0, 0.05))';
+        case 'latest': return 'linear-gradient(135deg, rgba(55, 66, 250, 0.1), rgba(47, 53, 66, 0.05))';  
+        case 'all': return 'linear-gradient(135deg, rgba(46, 213, 115, 0.1), rgba(29, 209, 161, 0.05))';
+        default: return 'linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 86, 179, 0.05))';
+      }
+    }};
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
 
   &:hover {
-    background: ${props => props.active ? '#0056b3' : '#007bff20'};
-    border-color: #007bff;
+    transform: translateY(-2px);
+    box-shadow: ${props => {
+      switch(props.variant) {
+        case 'breaking': return '0 8px 25px rgba(255, 71, 87, 0.4)';
+        case 'client': return '0 8px 25px rgba(255, 165, 2, 0.4)';
+        case 'latest': return '0 8px 25px rgba(55, 66, 250, 0.4)';
+        case 'all': return '0 8px 25px rgba(46, 213, 115, 0.4)';
+        default: return '0 8px 25px rgba(0, 123, 255, 0.4)';
+      }
+    }};
+    border-color: ${props => {
+      switch(props.variant) {
+        case 'breaking': return '#ff4757';
+        case 'client': return '#ffa502';
+        case 'latest': return '#3742fa';
+        case 'all': return '#2ed573';
+        default: return '#007bff';
+      }
+    }};
     color: #fff;
+    
+    &::before {
+      opacity: 1;
+    }
   }
 
   &:active {
-    transform: translateY(1px);
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.85rem;
   }
 `;
 
@@ -401,7 +501,7 @@ export default function Dashboard() {
     crypto: 'all'
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSection, setActiveSection] = useState('latest');
+  const [activeSection, setActiveSection] = useState('all');
   // const [showEnhanced, setShowEnhanced] = useState(false);
   const [rewritingArticles, setRewritingArticles] = useState(new Set());
   
@@ -413,15 +513,57 @@ export default function Dashboard() {
 
   const handleSectionChange = (section) => {
     setActiveSection(section);
-    // Apply filters based on section
-    if (section === 'breaking') {
-      setFilters(prev => ({ ...prev, category: 'breaking' }));
-    } else if (section === 'client') {
-      // Filter for client networks
-      setFilters(prev => ({ ...prev, network: 'all', category: 'all' }));
-    } else {
-      // Latest - show all
-      setFilters(prev => ({ ...prev, category: 'all', network: 'all' }));
+    setSearchQuery(''); // Clear search when switching sections
+    
+    // Apply filters based on section with more specific logic
+    switch (section) {
+      case 'all':
+        // Show all news without any filters
+        setFilters(prev => ({ 
+          ...prev, 
+          category: 'all', 
+          network: 'all',
+          sortBy: 'date' 
+        }));
+        break;
+        
+      case 'breaking':
+        // Show only breaking news
+        setFilters(prev => ({ 
+          ...prev, 
+          category: 'breaking',
+          network: 'all',
+          sortBy: 'date' 
+        }));
+        break;
+        
+      case 'latest':
+        // Show recent non-breaking news
+        setFilters(prev => ({ 
+          ...prev, 
+          category: 'all',
+          network: 'all',
+          sortBy: 'date' 
+        }));
+        break;
+        
+      case 'client':
+        // Show news from major client networks (not general news)
+        setFilters(prev => ({ 
+          ...prev, 
+          category: 'all',
+          network: 'all', // Will be refined to exclude 'general' 
+          sortBy: 'date'
+        }));
+        break;
+        
+      default:
+        setFilters(prev => ({ 
+          ...prev, 
+          category: 'all', 
+          network: 'all',
+          sortBy: 'date' 
+        }));
     }
   };
 
@@ -493,22 +635,52 @@ export default function Dashboard() {
       {/* Section Navigation */}
       <SectionNavigation>
         <SectionButton 
+          active={activeSection === 'all'}
+          variant="all"
+          onClick={() => handleSectionChange('all')}
+        >
+          <ButtonContent>
+            <span>📊 All News</span>
+            <ArticleCount active={activeSection === 'all'}>
+              {articles.length}
+            </ArticleCount>
+          </ButtonContent>
+        </SectionButton>
+        <SectionButton 
           active={activeSection === 'latest'}
+          variant="latest"
           onClick={() => handleSectionChange('latest')}
         >
-          📰 Latest News
+          <ButtonContent>
+            <span>📰 Latest News</span>
+            <ArticleCount active={activeSection === 'latest'}>
+              {activeSection === 'latest' ? articles.length : '•'}
+            </ArticleCount>
+          </ButtonContent>
         </SectionButton>
         <SectionButton 
           active={activeSection === 'breaking'}
+          variant="breaking"
           onClick={() => handleSectionChange('breaking')}
         >
-          🚨 Breaking
+          <ButtonContent>
+            <span>🚨 Breaking</span>
+            <ArticleCount active={activeSection === 'breaking'}>
+              {breakingNews.length > 0 ? breakingNews.length : '•'}
+            </ArticleCount>
+          </ButtonContent>
         </SectionButton>
         <SectionButton 
           active={activeSection === 'client'}
+          variant="client"
           onClick={() => handleSectionChange('client')}
         >
-          🌟 Client News
+          <ButtonContent>
+            <span>🌟 Client News</span>
+            <ArticleCount active={activeSection === 'client'}>
+              {activeSection === 'client' ? articles.length : '•'}
+            </ArticleCount>
+          </ButtonContent>
         </SectionButton>
       </SectionNavigation>
 
@@ -665,7 +837,12 @@ export default function Dashboard() {
       {/* News Articles */}
       <Section>
         <SectionTitle>
-          {searchQuery ? `Search Results for "${searchQuery}"` : 'Latest News'}
+          {searchQuery ? `Search Results for "${searchQuery}"` : 
+            activeSection === 'all' ? 'All News' :
+            activeSection === 'breaking' ? 'Breaking News' :
+            activeSection === 'client' ? 'Client News' :
+            'Latest News'
+          }
         </SectionTitle>
         
         {loading ? (
