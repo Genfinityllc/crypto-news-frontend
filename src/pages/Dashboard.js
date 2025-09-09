@@ -541,25 +541,12 @@ export default function Dashboard() {
 
   const filteredArticles = getFilteredArticles();
   
-  // Debug: Log client articles when client section is active
+  // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
     if (activeSection === 'client') {
-      console.log('🌟 Client News Filter Active');
-      console.log('Total articles:', articles.length);
-      console.log('Filtered client articles:', filteredArticles.length);
-      console.log('Client networks:', CLIENT_NETWORKS);
-      filteredArticles.forEach((article, i) => {
-        console.log(`Client article ${i + 1}:`, {
-          title: article.title?.substring(0, 60),
-          network: article.network,
-          hasClientKeywords: CLIENT_NETWORKS.some(network => 
-            (article.title || '').toLowerCase().includes(network.toLowerCase()) ||
-            (article.content || '').toLowerCase().includes(network.toLowerCase())
-          )
-        });
-      });
+      console.log(`🌟 Client News: ${filteredArticles.length} of ${articles.length} articles match client criteria`);
     }
-  }, [activeSection, filteredArticles.length]);
+  }, [activeSection, articles.length, filteredArticles.length]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
