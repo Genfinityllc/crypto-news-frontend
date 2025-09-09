@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { addBookmark, removeBookmark, generateCardImage, generateAIRewrite, rewriteRSSArticle, addRSSBookmark, removeRSSBookmark } from '../../services/api';
+import { addBookmark, removeBookmark, generateCardImage, generateAIRewrite, rewriteRSSArticle, addRSSBookmark, removeRSSBookmark, searchNews } from '../../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -623,14 +623,15 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   
   // Debug image loading
   React.useEffect(() => {
-    console.log('Article image debug:', {
-      title: article.title?.substring(0, 50),
-      generatedImage,
-      aiRewriteCardImage: aiRewrite?.cardImage,
-      cover_image: article.cover_image,
-      image_url: article.image_url,
-      finalArticleImage: articleImage
-    });
+    console.log('=== ARTICLE IMAGE DEBUG ===');
+    console.log('Title:', article.title?.substring(0, 50));
+    console.log('Generated Image:', generatedImage);
+    console.log('AI Rewrite Card Image:', aiRewrite?.cardImage);
+    console.log('Cover Image:', article.cover_image);
+    console.log('Image URL:', article.image_url);
+    console.log('Final Article Image:', articleImage);
+    console.log('Article Image Truth Check:', Boolean(articleImage));
+    console.log('=============================');
   }, [article.title, generatedImage, aiRewrite?.cardImage, article.cover_image, article.image_url, articleImage]);
 
   const handleTitleClick = () => {
@@ -900,12 +901,18 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
                 src={articleImage} 
                 alt={article.title}
                 onError={(e) => {
-                  console.log('Image failed to load:', articleImage);
+                  console.log('❌ Image failed to load:', articleImage);
+                  console.log('❌ Error event:', e);
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';
                 }}
                 onLoad={() => {
-                  console.log('Image loaded successfully:', articleImage);
+                  console.log('✅ Image loaded successfully:', articleImage);
+                }}
+                style={{ 
+                  display: 'block',
+                  maxWidth: '100%',
+                  maxHeight: '100%'
                 }}
               />
             ) : null}

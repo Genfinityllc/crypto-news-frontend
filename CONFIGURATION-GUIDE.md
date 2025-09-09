@@ -7,14 +7,15 @@ This document records the tested, working configurations to prevent future issue
 ### 🔑 Key Configuration Requirements
 
 #### News API Source Settings
-- **Main News Feed**: `source: 'database'` 
-- **Breaking News**: `source: 'database'`
-- **Search**: `source: 'database'`
+- **Main News Feed**: `source: 'hybrid'` 
+- **Breaking News**: `source: 'hybrid'`
+- **Search**: `source: 'hybrid'`
 
-**Why database source?**
-- Database articles have proper UUID IDs required for AI rewrite functionality
-- RSS articles have `null` IDs which don't work with `/api/enhanced-news/:id/rewrite` endpoint
-- RSS rewrite endpoint `/api/news/rewrite-rss-article` exists but often not deployed on Railway
+**Why hybrid source?**
+- Hybrid returns RSS articles with images (cover_image URLs)
+- AI Rewrite uses smart matching: searches for database article by title to get UUID
+- Falls back to RSS rewrite if no database match found
+- Best of both: images from RSS + enhanced AI rewrite via database UUIDs
 
 #### Authentication Flow
 - Login redirects to `/` (public route) NOT `/dashboard` (protected route)
@@ -117,10 +118,37 @@ navigate('/'); // NOT '/dashboard'
 ### ⚡ Quick Troubleshooting
 
 1. **Login Loop**: Check API interceptor redirect logic
-2. **AI Rewrite Fails**: Confirm using `source: 'database'` 
-3. **Bookmarks Fail**: Test Firebase auth routes with curl
-4. **Images Missing**: Verify using `cover_image` field from database articles
+2. **AI Rewrite Fails**: Confirm using `source: 'hybrid'` with smart matching fallback
+3. **Bookmarks Fail**: Test Firebase auth routes with curl  
+4. **Images Missing**: Verify using `cover_image` field from hybrid RSS articles
 5. **Railway Deploy Fails**: Check package-lock.json exists with all dependencies
+
+### 🔒 LOCKED IN: Working AI Rewrite Configuration (DO NOT CHANGE!)
+
+The current working setup uses **smart hybrid approach**:
+
+1. **API Source**: `source: 'hybrid'` in all news API calls
+2. **AI Rewrite Logic**: RSS articles → search for database match by title → use database UUID for enhanced rewrite
+3. **Image Display**: RSS articles return valid `cover_image` URLs via CDN
+4. **Fallback**: If no database match found, use RSS rewrite endpoint
+
+**Critical NewsCard.js AI rewrite logic (lines 717-738)**:
+```javascript
+// RSS article - try to find matching database article first  
+const searchResponse = await searchNews(article.title, { source: 'database', limit: 1 });
+const dbArticle = searchResponse.data?.[0];
+
+if (dbArticle && dbArticle.id) {
+  // Found matching database article, use its ID for enhanced rewrite
+  response = await generateAIRewrite(dbArticle.id);
+} else {
+  // Fallback to RSS rewrite if database article not found
+  const articleData = { title, content, url, source, network, category };
+  response = await rewriteRSSArticle(articleData);
+}
+```
+
+**This configuration is WORKING and should NOT be changed!**
 
 ### 📝 Testing Commands
 
