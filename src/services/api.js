@@ -65,18 +65,18 @@ export const verifyToken = (idToken) => {
 
 // News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'database', ...params } });
+  return api.get('/news', { params: { source: 'hybrid', ...params } });
 };
 
 export const getBreakingNews = () => {
-  return api.get('/news', { params: { breaking: true, limit: 10, source: 'database' } });
+  return api.get('/news', { params: { breaking: true, limit: 10, source: 'hybrid' } });
 };
 
 export const searchNews = (query, options = {}) => {
   return api.get('/news', { 
     params: { 
       search: query,
-      source: 'database',
+      source: 'hybrid',
       ...options 
     } 
   });

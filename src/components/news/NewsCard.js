@@ -696,21 +696,34 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       let response;
       
       // Check if this is an RSS article (no database ID) or database article
-      // Database articles have UUID strings, RSS articles have no ID or non-UUID format
       if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
-        // Database article with proper UUID ID
+        // Database article with proper UUID ID - use enhanced rewrite
         response = await generateAIRewrite(article.id);
       } else {
-        // RSS article - use direct rewrite with article data
-        const articleData = {
-          title: article.title,
-          content: article.content || article.description || article.summary || '',
-          url: article.url,
-          source: article.source,
-          network: article.network,
-          category: article.category
-        };
-        response = await rewriteRSSArticle(articleData);
+        // RSS article - try to find matching database article first
+        try {
+          // Search for database article with same title
+          const searchResponse = await searchNews(article.title, { source: 'database', limit: 1 });
+          const dbArticle = searchResponse.data?.[0];
+          
+          if (dbArticle && dbArticle.id) {
+            // Found matching database article, use its ID for enhanced rewrite
+            response = await generateAIRewrite(dbArticle.id);
+          } else {
+            throw new Error('No database article found');
+          }
+        } catch (dbError) {
+          // Fallback to RSS rewrite if database article not found
+          const articleData = {
+            title: article.title,
+            content: article.content || article.description || article.summary || '',
+            url: article.url,
+            source: article.source,
+            network: article.network,
+            category: article.category
+          };
+          response = await rewriteRSSArticle(articleData);
+        }
       }
       
       if (response && response.data) {
