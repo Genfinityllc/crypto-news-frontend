@@ -693,16 +693,12 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const handleGenerateRewrite = async () => {
     setLoadingRewrite(true);
     try {
-      console.log('Generating rewrite for article:', article.title);
-      console.log('Article ID type:', typeof article.id, 'ID value:', article.id);
-      
       let response;
       
       // Check if this is an RSS article (no database ID) or database article
       // Database articles have UUID strings, RSS articles have no ID or non-UUID format
       if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
         // Database article with proper UUID ID
-        console.log('Using database rewrite API for article ID:', article.id);
         response = await generateAIRewrite(article.id);
       } else {
         // RSS article - use direct rewrite with article data
@@ -714,17 +710,19 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
           network: article.network,
           category: article.category
         };
-        console.log('Using RSS rewrite API for article:', articleData.title);
         response = await rewriteRSSArticle(articleData);
       }
       
-      console.log('Rewrite response:', response);
-      setAiRewrite(response.data);
-      setRewriteExpanded(true);
-      toast.success('AI rewrite generated successfully!');
+      if (response && response.data) {
+        setAiRewrite(response.data);
+        setRewriteExpanded(true);
+        toast.success('AI rewrite generated successfully!');
+      } else {
+        throw new Error('Invalid response from AI rewrite service');
+      }
     } catch (error) {
-      toast.error('Failed to generate AI rewrite: ' + (error.message || 'Unknown error'));
       console.error('AI rewrite error:', error);
+      toast.error('Failed to generate AI rewrite: ' + (error.message || 'Unknown error'));
     } finally {
       setLoadingRewrite(false);
     }
