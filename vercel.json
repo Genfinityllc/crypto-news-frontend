@@ -18,7 +18,10 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/index.html",
+      "headers": {
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self' https://crypto-news-curator-backend-production.up.railway.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://images.weserv.nl; font-src 'self' data:;"
+      }
     }
   ],
   "env": {
