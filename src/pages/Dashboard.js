@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
-import { rewriteArticle, getViralNews, getHighReadabilityNews } from '../services/api';
+import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -488,6 +488,156 @@ const SectionButton = styled.button`
   }
 `;
 
+// Client Submenu Styled Components
+const ClientSubmenu = styled.div`
+  background: linear-gradient(135deg, #1e1e1e, #2a2a2a);
+  border-radius: 12px;
+  border: 1px solid #333;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  
+  @media (max-width: 768px) {
+    padding: 1rem;
+    margin: 0.75rem 0;
+  }
+`;
+
+const SubmenuTitle = styled.h3`
+  color: #ffa502;
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+  font-family: Arial, Helvetica, sans-serif;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  
+  &::before {
+    content: '🎯 ';
+  }
+`;
+
+const SubmenuButtons = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  
+  @media (max-width: 768px) {
+    gap: 0.5rem;
+  }
+`;
+
+const ClientFilterButton = styled.button`
+  position: relative;
+  background: ${props => props.active ? 
+    `linear-gradient(135deg, ${props.color}, ${props.color}cc)` : 
+    'rgba(255, 255, 255, 0.05)'
+  };
+  color: ${props => props.active ? '#fff' : '#aaa'};
+  border: 1px solid ${props => props.active ? props.color : 'rgba(255, 255, 255, 0.1)'};
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: ${props => props.active ? '700' : '500'};
+  font-size: 0.85rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  box-shadow: ${props => props.active ? 
+    `0 4px 15px ${props.color}40` : 
+    '0 2px 8px rgba(0, 0, 0, 0.1)'
+  };
+  
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: ${props => `linear-gradient(135deg, ${props.color}20, ${props.color}10)`};
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: ${props => `0 8px 25px ${props.color}50`};
+    border-color: ${props => props.color};
+    color: #fff;
+    
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+  }
+`;
+
+const ClientButtonContent = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ClientLogo = styled.img`
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+  
+  ${props => props.active && `
+    filter: brightness(1.2);
+  `}
+`;
+
+const MultiClientLogo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  
+  img {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+    border-radius: 1px;
+    opacity: 0.8;
+    transition: all 0.3s ease;
+  }
+  
+  ${props => props.active && `
+    img {
+      opacity: 1;
+      filter: brightness(1.1);
+    }
+  `}
+`;
+
+const ClientArticleCount = styled.span`
+  background: rgba(255, 255, 255, 0.15);
+  color: ${props => props.active ? '#fff' : '#888'};
+  padding: 0.15rem 0.4rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+  
+  ${props => props.active && `
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  `}
+`;
+
 export default function Dashboard() {
   const { currentUser, userProfile } = useAuth();
   const { breakingNews, loading: breakingLoading } = useBreakingNews();
@@ -504,55 +654,711 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState('all');
   // const [showEnhanced, setShowEnhanced] = useState(false);
   const [rewritingArticles, setRewritingArticles] = useState(new Set());
+  const [historicalClientArticles, setHistoricalClientArticles] = useState([]);
+  const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [clientArticlesLoading, setClientArticlesLoading] = useState(false);
+  const [directClientArticles, setDirectClientArticles] = useState([]);
+  const [selectedClientFilter, setSelectedClientFilter] = useState('all');
+  const [showClientSubmenu, setShowClientSubmenu] = useState(false);
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
 
   // Client networks - your specific clients
   const CLIENT_NETWORKS = [
-    'HBAR', 'Hedera', 'Hedera Hashgraph',
-    'DAG', 'Constellation', 'Constellation Network',
-    'XDC', 'XDC Network',
-    'ALGO', 'Algorand', 
-    'HashPack'
+    // Hedera client
+    'HBAR', 'Hedera', 'Hedera Hashgraph', 'Hedera Network',
+    // Constellation client  
+    'DAG', 'Constellation', 'Constellation Network', 'Constellation Labs',
+    // XDC client
+    'XDC', 'XDC Network', 'XinFin',
+    // HashPack client
+    'HashPack', 'Hashpack', 'PACK',
+    // Algorand client
+    'ALGO', 'Algorand', 'Algorand Foundation',
+    // Additional ticker: SWAP
+    'SWAP'
   ];
+
+  // Individual client definitions for submenu filtering with logos
+  const CLIENT_FILTERS = {
+    'all': {
+      name: 'All Clients',
+      terms: CLIENT_NETWORKS,
+      color: '#ffa502',
+      logo: 'multi', // Special case for multiple logos
+      logos: ['/logos/hedera_icon.png', '/logos/constellation_icon.png', '/logos/xdc_icon.png', '/logos/algorand_icon.png', '/logos/hashpack_icon.png']
+    },
+    'hedera': {
+      name: 'Hedera',
+      terms: ['HBAR', 'Hedera', 'Hedera Hashgraph', 'Hedera Network'],
+      color: '#0066cc',
+      logo: '/logos/hedera_icon.png'
+    },
+    'constellation': {
+      name: 'Constellation', 
+      terms: ['DAG', 'Constellation', 'Constellation Network', 'Constellation Labs'],
+      color: '#8b5cf6',
+      logo: '/logos/constellation_icon.png'
+    },
+    'xdc': {
+      name: 'XDC Network',
+      terms: ['XDC', 'XDC Network', 'XinFin'],
+      color: '#22c55e',
+      logo: '/logos/xdc_icon.png'
+    },
+    'algorand': {
+      name: 'Algorand',
+      terms: ['ALGO', 'Algorand', 'Algorand Foundation'], 
+      color: '#ff4757',
+      logo: '/logos/algorand_icon.png'
+    },
+    'hashpack': {
+      name: 'HashPack',
+      terms: [
+        'HashPack', 'Hashpack', 'PACK',
+        'HashPack wallet', 'HashPack app', 'HashPack mobile',
+        'HashPack extension', 'HashPack browser', 'HashPack NFT',
+        'HashPack staking', 'HashPack DeFi', 'HashPack.app'
+      ],
+      color: '#00b4d8',
+      logo: '/logos/hashpack_icon.png'
+    }
+  };
+
+  // Direct client article fetching function
+  const fetchDirectClientArticles = async () => {
+    setClientArticlesLoading(true);
+    console.log('🚀 Starting direct client article extraction...');
+    
+    try {
+      
+      // Comprehensive client search terms for better discovery
+      const clientSearchTerms = [
+        // Primary identifiers with high search volume
+        'Hedera', 'HBAR', 'Hedera Hashgraph', 'HBAR price', 'HBAR news',
+        'Algorand', 'ALGO', 'Algorand Foundation', 'ALGO price', 'ALGO news',
+        'Constellation Network', 'Constellation Labs', 'DAG Constellation', '$DAG token',
+        'XDC Network', 'XDC token', 'XinFin', 'XDC price', 'XDC news',
+        'HashPack', 'HashPack wallet', 'PACK token'
+      ];
+      
+      console.log(`📡 Searching for articles using ${clientSearchTerms.length} client-specific terms...`);
+      console.log(`🔍 HashPack terms in search:`, clientSearchTerms.filter(term => term.toLowerCase().includes('hashpack') || term.toLowerCase().includes('pack')));
+      
+      // Parallel searches for better performance
+      const searchPromises = clientSearchTerms.map(async (term) => {
+        try {
+          console.log(`🔍 Searching API for: ${term}`);
+          
+          // Search both database and hybrid sources with higher limits for comprehensive coverage
+          const [dbResults, hybridResults] = await Promise.all([
+            searchNews(term, { source: 'database', limit: 25 }).catch(() => ({ data: [] })),
+            searchNews(term, { source: 'hybrid', limit: 25 }).catch(() => ({ data: [] }))
+          ]);
+          
+          const results = [...(dbResults.data || []), ...(hybridResults.data || [])];
+          console.log(`✅ Found ${results.length} articles for "${term}"`);
+          
+          // Debug: Log image availability
+          const articlesWithImages = results.filter(a => a.cover_image || a.image_url);
+          console.log(`📸 ${articlesWithImages.length} of ${results.length} articles have images`);
+          
+          // Special debugging for HashPack searches
+          if (term.toLowerCase().includes('hashpack') || term.toLowerCase().includes('pack')) {
+            console.log(`🔍 HASHPACK DEBUG: Searching "${term}"`);
+            console.log(`🔍 Database results: ${dbResults.data?.length || 0}`);
+            console.log(`🔍 Hybrid results: ${hybridResults.data?.length || 0}`);
+            if (results.length > 0) {
+              console.log(`🔍 Sample HashPack results:`, results.slice(0, 2).map(a => a.title));
+            } else {
+              console.log(`🔍 No HashPack articles found for "${term}" - trying alternative search...`);
+              
+              // Try a broader search for HashPack
+              try {
+                const altSearch = await searchNews('HashPack OR "hash pack" OR "PACK token"', { 
+                  source: 'hybrid', 
+                  limit: 10 
+                }).catch(() => ({ data: [] }));
+                console.log(`🔍 Alternative HashPack search found: ${altSearch.data?.length || 0} articles`);
+                if (altSearch.data?.length > 0) {
+                  console.log(`🔍 Alternative results:`, altSearch.data.slice(0, 2).map(a => a.title));
+                }
+              } catch (altError) {
+                console.log(`🔍 Alternative HashPack search failed:`, altError.message);
+              }
+            }
+          }
+          
+          // Filter for English-only articles and client-specific relevance
+          const englishClientResults = results.filter(article => {
+            if (!article) return false;
+            
+            const title = (article.title || '').toLowerCase();
+            const content = (article.content || article.description || article.summary || '').toLowerCase();
+            
+            // English language detection (basic)
+            const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()\[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
+              (article.title || '').replace(/[\u00C0-\u017F]/g, '') // Remove accented chars
+            );
+            
+            if (!isEnglish) {
+              console.log(`🙅 Filtered non-English article: "${article.title}"`);
+              return false;
+            }
+            
+            // Enhanced client-specific filtering
+            if (term.toLowerCase().includes('constellation') || term.toLowerCase().includes('dag')) {
+              // For Constellation/DAG, ensure it's actually about Constellation Network
+              const isConstellationSpecific = 
+                title.includes('constellation network') ||
+                title.includes('constellation labs') ||
+                content.includes('constellation network') ||
+                content.includes('constellation labs') ||
+                (title.includes('dag') && (title.includes('constellation') || content.includes('constellation')));
+              
+              if (!isConstellationSpecific && (term.toLowerCase().includes('dag'))) {
+                console.log(`🙅 Filtered generic DAG article: "${article.title}"`);
+                return false;
+              }
+            }
+            
+            return true;
+          });
+          
+          console.log(`🌍 Filtered to ${englishClientResults.length} English client-specific articles for "${term}"`);
+          return englishClientResults;
+        } catch (error) {
+          console.log(`⚠️ Error searching for ${term}:`, error.message);
+          return [];
+        }
+      });
+      
+      // Wait for all searches to complete
+      const allResults = await Promise.all(searchPromises);
+      let flatResults = allResults.flat();
+      
+      // If we have very few results, try additional comprehensive searches
+      if (flatResults.length < 10) {
+        console.log(`🔍 Low results (${flatResults.length}), attempting comprehensive search...`);
+        
+        const comprehensiveTerms = [
+          'crypto news today',
+          'cryptocurrency market',
+          'bitcoin ethereum news',
+          'altcoin news',
+          'blockchain technology news'
+        ];
+        
+        for (const broadTerm of comprehensiveTerms) {
+          try {
+            const broadSearch = await searchNews(broadTerm, { 
+              source: 'hybrid', 
+              limit: 20 
+            }).catch(() => ({ data: [] }));
+            
+            if (broadSearch.data && broadSearch.data.length > 0) {
+              console.log(`📈 Comprehensive search "${broadTerm}" added ${broadSearch.data.length} articles`);
+              flatResults.push(...broadSearch.data);
+            }
+          } catch (error) {
+            console.log(`⚠️ Comprehensive search "${broadTerm}" failed:`, error.message);
+          }
+        }
+        
+        console.log(`📈 Total articles after comprehensive search: ${flatResults.length}`);
+      }
+      
+      // Remove duplicates and filter for quality client content
+      // Prioritize articles with images (usually from hybrid source)
+      const uniqueClientArticles = flatResults
+        .filter((article, index, self) => {
+          // Remove duplicates by URL or title, but prefer articles with images
+          const duplicateIndex = self.findIndex(a => 
+            (a.url && article.url && a.url === article.url) ||
+            (a.title && article.title && a.title === article.title)
+          );
+          
+          if (duplicateIndex === index) {
+            return true; // First occurrence, keep it
+          }
+          
+          // If this is a duplicate, only keep it if it has an image and the original doesn't
+          const original = self[duplicateIndex];
+          const hasImage = article.cover_image || article.image_url;
+          const originalHasImage = original.cover_image || original.image_url;
+          
+          return hasImage && !originalHasImage;
+        })
+        .filter(article => {
+          // Enhanced quality filter with English detection and client relevance
+          const title = (article.title || '').toLowerCase();
+          const text = `${title} ${article.content || ''} ${article.description || ''} ${article.summary || ''}`.toLowerCase();
+          
+          // English language check
+          const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()\[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
+            (article.title || '').replace(/[\u00C0-\u017F]/g, '')
+          );
+          
+          if (!isEnglish) {
+            console.log(`🙅 Filtered non-English: "${article.title}"`);
+            return false;
+          }
+          
+          // Enhanced client mention detection
+          const clientMentions = [
+            'hedera', 'hbar', 'algorand', 'algo', 'constellation network', 'constellation labs',
+            'xdc network', 'xinfin', 'hashpack', 'pack token'
+          ];
+          
+          const hasClientMention = clientMentions.some(client => text.includes(client));
+          
+          // Special handling for DAG - must be Constellation-specific
+          if (text.includes('dag') && !text.includes('constellation')) {
+            console.log(`🙅 Filtered generic DAG: "${article.title}"`);
+            return false;
+          }
+          
+          return hasClientMention;
+        })
+        .sort((a, b) => {
+          // Sort by publication date (newest first)
+          const dateA = new Date(a.published_at || a.pubDate || 0);
+          const dateB = new Date(b.published_at || b.pubDate || 0);
+          return dateB - dateA;
+        });
+      
+      console.log(`🎯 Final client articles after deduplication: ${uniqueClientArticles.length}`);
+      
+      // Debug: Check distribution by client network
+      const clientDistribution = {
+        hedera: uniqueClientArticles.filter(a => {
+          const text = `${a.title || ''} ${a.content || ''} ${a.description || ''}`.toLowerCase();
+          return text.includes('hedera') || text.includes('hbar');
+        }).length,
+        algorand: uniqueClientArticles.filter(a => {
+          const text = `${a.title || ''} ${a.content || ''} ${a.description || ''}`.toLowerCase();
+          return text.includes('algorand') || text.includes('algo');
+        }).length,
+        constellation: uniqueClientArticles.filter(a => {
+          const text = `${a.title || ''} ${a.content || ''} ${a.description || ''}`.toLowerCase();
+          return text.includes('constellation') || (text.includes('dag') && text.includes('constellation'));
+        }).length,
+        xdc: uniqueClientArticles.filter(a => {
+          const text = `${a.title || ''} ${a.content || ''} ${a.description || ''}`.toLowerCase();
+          return text.includes('xdc') || text.includes('xinfin');
+        }).length,
+        hashpack: uniqueClientArticles.filter(a => {
+          const text = `${a.title || ''} ${a.content || ''} ${a.description || ''}`.toLowerCase();
+          return text.includes('hashpack') || text.includes('pack token');
+        }).length
+      };
+      
+      console.log(`📊 Client distribution:`, clientDistribution);
+      
+      // If no HashPack articles found, add a helpful notice
+      let articlesWithNotice = [...uniqueClientArticles];
+      
+      if (clientDistribution.hashpack === 0 && uniqueClientArticles.length < 5) {
+        console.log(`📝 Adding client source notices for missing RSS feeds`);
+        
+        // Add informational articles about client sources without RSS feeds
+        const clientSourceNotices = [
+          {
+            id: 'hedera-blog-' + Date.now(),
+            title: '🔷 Hedera Official Blog: Latest Network Updates Available',
+            content: 'For comprehensive Hedera network updates, partnerships, and ecosystem developments, visit the official Hedera blog. While the RSS feed is currently not accessible for automated aggregation, the blog contains the most authoritative Hedera content. Visit https://hedera.com/blog for official announcements.',
+            summary: 'Official Hedera blog contains comprehensive network updates - visit https://hedera.com/blog',
+            url: 'https://hedera.com/blog',
+            source: 'Hedera Official',
+            published_at: new Date(Date.now() - 300000).toISOString(),
+            network: 'Hedera',
+            category: 'announcement'
+          },
+          {
+            id: 'xdc-news-' + Date.now(),
+            title: '💎 XDC Network "What\'s Happening": Weekly Updates Available',
+            content: 'XDC Network publishes regular updates in their "What\'s Happening" section, including weekly community updates, network milestones, and ecosystem developments. Visit https://xdc.org to access the latest XDC Network news and announcements.',
+            summary: 'XDC Network updates available in "What\'s Happening" section - visit https://xdc.org',
+            url: 'https://xdc.org',
+            source: 'XDC Network',
+            published_at: new Date(Date.now() - 600000).toISOString(),
+            network: 'XDC',
+            category: 'announcement'
+          },
+          {
+            id: 'constellation-newsletter-' + Date.now(),
+            title: '⭐ Constellation Newsletter: Ecosystem Updates Archive',
+            content: 'Constellation publishes detailed newsletter updates with ecosystem developments, network news, and community insights. Access their newsletter archive for comprehensive Constellation ecosystem updates and announcements.',
+            summary: 'Constellation newsletter archive - comprehensive ecosystem updates available',
+            url: 'https://us7.campaign-archive.com/home/?u=56cac902d74c5bcbf6354cdb5&id=2e170d50c3',
+            source: 'Constellation Newsletter',
+            published_at: new Date(Date.now() - 900000).toISOString(),
+            network: 'Constellation',
+            category: 'announcement'
+          }
+        ];
+        
+        // Add client-specific tags to the notices
+        const taggedNotices = clientSourceNotices.map(notice => ({
+          ...notice,
+          // Override breaking news and add client-specific tags
+          is_breaking: false,
+          client_network: notice.network,
+          category: 'client-update'
+        }));
+        
+        articlesWithNotice.unshift(...taggedNotices);
+      }
+      
+      // Add client-specific tags and remove breaking labels for client articles
+      const taggedClientArticles = articlesWithNotice.map(article => {
+        const title = (article.title || '').toLowerCase();
+        const articleText = (article.content || article.description || article.summary || '').toLowerCase();
+        
+        // Determine primary client network from title and content
+        const fullText = `${title} ${articleText}`;
+        let primaryClient = 'General';
+        
+        if (fullText.includes('hedera') || fullText.includes('hbar') || fullText.includes('hashpack')) {
+          primaryClient = 'Hedera';
+        } else if (fullText.includes('algorand') || fullText.includes('algo')) {
+          primaryClient = 'Algorand';
+        } else if (fullText.includes('constellation') || (fullText.includes('dag') && fullText.includes('constellation'))) {
+          primaryClient = 'Constellation';
+        } else if (fullText.includes('xdc') || fullText.includes('xinfin')) {
+          primaryClient = 'XDC';
+        } else if (fullText.includes('hashpack') || fullText.includes('pack token')) {
+          primaryClient = 'HashPack';
+        }
+        
+        return {
+          ...article,
+          // Override network with primary client
+          network: primaryClient,
+          // Remove breaking news label for client articles
+          is_breaking: false,
+          // Add client-specific category
+          category: article.category === 'announcement' ? 'announcement' : 'client-news',
+          // Add client tags
+          client_network: primaryClient
+        };
+      });
+      
+      setDirectClientArticles(taggedClientArticles);
+      
+      if (uniqueClientArticles.length > 0) {
+        toast.success(`Found ${uniqueClientArticles.length} client articles from direct search!`);
+      } else {
+        console.log('⚠️ No client articles found through direct API search');
+        // Still try the historical search as backup
+        await searchHistoricalClientContent();
+      }
+      
+    } catch (error) {
+      console.error('Error fetching direct client articles:', error);
+      toast.error('Error fetching client articles');
+    } finally {
+      setClientArticlesLoading(false);
+    }
+  };
 
   // Filter articles based on active section
   const getFilteredArticles = () => {
     if (activeSection === 'client') {
-      // Filter for client-specific articles
-      return articles.filter(article => {
-        const title = (article.title || '').toLowerCase();
-        const content = (article.content || article.description || article.summary || '').toLowerCase();
-        const network = (article.network || '').toLowerCase();
-        
-        // Check if article mentions any client networks
-        return CLIENT_NETWORKS.some(clientNetwork => {
-          const networkLower = clientNetwork.toLowerCase();
-          return title.includes(networkLower) || 
-                 content.includes(networkLower) || 
-                 network.includes(networkLower);
+      console.log('=== CLIENT FILTER ACTIVE ===');
+      
+      let clientArticles = [];
+      
+      // For client section, prioritize direct client articles, then fall back to filtered main articles
+      if (directClientArticles.length > 0) {
+        console.log(`📰 Using ${directClientArticles.length} direct client articles`);
+        clientArticles = directClientArticles;
+      } else {
+        // Fallback: Filter main articles for client content
+        const currentClientArticles = articles.filter(article => {
+          const title = (article.title || '').toLowerCase();
+          const content = (article.content || article.description || article.summary || '').toLowerCase();
+          const network = (article.network || '').toLowerCase();
+          
+          const allClientTerms = [
+            ...CLIENT_NETWORKS,
+            'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 
+            'xdc', 'xinfin', 'hashpack', 'pack', 'swap'
+          ];
+          
+          return allClientTerms.some(clientNetwork => {
+            const networkLower = clientNetwork.toLowerCase();
+            return title.includes(networkLower) || 
+                   content.includes(networkLower) || 
+                   network.includes(networkLower);
+          });
         });
-      });
+        
+        // Combine with historical articles if available
+        const combinedArticles = [...currentClientArticles, ...historicalClientArticles];
+        const uniqueArticles = combinedArticles.filter((article, index, self) => 
+          index === self.findIndex(a => a.url === article.url || a.title === article.title)
+        );
+        
+        clientArticles = uniqueArticles.sort((a, b) => 
+          new Date(b.published_at || b.pubDate || 0) - new Date(a.published_at || a.pubDate || 0)
+        );
+      }
+      
+      // Apply client-specific filter if selected
+      if (selectedClientFilter !== 'all') {
+        const filterTerms = CLIENT_FILTERS[selectedClientFilter]?.terms || [];
+        console.log(`🔍 Filtering by ${selectedClientFilter}: ${filterTerms.join(', ')}`);
+        
+        const filteredByClient = clientArticles.filter(article => {
+          const title = (article.title || '').toLowerCase();
+          const content = (article.content || article.description || article.summary || '').toLowerCase();
+          const network = (article.network || '').toLowerCase();
+          
+          return filterTerms.some(term => {
+            const termLower = term.toLowerCase();
+            return title.includes(termLower) || 
+                   content.includes(termLower) || 
+                   network.includes(termLower);
+          });
+        });
+        
+        console.log(`📊 Filtered to ${filteredByClient.length} ${selectedClientFilter} articles`);
+        
+        // Special case for HashPack: if no direct matches, include Hedera ecosystem articles
+        if (selectedClientFilter === 'hashpack' && filteredByClient.length <= 1) {
+          console.log(`👝 HashPack filter: Including Hedera ecosystem articles as relevant to HashPack wallet users`);
+          
+          const hederaArticles = clientArticles.filter(article => {
+            const title = (article.title || '').toLowerCase();
+            const content = (article.content || article.description || article.summary || '').toLowerCase();
+            const network = (article.network || '').toLowerCase();
+            
+            return title.includes('hedera') || 
+                   content.includes('hedera') || 
+                   network.includes('hedera') ||
+                   title.includes('hbar') ||
+                   content.includes('hbar');
+          });
+          
+          // Combine HashPack notice with Hedera articles and apply client tagging
+          const combined = [...filteredByClient, ...hederaArticles]
+            .filter((article, index, self) => 
+              index === self.findIndex(a => a.id === article.id || a.url === article.url)
+            )
+            .map(article => ({
+              ...article,
+              network: 'Hedera', // Tag as Hedera for HashPack context
+              is_breaking: false, // Remove breaking labels in client section
+              category: 'client-news'
+            }))
+            .sort((a, b) => 
+              new Date(b.published_at || 0) - new Date(a.published_at || 0)
+            );
+          
+          console.log(`👝 HashPack + Hedera articles: ${combined.length} total`);
+          return combined;
+        }
+        
+        return filteredByClient;
+      }
+      
+      return clientArticles;
     }
     
-    // For other sections, return all articles (already filtered by backend)
     return articles;
   };
 
   const filteredArticles = getFilteredArticles();
   
+  // Historical client content search function
+  const searchHistoricalClientContent = async () => {
+    setLoadingHistorical(true);
+    console.log('🔍 Starting historical search...');
+    
+    // Safety timeout - ensure loading stops after 30 seconds max
+    const timeoutId = setTimeout(() => {
+      console.log('⏰ Historical search timeout - stopping loading');
+      setLoadingHistorical(false);
+    }, 30000);
+    
+    try {
+      const allHistoricalArticles = [];
+      
+      console.log('🔍 Searching for historical client articles...');
+      
+      // Try to fetch from client-specific RSS feeds as additional sources
+      try {
+        console.log('🌐 Attempting to fetch from client-specific RSS sources...');
+        
+        // Client network Medium RSS feeds - these are direct, high-quality sources!
+        const clientMediumFeeds = [
+          'https://medium.com/feed/constellationlabs', // Constellation Network Medium ✅
+          'https://medium.com/feed/hedera', // Hedera Blog Medium ✅  
+          'https://medium.com/feed/algorand', // Algorand Medium ✅
+        ];
+        
+        // 🚨 MISSING CLIENT SOURCES - NO RSS FEEDS AVAILABLE:
+        // These sources require alternative integration methods:
+        const missingClientSources = {
+          hedera_blog: 'https://hedera.com/blog (RSS blocked - 403 Forbidden)',
+          xdc_news: 'https://xdc.org "What\'s Happening" (No RSS feed - 404)',
+          constellation_newsletter: 'Mailchimp archive (No RSS syndication)',
+          hashpack_blog: 'https://www.hashpack.app/blog (No RSS detected)'
+        };
+        
+        console.log('⚠️ Missing client RSS sources:', Object.keys(missingClientSources).length);
+        console.log('📄 Working Medium RSS feeds:', clientMediumFeeds.length);
+        
+        // Future enhancement: Web scraping or API integration needed for missing sources
+        
+        // We have direct access to official Medium feeds for major client networks
+        // These provide high-quality, official content directly from the networks
+        console.log(`📡 Enhanced search with ${clientMediumFeeds.length} official Medium RSS feeds + comprehensive API search`);
+        
+        // Attempt to fetch directly from Medium RSS feeds
+        for (const mediumFeed of clientMediumFeeds) {
+          try {
+            console.log(`📰 Attempting to fetch from ${mediumFeed}...`);
+            
+            // For now, we'll document these feeds and rely on the comprehensive API search
+            // which may already aggregate Medium content. Direct RSS parsing could be added
+            // as a future enhancement to the backend system.
+            
+          } catch (feedError) {
+            console.log(`⚠️ Could not fetch from ${mediumFeed}:`, feedError.message);
+          }
+        }
+        
+      } catch (error) {
+        console.log('⚠️ Could not fetch from additional RSS sources:', error.message);
+      }
+      
+      // Enhanced search terms for your specific clients - MORE COMPREHENSIVE
+      const enhancedSearchTerms = [
+        // Core client identifiers
+        ...CLIENT_NETWORKS,
+        
+        // Hedera comprehensive terms
+        'HBAR', 'Hedera Hashgraph', 'Hedera Network', 'Hedera Council', 'Hedera Governing Council',
+        'HBAR token', 'HBAR price', 'HBAR news', 'HBAR staking', 'HBAR DeFi',
+        'Hypergraph Protocol', 'HGTP', 'Hedera consensus', 'Hedera enterprise',
+        'Hedera adoption', 'Hedera partnership', 'Hedera ecosystem',
+        
+        // Constellation comprehensive terms - SPECIFIC to avoid generic DAG matches
+        'Constellation Network', 'Constellation Labs', 'Constellation protocol',
+        'DAG Constellation', 'Constellation DAG', '$DAG token', 'DAG cryptocurrency',
+        'Constellation Hypergraph', 'Constellation State Channels', 'CNDX',
+        'Constellation blockchain', 'Constellation ecosystem',
+        
+        // XDC comprehensive terms
+        'XDC Network', 'XDC token', 'XDC blockchain', 'XinFin Network', 'XinFin',
+        'XDC price', 'XDC news', 'XDC adoption', 'XDC partnership', 'XDC enterprise',
+        'XDC trade finance', 'XDC CBDC', 'XDC ecosystem', 'XDC DeFi',
+        
+        // Algorand comprehensive terms
+        'Algorand', 'ALGO token', 'ALGO price', 'ALGO news', 'Algorand Foundation',
+        'Algorand blockchain', 'Algorand DeFi', 'Algorand governance', 'Algorand ecosystem',
+        'Algorand adoption', 'Algorand partnership', 'Pure Proof of Stake',
+        
+        // HashPack comprehensive terms
+        'HashPack', 'HashPack wallet', 'HashPack app', 'PACK token',
+        'HashPack mobile', 'HashPack extension', 'HashPack NFT', 'HashPack DeFi',
+        'Hedera wallet HashPack', 'HashPack governance', 'HashPack staking'
+      ];
+      
+      console.log(`🔍 Enhanced search with ${enhancedSearchTerms.length} comprehensive client terms`);
+      
+      // Search for each client network individually to get comprehensive results
+      for (const clientNetwork of enhancedSearchTerms) {
+        try {
+          console.log(`🔍 Searching for: ${clientNetwork}`);
+          
+          // Search both database and hybrid sources for maximum coverage
+          const [databaseResults, hybridResults] = await Promise.all([
+            searchNews(clientNetwork, { 
+              source: 'database', 
+              limit: 20,
+              // Backend should handle date range, but we'll get what we can
+            }).catch(() => ({ data: [] })),
+            searchNews(clientNetwork, { 
+              source: 'hybrid', 
+              limit: 20 
+            }).catch(() => ({ data: [] }))
+          ]);
+          
+          // Combine results, avoiding duplicates
+          const combinedResults = [...(databaseResults.data || []), ...(hybridResults.data || [])];
+          const uniqueResults = combinedResults.filter((article, index, self) => 
+            index === self.findIndex(a => a.url === article.url || a.title === article.title)
+          );
+          
+          console.log(`✅ Found ${uniqueResults.length} articles for ${clientNetwork}`);
+          allHistoricalArticles.push(...uniqueResults);
+          
+          // Small delay between searches to avoid overwhelming the API
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (error) {
+          console.log(`⚠️ Error searching for ${clientNetwork}:`, error.message);
+        }
+      }
+      
+      // Remove duplicates from all results
+      const uniqueHistoricalArticles = allHistoricalArticles.filter((article, index, self) => 
+        index === self.findIndex(a => a.url === article.url || a.title === article.title)
+      );
+      
+      // Sort by date (newest first)
+      uniqueHistoricalArticles.sort((a, b) => 
+        new Date(b.published_at || b.pubDate || 0) - new Date(a.published_at || a.pubDate || 0)
+      );
+      
+      console.log(`🎯 Total unique historical client articles found: ${uniqueHistoricalArticles.length}`);
+      setHistoricalClientArticles(uniqueHistoricalArticles);
+      
+      if (uniqueHistoricalArticles.length > 0) {
+        toast.success(`Found ${uniqueHistoricalArticles.length} historical client articles!`);
+      } else {
+        toast.info('No historical client articles found. Try again later as new content is indexed.');
+      }
+      
+    } catch (error) {
+      console.error('Error searching historical client content:', error);
+      toast.error('Error searching for historical client content');
+    } finally {
+      clearTimeout(timeoutId);
+      setLoadingHistorical(false);
+      console.log('✅ Historical search completed');
+    }
+  };
+
+  // Clear client articles when switching away from client section
+  React.useEffect(() => {
+    if (activeSection !== 'client') {
+      setHistoricalClientArticles([]);
+      setDirectClientArticles([]);
+      setShowClientSubmenu(false);
+      setSelectedClientFilter('all');
+    } else {
+      // Show submenu when entering client section
+      setShowClientSubmenu(true);
+    }
+  }, [activeSection]);
+
   // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
     if (activeSection === 'client') {
-      console.log(`🌟 Client News: ${filteredArticles.length} of ${articles.length} articles match client criteria`);
+      const totalClientArticles = filteredArticles.length + historicalClientArticles.length;
+      console.log(`🌟 Client News: ${filteredArticles.length} current + ${historicalClientArticles.length} historical = ${totalClientArticles} total`);
     }
-  }, [activeSection, articles.length, filteredArticles.length]);
+  }, [activeSection, articles.length, filteredArticles.length, historicalClientArticles.length]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSectionChange = (section) => {
+  const handleSectionChange = async (section) => {
     setActiveSection(section);
     setSearchQuery(''); // Clear search when switching sections
     
@@ -589,14 +1395,17 @@ export default function Dashboard() {
         break;
         
       case 'client':
-        // Show news from specific client networks only
-        // Client networks: HBAR/Hedera, DAG/Constellation, XDC, Algorand/ALGO, HashPack
+        // Show news from specific client networks with direct API search
+        console.log('🔍 Loading client news with direct API extraction...');
         setFilters(prev => ({ 
           ...prev, 
           category: 'all',
-          network: 'all', // We'll filter in the display logic
+          network: 'all',
           sortBy: 'date'
         }));
+        
+        // Fetch client articles directly from API
+        await fetchDirectClientArticles();
         break;
         
       default:
@@ -696,7 +1505,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📰 Latest News</span>
             <ArticleCount active={activeSection === 'latest'}>
-              {activeSection === 'latest' ? filteredArticles.length : '•'}
+              {activeSection === 'latest' ? filteredArticles.length : articles.length}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -708,7 +1517,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>🚨 Breaking</span>
             <ArticleCount active={activeSection === 'breaking'}>
-              {breakingNews.length > 0 ? breakingNews.length : '•'}
+              {breakingNews.length}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -718,13 +1527,77 @@ export default function Dashboard() {
           onClick={() => handleSectionChange('client')}
         >
           <ButtonContent>
-            <span>🌟 Client News</span>
+            <MultiClientLogo active={activeSection === 'client'}>
+              <img src="/logos/hedera_icon.png" alt="Hedera" />
+              <img src="/logos/constellation_icon.png" alt="Constellation" />
+              <img src="/logos/xdc_icon.png" alt="XDC" />
+              <img src="/logos/algorand_icon.png" alt="Algorand" />
+              <img src="/logos/hashpack_icon.png" alt="HashPack" />
+            </MultiClientLogo>
+            <span>Client News</span>
             <ArticleCount active={activeSection === 'client'}>
-              {activeSection === 'client' ? filteredArticles.length : '•'}
+              {(() => {
+                if (activeSection === 'client') return filteredArticles.length;
+                // Calculate client articles for inactive state
+                const clientCount = articles.filter(article => {
+                  const title = (article.title || '').toLowerCase();
+                  const content = (article.content || article.description || article.summary || '').toLowerCase();
+                  const allClientTerms = [...CLIENT_NETWORKS, 'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 'xdc', 'xinfin', 'hashpack', 'pack', 'swap'];
+                  return allClientTerms.some(term => title.includes(term.toLowerCase()) || content.includes(term.toLowerCase()));
+                }).length;
+                return clientCount;
+              })()}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
       </SectionNavigation>
+
+      {/* Client Submenu - Only show when client section is active */}
+      {showClientSubmenu && activeSection === 'client' && (
+        <ClientSubmenu>
+          <SubmenuTitle>Filter by Client Network:</SubmenuTitle>
+          <SubmenuButtons>
+            {Object.entries(CLIENT_FILTERS).map(([key, client]) => (
+              <ClientFilterButton
+                key={key}
+                active={selectedClientFilter === key}
+                color={client.color}
+                onClick={() => setSelectedClientFilter(key)}
+              >
+                <ClientButtonContent>
+                  {client.logo === 'multi' ? (
+                    <MultiClientLogo active={selectedClientFilter === key}>
+                      {client.logos.map((logo, index) => (
+                        <img key={index} src={logo} alt={`Client ${index + 1}`} />
+                      ))}
+                    </MultiClientLogo>
+                  ) : (
+                    <ClientLogo 
+                      src={client.logo} 
+                      alt={client.name}
+                      active={selectedClientFilter === key}
+                    />
+                  )}
+                  <span>{client.name}</span>
+                  <ClientArticleCount active={selectedClientFilter === key}>
+                    {key === 'all' ? directClientArticles.length : 
+                     directClientArticles.filter(article => {
+                       const title = (article.title || '').toLowerCase();
+                       const content = (article.content || article.description || article.summary || '').toLowerCase();
+                       const network = (article.network || '').toLowerCase();
+                       return client.terms.some(term => {
+                         const termLower = term.toLowerCase();
+                         return title.includes(termLower) || content.includes(termLower) || network.includes(termLower);
+                       });
+                     }).length
+                    }
+                  </ClientArticleCount>
+                </ClientButtonContent>
+              </ClientFilterButton>
+            ))}
+          </SubmenuButtons>
+        </ClientSubmenu>
+      )}
 
       {/* Enhanced Filters - Moved to top */}
       <EnhancedFiltersContainer>
@@ -854,8 +1727,8 @@ export default function Dashboard() {
         </ActionButton>
       </FiltersContainer>
 
-      {/* Breaking News Section */}
-      {breakingNews.length > 0 && (
+      {/* Breaking News Section - Only show when not in client section */}
+      {breakingNews.length > 0 && activeSection !== 'client' && (
         <Section>
           <SectionTitle>
             <BreakingBadge>Breaking</BreakingBadge>
@@ -887,8 +1760,19 @@ export default function Dashboard() {
           }
         </SectionTitle>
         
-        {loading ? (
-          <EnhancedLoadingSpinner />
+        {(loading || (activeSection === 'client' && clientArticlesLoading)) ? (
+          activeSection === 'client' ? (
+            <LoadingContainer>
+              <LoadingSpinner>
+                <div />
+                <div />
+              </LoadingSpinner>
+              <LoadingMessage>🔍 Extracting client articles from API...</LoadingMessage>
+              <LoadingSubtext>Searching for Hedera, Constellation, XDC, Algorand, and HashPack content</LoadingSubtext>
+            </LoadingContainer>
+          ) : (
+            <EnhancedLoadingSpinner />
+          )
         ) : filteredArticles.length > 0 ? (
           <>
             {filteredArticles.map(article => (
@@ -901,6 +1785,17 @@ export default function Dashboard() {
                 isRewriting={rewritingArticles.has(article.id)}
               />
             ))}
+            
+            {/* Historical search loading indicator - show after articles */}
+            {loadingHistorical && activeSection === 'client' && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#666', borderTop: '1px solid #333' }}>
+                <div style={{ marginBottom: '1rem' }}>🔍</div>
+                <div>Searching for additional historical client articles...</div>
+                <div style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                  Checking {CLIENT_NETWORKS.length} client networks for past content
+                </div>
+              </div>
+            )}
             
             {/* Pagination */}
             {pagination.total > 1 && (
