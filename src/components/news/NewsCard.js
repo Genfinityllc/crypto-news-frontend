@@ -835,7 +835,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       <CardContent>
         <MetaInfo>
           <BadgeContainer>
-            {article.is_breaking && <NeonBadge type="breaking">BREAKING</NeonBadge>}
             {article.category === 'press-release' && <NeonBadge type="press">PRESS RELEASE</NeonBadge>}
             {viralScore > 75 && <NeonBadge type="virality">VIRAL {viralScore}</NeonBadge>}
             {readabilityScore >= 97 && <NeonBadge type="readability">READ {readabilityScore}%</NeonBadge>}
