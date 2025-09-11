@@ -797,7 +797,7 @@ export default function Dashboard() {
             const content = (article.content || article.description || article.summary || '').toLowerCase();
             
             // English language detection (basic)
-            const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()\[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
+            const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
               (article.title || '').replace(/[\u00C0-\u017F]/g, '') // Remove accented chars
             );
             
@@ -895,7 +895,7 @@ export default function Dashboard() {
           const text = `${title} ${article.content || ''} ${article.description || ''} ${article.summary || ''}`.toLowerCase();
           
           // English language check
-          const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()\[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
+          const isEnglish = /^[a-zA-Z0-9\s.,;:!?\-'"()[\]{}@#$%^&*+=<>/\\|~`]*$/.test(
             (article.title || '').replace(/[\u00C0-\u017F]/g, '')
           );
           
