@@ -1,11 +1,4 @@
 {
-  "_comment": "🔒 LOCKED VERCEL CONFIGURATION - DO NOT MODIFY WITHOUT TESTING! 🔒",
-  "_critical_notes": [
-    "Content-Security-Policy is ESSENTIAL for image loading on Vercel",
-    "images.weserv.nl CDN domain must be whitelisted", 
-    "Railway API URL must match exactly",
-    "CHANGING THESE SETTINGS WILL BREAK IMAGES ON PRODUCTION!"
-  ],
   "version": 2,
   "builds": [
     {
@@ -27,13 +20,11 @@
       "src": "/(.*)",
       "dest": "/index.html",
       "headers": {
-        "_comment": "🔒 CRITICAL CSP - DO NOT MODIFY! Required for image loading on Vercel",
         "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self' https://crypto-news-curator-backend-production.up.railway.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://images.weserv.nl; font-src 'self' data:;"
       }
     }
   ],
   "env": {
-    "_comment": "🔒 CRITICAL API URL - DO NOT CHANGE! Must match Railway backend exactly",
     "REACT_APP_API_URL": "https://crypto-news-curator-backend-production.up.railway.app/api"
   }
 }
