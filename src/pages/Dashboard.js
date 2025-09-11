@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
-import NavigationTest from '../components/common/NavigationTest';
 import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
@@ -1474,7 +1473,6 @@ export default function Dashboard() {
 
   return (
     <DashboardContainer>
-      <NavigationTest />
       <Header>
         <Title>Crypto News Dashboard</Title>
         {currentUser && (
