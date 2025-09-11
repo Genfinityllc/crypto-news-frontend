@@ -1727,8 +1727,8 @@ export default function Dashboard() {
         </ActionButton>
       </FiltersContainer>
 
-      {/* Breaking News Section - Only show when not in client section */}
-      {breakingNews.length > 0 && activeSection !== 'client' && (
+      {/* Breaking News Section - Only show when Breaking button is clicked */}
+      {breakingNews.length > 0 && activeSection === 'breaking' && (
         <Section>
           <SectionTitle>
             <BreakingBadge>Breaking</BreakingBadge>
