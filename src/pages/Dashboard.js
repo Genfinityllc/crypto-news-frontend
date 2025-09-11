@@ -1483,7 +1483,7 @@ export default function Dashboard() {
       </Header>
 
 
-      {/* Section Navigation */}
+      {/* Section Navigation - 4 buttons: All News, Latest News, Breaking, Client News */}
       <SectionNavigation>
         <SectionButton 
           active={activeSection === 'all'}
