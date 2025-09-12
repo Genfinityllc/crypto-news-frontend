@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useFastNews } from '../hooks/useFastNews';
 import { useInstantNews } from '../hooks/useInstantNews';
+import { usePreloadedNews } from '../hooks/usePreloadedNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
 import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews } from '../services/api';
@@ -664,7 +665,18 @@ export default function Dashboard() {
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
   
-  // Instant loading hook for immediate UI response
+  // PRELOADED NEWS: Instant 0-second loading with auto-population
+  const {
+    allNews: preloadedAllNews,
+    breakingNews: preloadedBreakingNews, 
+    clientNews: preloadedClientNews,
+    loading: preloadedLoading,
+    backgroundUpdating,
+    refreshAll: refreshPreloadedNews,
+    totalArticles: preloadedTotalArticles
+  } = usePreloadedNews();
+  
+  // Legacy instant loading hook (fallback)
   const { 
     allNews: instantAllNews, 
     breakingNews: instantBreakingNews, 
@@ -1122,11 +1134,14 @@ export default function Dashboard() {
       return articles;
     }
     
-    // INSTANT LOADING: Use instant news for immediate response
+    // PRELOADED INSTANT LOADING: Show stored data immediately (0 seconds)
     switch (activeSection) {
       case 'all':
-        // Use instant news if available, otherwise fall back to fast news
-        if (instantAllNews.length > 0) {
+        // Priority: Preloaded (instant) > Instant > Fast > Regular
+        if (preloadedAllNews.length > 0) {
+          console.log('⚡ Using PRELOADED all news (0 seconds):', preloadedAllNews.length);
+          return preloadedAllNews;
+        } else if (instantAllNews.length > 0) {
           console.log('⚡ Using instant all news:', instantAllNews.length);
           return instantAllNews;
         } else if (fastAllNews.length > 0) {
@@ -1136,8 +1151,11 @@ export default function Dashboard() {
         return articles; // Final fallback
         
       case 'breaking':
-        // Use instant breaking news with fallback
-        if (instantBreakingNews.length > 0) {
+        // Priority: Preloaded (instant) > Instant > Fast
+        if (preloadedBreakingNews.length > 0) {
+          console.log('⚡ Using PRELOADED breaking news (0 seconds):', preloadedBreakingNews.length);
+          return preloadedBreakingNews;
+        } else if (instantBreakingNews.length > 0) {
           console.log('⚡ Using instant breaking news:', instantBreakingNews.length);
           return instantBreakingNews;
         } else if (fastBreakingNews.length > 0) {
@@ -1151,8 +1169,11 @@ export default function Dashboard() {
         
         let clientArticles = [];
         
-        // Priority order: Enhanced > Instant > Fast > Cached > Direct > Legacy
-        if (enhancedClientArticles.length > 0) {
+        // Priority: Preloaded (instant) > Enhanced > Instant > Fast > Cached > Direct
+        if (preloadedClientNews.length > 0) {
+          console.log(`⚡ Using PRELOADED client news (0 seconds): ${preloadedClientNews.length}`);
+          clientArticles = preloadedClientNews;
+        } else if (enhancedClientArticles.length > 0) {
           console.log(`🎯 Using ${enhancedClientArticles.length} enhanced client articles`);
           clientArticles = enhancedClientArticles;
         } else if (instantClientNews.length > 0) {
@@ -1443,16 +1464,13 @@ export default function Dashboard() {
     }
   }, [activeSection]);
 
-  // Instant client news loading on component mount
-  React.useEffect(() => {
-    // Load cached client news immediately on mount
-    loadCachedClientNews();
-    
-    // Trigger enhanced client news search in background after 2 seconds
-    setTimeout(() => {
-      fetchEnhancedClientNews();
-    }, 2000);
-  }, []); // Only run once on mount
+  // DISABLED: Old client news loading - now using preloaded system for instant loading
+  // React.useEffect(() => {
+  //   loadCachedClientNews();
+  //   setTimeout(() => {
+  //     fetchEnhancedClientNews();
+  //   }, 2000);
+  // }, []);
 
   // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
@@ -1493,8 +1511,8 @@ export default function Dashboard() {
         break;
         
       case 'client':
-        // INSTANT CLIENT NEWS: Show cached data immediately
-        console.log('⚡ Loading client news section with instant data...');
+        // PRELOADED CLIENT NEWS: Show stored data instantly (0 seconds)
+        console.log('⚡ Loading client news section with PRELOADED data (0 seconds)...');
         setFilters(prev => ({ 
           ...prev, 
           category: 'all',
@@ -1502,20 +1520,11 @@ export default function Dashboard() {
           sortBy: 'date'
         }));
         
-        // Instant loading priority check
-        if (enhancedClientArticles.length > 0) {
-          console.log('🎯 Using enhanced client articles:', enhancedClientArticles.length);
-        } else if (cachedClientArticles.length > 0) {
-          console.log('💾 Using cached client articles:', cachedClientArticles.length);
-          // Trigger background update if cached data is old
-          setTimeout(() => fetchEnhancedClientNews(), 500);
-        } else if (instantClientNews.length > 0) {
-          console.log('⚡ Using instant client articles:', instantClientNews.length);
+        // Using preloaded data - no API calls needed!
+        if (preloadedClientNews.length > 0) {
+          console.log(`⚡ PRELOADED client articles ready instantly: ${preloadedClientNews.length}`);
         } else {
-          // No cached data available, load both cached and enhanced in background
-          console.log('📥 No client articles available - triggering background fetch...');
-          loadCachedClientNews();
-          setTimeout(() => fetchEnhancedClientNews(), 1000);
+          console.log('📥 No preloaded client data yet - background update will populate soon');
         }
         break;
         
@@ -1604,7 +1613,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📊 All News</span>
             <ArticleCount active={activeSection === 'all'}>
-              {instantAllNews.length > 0 ? instantAllNews.length : (fastAllNews.length > 0 ? fastAllNews.length : articles.length)}
+              {preloadedAllNews.length > 0 ? preloadedAllNews.length : (instantAllNews.length > 0 ? instantAllNews.length : (fastAllNews.length > 0 ? fastAllNews.length : articles.length))}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1616,7 +1625,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>🚨 Breaking</span>
             <ArticleCount active={activeSection === 'breaking'}>
-              {instantBreakingNews.length > 0 ? instantBreakingNews.length : (fastBreakingNews.length > 0 ? fastBreakingNews.length : breakingNews.length)}
+              {preloadedBreakingNews.length > 0 ? preloadedBreakingNews.length : (instantBreakingNews.length > 0 ? instantBreakingNews.length : (fastBreakingNews.length > 0 ? fastBreakingNews.length : breakingNews.length))}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1636,7 +1645,8 @@ export default function Dashboard() {
             <span>Client News</span>
             <ArticleCount active={activeSection === 'client'}>
               {(() => {
-                // Priority: Enhanced > Instant > Fast > Cached > Direct > Calculated
+                // Priority: Preloaded > Enhanced > Instant > Fast > Cached > Direct > Calculated
+                if (preloadedClientNews.length > 0) return preloadedClientNews.length;
                 if (enhancedClientArticles.length > 0) return enhancedClientArticles.length;
                 if (instantClientNews.length > 0) return instantClientNews.length;
                 if (fastClientNews.length > 0) return fastClientNews.length;
@@ -1644,7 +1654,7 @@ export default function Dashboard() {
                 if (directClientArticles.length > 0) return directClientArticles.length;
                 
                 // Fallback: calculate from general articles
-                const clientCount = (instantAllNews.length > 0 ? instantAllNews : articles).filter(article => {
+                const clientCount = (preloadedAllNews.length > 0 ? preloadedAllNews : (instantAllNews.length > 0 ? instantAllNews : articles)).filter(article => {
                   const title = (article.title || '').toLowerCase();
                   const content = (article.content || article.description || article.summary || '').toLowerCase();
                   const allClientTerms = [...CLIENT_NETWORKS, 'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 'xdc', 'xinfin', 'hashpack', 'pack', 'swap'];
