@@ -640,6 +640,7 @@ const ClientArticleCount = styled.span`
 
 export default function Dashboard() {
   const { currentUser, userProfile } = useAuth();
+  // eslint-disable-next-line no-unused-vars
   const { breakingNews, loading: breakingLoading } = useBreakingNews();
   const { bookmarks, refetch: refetchBookmarks } = useBookmarks();
   // Removed crypto dropdown - now using expanded network filter
@@ -668,6 +669,7 @@ export default function Dashboard() {
   const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
+  // eslint-disable-next-line no-unused-vars
   const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
   
   // PRELOADED NEWS: Instant 0-second loading with auto-population
@@ -1624,7 +1626,18 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📊 All News</span>
             <ArticleCount active={activeSection === 'all'}>
-              {preloadedAllNews.length > 0 ? preloadedAllNews.length : (instantAllNews.length > 0 ? instantAllNews.length : (fastAllNews.length > 0 ? fastAllNews.length : articles.length))}
+              {(() => {
+                // Show the count of articles that would be displayed
+                const preloadedCount = preloadedAllNews.length;
+                const instantCount = instantAllNews.length;  
+                const fastCount = fastAllNews.length;
+                const regularCount = articles.length;
+                
+                // Use the same priority as getFilteredArticles
+                return preloadedCount > 0 ? preloadedCount : 
+                       (instantCount > 0 ? instantCount : 
+                       (fastCount > 0 ? fastCount : regularCount));
+              })()}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1636,7 +1649,17 @@ export default function Dashboard() {
           <ButtonContent>
             <span>🚨 Breaking</span>
             <ArticleCount active={activeSection === 'breaking'}>
-              {preloadedBreakingNews.length > 0 ? preloadedBreakingNews.length : (instantBreakingNews.length > 0 ? instantBreakingNews.length : (fastBreakingNews.length > 0 ? fastBreakingNews.length : breakingNews.length))}
+              {(() => {
+                const preloadedCount = preloadedBreakingNews.length;
+                const instantCount = instantBreakingNews.length;
+                const fastCount = fastBreakingNews.length; 
+                const regularCount = breakingNews.length;
+                
+                // Use same priority as getFilteredArticles for breaking news
+                return preloadedCount > 0 ? preloadedCount : 
+                       (instantCount > 0 ? instantCount : 
+                       (fastCount > 0 ? fastCount : regularCount));
+              })()}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1870,24 +1893,23 @@ export default function Dashboard() {
       </FiltersContainer>
 
       {/* Breaking News Section - Only show when Breaking button is clicked */}
-      {breakingNews.length > 0 && activeSection === 'breaking' && (
+      {activeSection === 'breaking' && (
         <Section>
           <SectionTitle>
             <BreakingBadge>Breaking</BreakingBadge>
             Latest Breaking News
           </SectionTitle>
-          {breakingLoading ? (
-            <EnhancedLoadingSpinner />
-          ) : (
-            breakingNews.slice(0, 3).map(article => (
+          {(() => {
+            const breakingToShow = preloadedBreakingNews.length > 0 ? preloadedBreakingNews : breakingNews;
+            return breakingToShow.slice(0, 3).map(article => (
               <NewsCard
                 key={article.id}
                 article={article}
                 bookmarks={bookmarks}
                 onBookmarkChange={refetchBookmarks}
               />
-            ))
-          )}
+            ));
+          })()}
         </Section>
       )}
 
@@ -1902,7 +1924,8 @@ export default function Dashboard() {
           }
         </SectionTitle>
         
-        {(searchQuery ? loading : (fastLoading.all || fastLoading.breaking || fastLoading.client)) || (activeSection === 'client' && clientArticlesLoading) ? (
+        {/* INSTANT LOADING: Only show loading if searching AND no preloaded content available */
+        (searchQuery && loading && filteredArticles.length === 0) ? (
           activeSection === 'client' ? (
             <LoadingContainer>
               <LoadingSpinner>
