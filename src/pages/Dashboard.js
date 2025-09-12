@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useFastNews } from '../hooks/useFastNews';
+// eslint-disable-next-line no-unused-vars
 import { useInstantNews } from '../hooks/useInstantNews';
 import { usePreloadedNews } from '../hooks/usePreloadedNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
+// eslint-disable-next-line no-unused-vars
 import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
@@ -656,11 +658,14 @@ export default function Dashboard() {
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [clientArticlesLoading, setClientArticlesLoading] = useState(false);
   const [directClientArticles, setDirectClientArticles] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [enhancedClientArticles, setEnhancedClientArticles] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [cachedClientArticles, setCachedClientArticles] = useState([]);
   const [selectedClientFilter, setSelectedClientFilter] = useState('all');
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
-  // const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
+  // eslint-disable-next-line no-unused-vars
+  const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
@@ -677,14 +682,19 @@ export default function Dashboard() {
   } = usePreloadedNews();
   
   // Legacy instant loading hook (fallback)
+  // eslint-disable-next-line no-unused-vars
   const { 
     allNews: instantAllNews, 
     breakingNews: instantBreakingNews, 
-    clientNews: instantClientNews
-    // loading: instantLoading,
-    // backgroundLoading,
-    // refreshNews: instantRefreshNews,
-    // isInitialLoad
+    clientNews: instantClientNews,
+    // eslint-disable-next-line no-unused-vars
+    loading: instantLoading,
+    // eslint-disable-next-line no-unused-vars
+    backgroundLoading,
+    // eslint-disable-next-line no-unused-vars
+    refreshNews: instantRefreshNews,
+    // eslint-disable-next-line no-unused-vars
+    isInitialLoad
   } = useInstantNews();
 
   // Client networks - your specific clients
@@ -750,6 +760,7 @@ export default function Dashboard() {
   };
 
   // Instant cached client news loading
+  // eslint-disable-next-line no-unused-vars
   const loadCachedClientNews = async () => {
     console.log('⚡ Loading cached client news instantly...');
     try {

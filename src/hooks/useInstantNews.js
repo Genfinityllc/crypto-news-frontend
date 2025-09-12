@@ -27,6 +27,7 @@ export function useInstantNews() {
   const updateIntervalRef = useRef(null);
 
   const fetchNewsInstant = useCallback(async (category = 'all', isBackground = false) => {
+    // eslint-disable-next-line no-unused-vars
     const loadingKey = isBackground ? 'backgroundLoading' : 'loading';
     const setLoadingState = isBackground ? setBackgroundLoading : setLoading;
     
@@ -108,7 +109,8 @@ export function useInstantNews() {
       
       initialLoadRef.current = false;
     }
-  }, [fetchNewsInstant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchNewsInstant, allNews.length, breakingNews.length, clientNews.length]);
 
   // Background updates every 2 minutes for fresh content
   useEffect(() => {

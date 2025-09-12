@@ -66,6 +66,7 @@ export function usePreloadedNews() {
       // If no stored data, fetch fresh data
       updateInBackground();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update data in background without affecting UI
