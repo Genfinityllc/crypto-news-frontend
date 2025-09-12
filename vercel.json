@@ -1,14 +1,18 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build"
-      }
-    }
-  ],
+  "framework": "create-react-app",
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "installCommand": "npm install",
+  "env": {
+    "REACT_APP_API_URL": "https://crypto-news-curator-backend-production.up.railway.app/api",
+    "REACT_APP_FIREBASE_API_KEY": "AIzaSyBvJETveI8n-LDnpgdfk80eqX-detFmEYE",
+    "REACT_APP_FIREBASE_AUTH_DOMAIN": "crypto-curator.firebaseapp.com",
+    "REACT_APP_FIREBASE_PROJECT_ID": "crypto-curator",
+    "REACT_APP_FIREBASE_STORAGE_BUCKET": "crypto-curator.firebasestorage.app",
+    "REACT_APP_FIREBASE_MESSAGING_SENDER_ID": "524555371995",
+    "REACT_APP_FIREBASE_APP_ID": "1:524555371995:web:5abcda173dcf43cc3313fe",
+    "REACT_APP_DEBUG": "true"
+  },
   "routes": [
     {
       "src": "/static/(.*)",
@@ -29,8 +33,5 @@
         "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self' https://crypto-news-curator-backend-production.up.railway.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://images.weserv.nl; font-src 'self' data:;"
       }
     }
-  ],
-  "env": {
-    "REACT_APP_API_URL": "https://crypto-news-curator-backend-production.up.railway.app/api"
-  }
+  ]
 }
