@@ -31,7 +31,6 @@ const NeonBadge = styled.span`
   background: ${props => {
     switch(props.type) {
       case 'breaking': return '#ff0055';
-      case 'latest': return '#00aaff';
       case 'press': return '#ffcc00';
       case 'partner': return '#7d00ff';
       case 'virality': return '#00ff99';
@@ -844,7 +843,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
             {article.network && article.network.toLowerCase() === 'general' && (
               <NeonBadge type="topic">GENERAL</NeonBadge>
             )}
-            <NeonBadge type="latest">LATEST</NeonBadge>
             {article.category && article.category !== 'press-release' && (
               <NeonBadge type="topic">{article.category.toUpperCase()}</NeonBadge>
             )}

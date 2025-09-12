@@ -404,7 +404,6 @@ const SectionButton = styled.button`
       switch(props.variant) {
         case 'breaking': return 'linear-gradient(135deg, #ff4757, #ff3742)';
         case 'client': return 'linear-gradient(135deg, #ffa502, #ff9500)';  
-        case 'latest': return 'linear-gradient(135deg, #3742fa, #2f3542)';
         case 'all': return 'linear-gradient(135deg, #2ed573, #1dd1a1)';
         default: return 'linear-gradient(135deg, #007bff, #0056b3)';
       }
@@ -417,7 +416,6 @@ const SectionButton = styled.button`
       switch(props.variant) {
         case 'breaking': return '#ff4757';
         case 'client': return '#ffa502';
-        case 'latest': return '#3742fa'; 
         case 'all': return '#2ed573';
         default: return '#007bff';
       }
@@ -443,7 +441,6 @@ const SectionButton = styled.button`
       switch(props.variant) {
         case 'breaking': return 'linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 55, 66, 0.05))';
         case 'client': return 'linear-gradient(135deg, rgba(255, 165, 2, 0.1), rgba(255, 149, 0, 0.05))';
-        case 'latest': return 'linear-gradient(135deg, rgba(55, 66, 250, 0.1), rgba(47, 53, 66, 0.05))';  
         case 'all': return 'linear-gradient(135deg, rgba(46, 213, 115, 0.1), rgba(29, 209, 161, 0.05))';
         default: return 'linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 86, 179, 0.05))';
       }
@@ -458,7 +455,6 @@ const SectionButton = styled.button`
       switch(props.variant) {
         case 'breaking': return '0 8px 25px rgba(255, 71, 87, 0.4)';
         case 'client': return '0 8px 25px rgba(255, 165, 2, 0.4)';
-        case 'latest': return '0 8px 25px rgba(55, 66, 250, 0.4)';
         case 'all': return '0 8px 25px rgba(46, 213, 115, 0.4)';
         default: return '0 8px 25px rgba(0, 123, 255, 0.4)';
       }
@@ -467,7 +463,6 @@ const SectionButton = styled.button`
       switch(props.variant) {
         case 'breaking': return '#ff4757';
         case 'client': return '#ffa502';
-        case 'latest': return '#3742fa';
         case 'all': return '#2ed573';
         default: return '#007bff';
       }
