@@ -660,7 +660,7 @@ export default function Dashboard() {
   const [cachedClientArticles, setCachedClientArticles] = useState([]);
   const [selectedClientFilter, setSelectedClientFilter] = useState('all');
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
-  const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
+  // const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
@@ -669,22 +669,22 @@ export default function Dashboard() {
   const {
     allNews: preloadedAllNews,
     breakingNews: preloadedBreakingNews, 
-    clientNews: preloadedClientNews,
-    loading: preloadedLoading,
-    backgroundUpdating,
-    refreshAll: refreshPreloadedNews,
-    totalArticles: preloadedTotalArticles
+    clientNews: preloadedClientNews
+    // loading: preloadedLoading,
+    // backgroundUpdating,
+    // refreshAll: refreshPreloadedNews,
+    // totalArticles: preloadedTotalArticles
   } = usePreloadedNews();
   
   // Legacy instant loading hook (fallback)
   const { 
     allNews: instantAllNews, 
     breakingNews: instantBreakingNews, 
-    clientNews: instantClientNews,
-    loading: instantLoading,
-    backgroundLoading,
-    refreshNews: instantRefreshNews,
-    isInitialLoad
+    clientNews: instantClientNews
+    // loading: instantLoading,
+    // backgroundLoading,
+    // refreshNews: instantRefreshNews,
+    // isInitialLoad
   } = useInstantNews();
 
   // Client networks - your specific clients
