@@ -186,6 +186,15 @@ export const rewriteArticle = (articleId) => {
   return api.post(`/enhanced-news/${articleId}/rewrite`);
 };
 
+// Enhanced Client News API calls
+export const getEnhancedClientNews = (params = {}) => {
+  return api.get('/enhanced-client-news', { params });
+};
+
+export const getCachedClientNews = (limit = 100) => {
+  return api.get('/enhanced-client-news/cached', { params: { limit } });
+};
+
 export const rewriteRSSArticle = (articleData) => {
   return api.post('/news/rewrite-rss-article', articleData);
 };

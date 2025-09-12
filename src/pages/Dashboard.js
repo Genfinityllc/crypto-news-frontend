@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
 import { useFastNews } from '../hooks/useFastNews';
+import { useInstantNews } from '../hooks/useInstantNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
-import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews } from '../services/api';
+import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -654,11 +655,25 @@ export default function Dashboard() {
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [clientArticlesLoading, setClientArticlesLoading] = useState(false);
   const [directClientArticles, setDirectClientArticles] = useState([]);
+  const [enhancedClientArticles, setEnhancedClientArticles] = useState([]);
+  const [cachedClientArticles, setCachedClientArticles] = useState([]);
   const [selectedClientFilter, setSelectedClientFilter] = useState('all');
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
+  const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
+  
+  // Instant loading hook for immediate UI response
+  const { 
+    allNews: instantAllNews, 
+    breakingNews: instantBreakingNews, 
+    clientNews: instantClientNews,
+    loading: instantLoading,
+    backgroundLoading,
+    refreshNews: instantRefreshNews,
+    isInitialLoad
+  } = useInstantNews();
 
   // Client networks - your specific clients
   const CLIENT_NETWORKS = [
@@ -722,7 +737,47 @@ export default function Dashboard() {
     }
   };
 
-  // Direct client article fetching function
+  // Instant cached client news loading
+  const loadCachedClientNews = async () => {
+    console.log('⚡ Loading cached client news instantly...');
+    try {
+      const response = await getCachedClientNews(100);
+      if (response && response.data) {
+        setCachedClientArticles(response.data);
+        console.log(`⚡ Loaded ${response.data.length} cached client articles instantly`);
+        
+        // If should trigger full search, do it in background
+        if (response.data.meta?.shouldTriggerFullSearch) {
+          setTimeout(() => fetchEnhancedClientNews(), 1000); // 1 second delay
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading cached client news:', error);
+    }
+  };
+
+  // Enhanced client news fetching with multiple search strategies
+  const fetchEnhancedClientNews = async () => {
+    console.log('🎯 Fetching enhanced client news with multiple search strategies...');
+    try {
+      const response = await getEnhancedClientNews({ limit: 50 });
+      if (response && response.data) {
+        setEnhancedClientArticles(response.data);
+        console.log(`🎯 Enhanced client news: ${response.data.length} high-quality articles`);
+        
+        if (response.data.meta) {
+          console.log('📊 Client distribution:', response.data.meta.clientDistribution);
+          console.log(`📈 Average relevance score: ${response.data.meta.averageRelevanceScore?.toFixed(2)}`);
+          toast.success(`Found ${response.data.length} enhanced client articles!`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error fetching enhanced client news:', error);
+      toast.error('Failed to fetch enhanced client news');
+    }
+  };
+
+  // Direct client article fetching function (legacy)
   const fetchDirectClientArticles = async () => {
     setClientArticlesLoading(true);
     console.log('🚀 Starting direct client article extraction...');
@@ -1067,27 +1122,50 @@ export default function Dashboard() {
       return articles;
     }
     
-    // When not searching, use optimized fast API results
+    // INSTANT LOADING: Use instant news for immediate response
     switch (activeSection) {
       case 'all':
-        console.log('📊 Using fast all news:', fastAllNews.length);
-        return fastAllNews;
+        // Use instant news if available, otherwise fall back to fast news
+        if (instantAllNews.length > 0) {
+          console.log('⚡ Using instant all news:', instantAllNews.length);
+          return instantAllNews;
+        } else if (fastAllNews.length > 0) {
+          console.log('📊 Using fast all news:', fastAllNews.length);
+          return fastAllNews;
+        }
+        return articles; // Final fallback
         
       case 'breaking':
-        console.log('🚨 Using fast breaking news:', fastBreakingNews.length);
-        return fastBreakingNews;
+        // Use instant breaking news with fallback
+        if (instantBreakingNews.length > 0) {
+          console.log('⚡ Using instant breaking news:', instantBreakingNews.length);
+          return instantBreakingNews;
+        } else if (fastBreakingNews.length > 0) {
+          console.log('🚨 Using fast breaking news:', fastBreakingNews.length);
+          return fastBreakingNews;
+        }
+        return []; // No fallback for breaking news
         
       case 'client':
         console.log('=== CLIENT FILTER ACTIVE ===');
         
         let clientArticles = [];
         
-        // Use fast client news if available, otherwise use legacy method
-        if (fastClientNews.length > 0) {
-          console.log(`⚡ Using ${fastClientNews.length} fast client articles`);
+        // Priority order: Enhanced > Instant > Fast > Cached > Direct > Legacy
+        if (enhancedClientArticles.length > 0) {
+          console.log(`🎯 Using ${enhancedClientArticles.length} enhanced client articles`);
+          clientArticles = enhancedClientArticles;
+        } else if (instantClientNews.length > 0) {
+          console.log(`⚡ Using ${instantClientNews.length} instant client articles`);
+          clientArticles = instantClientNews;
+        } else if (fastClientNews.length > 0) {
+          console.log(`📰 Using ${fastClientNews.length} fast client articles`);
           clientArticles = fastClientNews;
+        } else if (cachedClientArticles.length > 0) {
+          console.log(`💾 Using ${cachedClientArticles.length} cached client articles`);
+          clientArticles = cachedClientArticles;
         } else if (directClientArticles.length > 0) {
-          console.log(`📰 Using ${directClientArticles.length} direct client articles`);
+          console.log(`🔍 Using ${directClientArticles.length} direct client articles`);
           clientArticles = directClientArticles;
         } else {
           console.log('🔄 Fallback: Filtering regular articles for client content');
@@ -1365,6 +1443,17 @@ export default function Dashboard() {
     }
   }, [activeSection]);
 
+  // Instant client news loading on component mount
+  React.useEffect(() => {
+    // Load cached client news immediately on mount
+    loadCachedClientNews();
+    
+    // Trigger enhanced client news search in background after 2 seconds
+    setTimeout(() => {
+      fetchEnhancedClientNews();
+    }, 2000);
+  }, []); // Only run once on mount
+
   // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
     if (activeSection === 'client') {
@@ -1404,8 +1493,8 @@ export default function Dashboard() {
         break;
         
       case 'client':
-        // Show news from specific client networks with cached data
-        console.log('🔍 Loading client news section...');
+        // INSTANT CLIENT NEWS: Show cached data immediately
+        console.log('⚡ Loading client news section with instant data...');
         setFilters(prev => ({ 
           ...prev, 
           category: 'all',
@@ -1413,12 +1502,20 @@ export default function Dashboard() {
           sortBy: 'date'
         }));
         
-        // Only fetch client articles if we don't have any cached data
-        if (directClientArticles.length === 0 && !clientArticlesLoading) {
-          console.log('📥 No cached client articles - fetching from API...');
-          await fetchDirectClientArticles();
-        } else if (directClientArticles.length > 0) {
-          console.log('✅ Using cached client articles:', directClientArticles.length);
+        // Instant loading priority check
+        if (enhancedClientArticles.length > 0) {
+          console.log('🎯 Using enhanced client articles:', enhancedClientArticles.length);
+        } else if (cachedClientArticles.length > 0) {
+          console.log('💾 Using cached client articles:', cachedClientArticles.length);
+          // Trigger background update if cached data is old
+          setTimeout(() => fetchEnhancedClientNews(), 500);
+        } else if (instantClientNews.length > 0) {
+          console.log('⚡ Using instant client articles:', instantClientNews.length);
+        } else {
+          // No cached data available, load both cached and enhanced in background
+          console.log('📥 No client articles available - triggering background fetch...');
+          loadCachedClientNews();
+          setTimeout(() => fetchEnhancedClientNews(), 1000);
         }
         break;
         
