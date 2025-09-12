@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getFastNews, getFastBreakingNews, getFastClientNews } from '../services/api';
+import { getFastNews } from '../services/api';
 
 // Local storage keys for instant loading
 const STORAGE_KEYS = {
@@ -33,26 +33,71 @@ export function usePreloadedNews() {
       const storedClient = localStorage.getItem(STORAGE_KEYS.CLIENT_NEWS);
       const lastUpdate = localStorage.getItem(STORAGE_KEYS.LAST_UPDATE);
 
+      let allCount = 0, breakingCount = 0, clientCount = 0;
+
       if (storedAll) {
         const parsedAll = JSON.parse(storedAll);
         setAllNews(parsedAll);
+        allCount = parsedAll.length;
         console.log(`⚡ Loaded ${parsedAll.length} all news articles instantly`);
       }
 
       if (storedBreaking) {
         const parsedBreaking = JSON.parse(storedBreaking);
         setBreakingNews(parsedBreaking);
+        breakingCount = parsedBreaking.length;
         console.log(`⚡ Loaded ${parsedBreaking.length} breaking news articles instantly`);
+      } else if (storedAll) {
+        // If no stored breaking news but we have all news, filter it
+        const parsedAll = JSON.parse(storedAll);
+        const filteredBreaking = parsedAll.filter(article => {
+          const title = (article.title || '').toLowerCase();
+          const content = (article.content || '').toLowerCase();
+          return title.includes('breaking') || title.includes('urgent') || 
+                 title.includes('alert') || title.includes('crash') ||
+                 title.includes('surge') || title.includes('dump') ||
+                 title.includes('moon') || title.includes('all-time high') ||
+                 content.includes('breaking') || content.includes('urgent');
+        });
+        setBreakingNews(filteredBreaking);
+        breakingCount = filteredBreaking.length;
+        localStorage.setItem(STORAGE_KEYS.BREAKING_NEWS, JSON.stringify(filteredBreaking));
+        console.log(`⚡ Filtered ${filteredBreaking.length} breaking articles from all news`);
       }
 
       if (storedClient) {
         const parsedClient = JSON.parse(storedClient);
         setClientNews(parsedClient);
+        clientCount = parsedClient.length;
         console.log(`⚡ Loaded ${parsedClient.length} client news articles instantly`);
+      } else if (storedAll) {
+        // If no stored client news but we have all news, filter it
+        const parsedAll = JSON.parse(storedAll);
+        const CLIENT_KEYWORDS = [
+          // Hedera
+          'hedera', 'hbar', 'hashgraph', 'hedera hashgraph', 'hedera network',
+          // Constellation  
+          'dag', 'constellation', 'constellation network', 'constellation labs',
+          // XDC
+          'xdc', 'xinfin', 'xdc network', 'xinfin network',
+          // HashPack
+          'hashpack', 'hash pack', 'pack token',
+          // Algorand
+          'algorand', 'algo', 'algorand foundation'
+        ];
+        const filteredClient = parsedAll.filter(article => {
+          const title = (article.title || '').toLowerCase();
+          const content = (article.content || '').toLowerCase();
+          const combined = title + ' ' + content;
+          return CLIENT_KEYWORDS.some(keyword => combined.includes(keyword));
+        });
+        setClientNews(filteredClient);
+        clientCount = filteredClient.length;
+        localStorage.setItem(STORAGE_KEYS.CLIENT_NEWS, JSON.stringify(filteredClient));
+        console.log(`⚡ Filtered ${filteredClient.length} client articles from all news`);
       }
 
-      const totalLoaded = (allNews.length || 0) + (breakingNews.length || 0) + (clientNews.length || 0);
-      console.log(`✅ INSTANT LOAD COMPLETE: ${totalLoaded} total articles loaded in 0 seconds`);
+      console.log(`✅ INSTANT LOAD COMPLETE: ${allCount} all, ${breakingCount} breaking, ${clientCount} client articles loaded in 0 seconds`);
 
       // Check if we need to update (cache expired)
       const isStale = !lastUpdate || (Date.now() - parseInt(lastUpdate)) > CACHE_DURATION;
@@ -75,16 +120,46 @@ export function usePreloadedNews() {
     console.log('🔄 Background update starting...');
     
     try {
-      // Fetch all categories in parallel
-      const [allResponse, breakingResponse, clientResponse] = await Promise.all([
-        getFastNews('all').catch(() => ({ data: [] })),
-        getFastBreakingNews().catch(() => ({ data: [] })),
-        getFastClientNews().catch(() => ({ data: [] }))
-      ]);
-
+      // Fetch all news first
+      const allResponse = await getFastNews('all').catch(() => ({ data: [] }));
       const newAllNews = allResponse.success ? allResponse.data : [];
-      const newBreakingNews = breakingResponse.success ? breakingResponse.data : [];
-      const newClientNews = clientResponse.success ? clientResponse.data : [];
+      
+      // Extract breaking and client news from all news since backend categories aren't working
+      const newBreakingNews = newAllNews.filter(article => {
+        const title = (article.title || '').toLowerCase();
+        const content = (article.content || '').toLowerCase();
+        
+        // Breaking news keywords
+        return title.includes('breaking') || title.includes('urgent') || 
+               title.includes('alert') || title.includes('crash') ||
+               title.includes('surge') || title.includes('dump') ||
+               title.includes('moon') || title.includes('all-time high') ||
+               content.includes('breaking') || content.includes('urgent');
+      });
+      
+      // Client networks keywords for filtering (comprehensive list)
+      const CLIENT_KEYWORDS = [
+        // Hedera
+        'hedera', 'hbar', 'hashgraph', 'hedera hashgraph', 'hedera network',
+        // Constellation  
+        'dag', 'constellation', 'constellation network', 'constellation labs',
+        // XDC
+        'xdc', 'xinfin', 'xdc network', 'xinfin network',
+        // HashPack
+        'hashpack', 'hash pack', 'pack token',
+        // Algorand
+        'algorand', 'algo', 'algorand foundation'
+      ];
+      
+      const newClientNews = newAllNews.filter(article => {
+        const title = (article.title || '').toLowerCase();
+        const content = (article.content || '').toLowerCase();
+        const combined = title + ' ' + content;
+        
+        return CLIENT_KEYWORDS.some(keyword => combined.includes(keyword));
+      });
+      
+      console.log(`📊 Filtered: ${newAllNews.length} total, ${newBreakingNews.length} breaking, ${newClientNews.length} client`);
 
       // Merge new articles with existing (prepend new ones)
       const mergeArticles = (existing, fresh) => {
@@ -132,20 +207,25 @@ export function usePreloadedNews() {
     }
   }, []);
 
-  // Manual refresh function
+  // Manual refresh function  
   const refreshAll = useCallback(async () => {
+    console.log('🔄 Manual refresh: Clearing cache and fetching fresh data...');
     setLoading({ all: true, breaking: true, client: true });
     
     try {
       // Clear localStorage and fetch fresh data
-      Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+      Object.values(STORAGE_KEYS).forEach(key => {
+        localStorage.removeItem(key);
+        console.log(`🗑️ Cleared ${key} from localStorage`);
+      });
       
       // Reset state
       setAllNews([]);
       setBreakingNews([]);
       setClientNews([]);
+      console.log('🔄 Cleared all state, fetching fresh data...');
       
-      // Fetch fresh data
+      // Fetch fresh data with new filtering logic
       await updateInBackground();
       
     } catch (error) {
