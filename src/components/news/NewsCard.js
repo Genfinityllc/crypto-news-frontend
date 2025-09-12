@@ -626,11 +626,11 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   // This order is ESSENTIAL for images to display:
   // 1. Generated image (from AI generation)
   // 2. AI rewrite card image (from rewrite process)  
-  // 3. cover_image (from RSS hybrid source - MOST IMPORTANT)
-  // 4. image_url (fallback)
-  // CHANGING THIS ORDER WILL BREAK IMAGE DISPLAY!
+  // 3. image_url (from RSS feeds - PROPER FEATURED IMAGES)
+  // 4. cover_image (fallback for processed images)
+  // UPDATED: image_url now has correct RSS featured images
   // =====================================================
-  const articleImage = generatedImage || aiRewrite?.cardImage || article.cover_image || article.image_url || null; // 🔒 DO NOT MODIFY
+  const articleImage = generatedImage || aiRewrite?.cardImage || article.image_url || article.cover_image || null;
   
 
   const handleTitleClick = () => {

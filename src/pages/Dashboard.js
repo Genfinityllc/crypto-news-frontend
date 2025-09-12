@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNews, useBreakingNews } from '../hooks/useNews';
+import { useFastNews } from '../hooks/useFastNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
 import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews } from '../services/api';
@@ -662,6 +663,7 @@ export default function Dashboard() {
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
+  const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading, error: fastError } = useFastNews();
 
   // Client networks - your specific clients
   const CLIENT_NETWORKS = [
@@ -1064,46 +1066,66 @@ export default function Dashboard() {
 
   // Filter articles based on active section
   const getFilteredArticles = () => {
-    if (activeSection === 'client') {
-      console.log('=== CLIENT FILTER ACTIVE ===');
-      
-      let clientArticles = [];
-      
-      // For client section, prioritize direct client articles, then fall back to filtered main articles
-      if (directClientArticles.length > 0) {
-        console.log(`📰 Using ${directClientArticles.length} direct client articles`);
-        clientArticles = directClientArticles;
-      } else {
-        // Fallback: Filter main articles for client content
-        const currentClientArticles = articles.filter(article => {
-          const title = (article.title || '').toLowerCase();
-          const content = (article.content || article.description || article.summary || '').toLowerCase();
-          const network = (article.network || '').toLowerCase();
-          
-          const allClientTerms = [
-            ...CLIENT_NETWORKS,
-            'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 
-            'xdc', 'xinfin', 'hashpack', 'pack', 'swap'
-          ];
-          
-          return allClientTerms.some(clientNetwork => {
-            const networkLower = clientNetwork.toLowerCase();
-            return title.includes(networkLower) || 
-                   content.includes(networkLower) || 
-                   network.includes(networkLower);
+    // When searching, use regular API results
+    if (searchQuery) {
+      console.log('🔍 Using search results');
+      return articles;
+    }
+    
+    // When not searching, use optimized fast API results
+    switch (activeSection) {
+      case 'all':
+        console.log('📊 Using fast all news:', fastAllNews.length);
+        return fastAllNews;
+        
+      case 'breaking':
+        console.log('🚨 Using fast breaking news:', fastBreakingNews.length);
+        return fastBreakingNews;
+        
+      case 'client':
+        console.log('=== CLIENT FILTER ACTIVE ===');
+        
+        let clientArticles = [];
+        
+        // Use fast client news if available, otherwise use legacy method
+        if (fastClientNews.length > 0) {
+          console.log(`⚡ Using ${fastClientNews.length} fast client articles`);
+          clientArticles = fastClientNews;
+        } else if (directClientArticles.length > 0) {
+          console.log(`📰 Using ${directClientArticles.length} direct client articles`);
+          clientArticles = directClientArticles;
+        } else {
+          console.log('🔄 Fallback: Filtering regular articles for client content');
+          // Fallback: Filter main articles for client content
+          const currentClientArticles = (fastAllNews.length > 0 ? fastAllNews : articles).filter(article => {
+            const title = (article.title || '').toLowerCase();
+            const content = (article.content || article.description || article.summary || '').toLowerCase();
+            const network = (article.network || '').toLowerCase();
+            
+            const allClientTerms = [
+              ...CLIENT_NETWORKS,
+              'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 
+              'xdc', 'xinfin', 'hashpack', 'pack', 'swap'
+            ];
+            
+            return allClientTerms.some(clientNetwork => {
+              const networkLower = clientNetwork.toLowerCase();
+              return title.includes(networkLower) || 
+                     content.includes(networkLower) || 
+                     network.includes(networkLower);
+            });
           });
-        });
-        
-        // Combine with historical articles if available
-        const combinedArticles = [...currentClientArticles, ...historicalClientArticles];
-        const uniqueArticles = combinedArticles.filter((article, index, self) => 
-          index === self.findIndex(a => a.url === article.url || a.title === article.title)
-        );
-        
-        clientArticles = uniqueArticles.sort((a, b) => 
-          new Date(b.published_at || b.pubDate || 0) - new Date(a.published_at || a.pubDate || 0)
-        );
-      }
+          
+          // Combine with historical articles if available
+          const combinedArticles = [...currentClientArticles, ...historicalClientArticles];
+          const uniqueArticles = combinedArticles.filter((article, index, self) => 
+            index === self.findIndex(a => a.url === article.url || a.title === article.title)
+          );
+          
+          clientArticles = uniqueArticles.sort((a, b) => 
+            new Date(b.published_at || b.pubDate || 0) - new Date(a.published_at || a.pubDate || 0)
+          );
+        }
       
       // Apply client-specific filter if selected
       if (selectedClientFilter !== 'all') {
@@ -1163,10 +1185,12 @@ export default function Dashboard() {
         return filteredByClient;
       }
       
-      return clientArticles;
+        return clientArticles;
+        
+      default:
+        console.log('📰 Using regular articles (fallback)');
+        return articles;
     }
-    
-    return articles;
   };
 
   const filteredArticles = getFilteredArticles();
@@ -1365,7 +1389,7 @@ export default function Dashboard() {
     // Apply filters based on section with more specific logic
     switch (section) {
       case 'all':
-        // Show all news without any filters
+        // Show all news including latest news (merged from previous latest section)
         setFilters(prev => ({ 
           ...prev, 
           category: 'all', 
@@ -1384,19 +1408,9 @@ export default function Dashboard() {
         }));
         break;
         
-      case 'latest':
-        // Show recent non-breaking news
-        setFilters(prev => ({ 
-          ...prev, 
-          category: 'all',
-          network: 'all',
-          sortBy: 'date' 
-        }));
-        break;
-        
       case 'client':
-        // Show news from specific client networks with direct API search
-        console.log('🔍 Loading client news with direct API extraction...');
+        // Show news from specific client networks with cached data
+        console.log('🔍 Loading client news section...');
         setFilters(prev => ({ 
           ...prev, 
           category: 'all',
@@ -1404,8 +1418,13 @@ export default function Dashboard() {
           sortBy: 'date'
         }));
         
-        // Fetch client articles directly from API
-        await fetchDirectClientArticles();
+        // Only fetch client articles if we don't have any cached data
+        if (directClientArticles.length === 0 && !clientArticlesLoading) {
+          console.log('📥 No cached client articles - fetching from API...');
+          await fetchDirectClientArticles();
+        } else if (directClientArticles.length > 0) {
+          console.log('✅ Using cached client articles:', directClientArticles.length);
+        }
         break;
         
       default:
@@ -1483,7 +1502,7 @@ export default function Dashboard() {
       </Header>
 
 
-      {/* Section Navigation - 4 buttons: All News, Latest News, Breaking, Client News */}
+      {/* Section Navigation - 3 buttons: All News, Breaking, Client News */}
       <SectionNavigation>
         <SectionButton 
           active={activeSection === 'all'}
@@ -1494,18 +1513,6 @@ export default function Dashboard() {
             <span>📊 All News</span>
             <ArticleCount active={activeSection === 'all'}>
               {activeSection === 'all' ? filteredArticles.length : articles.length}
-            </ArticleCount>
-          </ButtonContent>
-        </SectionButton>
-        <SectionButton 
-          active={activeSection === 'latest'}
-          variant="latest"
-          onClick={() => handleSectionChange('latest')}
-        >
-          <ButtonContent>
-            <span>📰 Latest News</span>
-            <ArticleCount active={activeSection === 'latest'}>
-              {activeSection === 'latest' ? filteredArticles.length : articles.length}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1595,6 +1602,22 @@ export default function Dashboard() {
                 </ClientButtonContent>
               </ClientFilterButton>
             ))}
+            
+            {/* Refresh button for client articles */}
+            {directClientArticles.length > 0 && (
+              <ClientFilterButton
+                color="#6c757d"
+                onClick={() => fetchDirectClientArticles()}
+                disabled={clientArticlesLoading}
+                style={{ minWidth: '120px' }}
+              >
+                <ClientButtonContent>
+                  <span style={{ fontSize: '14px' }}>
+                    {clientArticlesLoading ? '🔄' : '🔄'} {clientArticlesLoading ? 'Refreshing...' : 'Refresh'}
+                  </span>
+                </ClientButtonContent>
+              </ClientFilterButton>
+            )}
           </SubmenuButtons>
         </ClientSubmenu>
       )}
@@ -1756,11 +1779,11 @@ export default function Dashboard() {
             activeSection === 'all' ? 'All News' :
             activeSection === 'breaking' ? 'Breaking News' :
             activeSection === 'client' ? 'Client News' :
-            'Latest News'
+            'All News'
           }
         </SectionTitle>
         
-        {(loading || (activeSection === 'client' && clientArticlesLoading)) ? (
+        {(searchQuery ? loading : (fastLoading.all || fastLoading.breaking || fastLoading.client)) || (activeSection === 'client' && clientArticlesLoading) ? (
           activeSection === 'client' ? (
             <LoadingContainer>
               <LoadingSpinner>
