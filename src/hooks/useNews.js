@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getNews, searchNews, getBreakingNews, getFastNews, getFastBreakingNews, getFastClientNews } from '../services/api';
+import { getNews, searchNews, getBreakingNews } from '../services/api';
 
 export function useNews(initialParams = {}) {
   const [articles, setArticles] = useState([]);

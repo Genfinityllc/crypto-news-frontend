@@ -658,7 +658,7 @@ export default function Dashboard() {
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
-  const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading, error: fastError } = useFastNews();
+  const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
 
   // Client networks - your specific clients
   const CLIENT_NETWORKS = [
