@@ -91,15 +91,20 @@ export function useInstantNews() {
     }
   }, []);
 
-  // Initial instant load - show cached data immediately
+  // Initial instant load - show cached data immediately for ALL categories
   useEffect(() => {
     if (initialLoadRef.current) {
-      console.log('🚀 INSTANT NEWS: Loading cached articles immediately...');
+      console.log('🚀 INSTANT NEWS: Loading ALL categories immediately from cache...');
       
-      // Load all categories instantly without waiting
-      fetchNewsInstant('all', false);
-      fetchNewsInstant('breaking', false);
-      fetchNewsInstant('client', false);
+      // Load all categories in parallel instantly - no waiting!
+      Promise.all([
+        fetchNewsInstant('all', false),
+        fetchNewsInstant('breaking', false),
+        fetchNewsInstant('client', false)
+      ]).then(() => {
+        console.log('✅ ALL CATEGORIES loaded instantly!');
+        console.log(`📊 Counts: All=${allNews.length}, Breaking=${breakingNews.length}, Client=${clientNews.length}`);
+      });
       
       initialLoadRef.current = false;
     }

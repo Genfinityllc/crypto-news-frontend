@@ -741,7 +741,7 @@ export default function Dashboard() {
   const loadCachedClientNews = async () => {
     console.log('⚡ Loading cached client news instantly...');
     try {
-      const response = await getCachedClientNews(100);
+      const response = await getCachedClientNews(500);
       if (response && response.data) {
         setCachedClientArticles(response.data);
         console.log(`⚡ Loaded ${response.data.length} cached client articles instantly`);
@@ -760,7 +760,7 @@ export default function Dashboard() {
   const fetchEnhancedClientNews = async () => {
     console.log('🎯 Fetching enhanced client news with multiple search strategies...');
     try {
-      const response = await getEnhancedClientNews({ limit: 50 });
+      const response = await getEnhancedClientNews({ limit: 500 });
       if (response && response.data) {
         setEnhancedClientArticles(response.data);
         console.log(`🎯 Enhanced client news: ${response.data.length} high-quality articles`);
@@ -1604,7 +1604,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>📊 All News</span>
             <ArticleCount active={activeSection === 'all'}>
-              {activeSection === 'all' ? filteredArticles.length : articles.length}
+              {instantAllNews.length > 0 ? instantAllNews.length : (fastAllNews.length > 0 ? fastAllNews.length : articles.length)}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1616,7 +1616,7 @@ export default function Dashboard() {
           <ButtonContent>
             <span>🚨 Breaking</span>
             <ArticleCount active={activeSection === 'breaking'}>
-              {breakingNews.length}
+              {instantBreakingNews.length > 0 ? instantBreakingNews.length : (fastBreakingNews.length > 0 ? fastBreakingNews.length : breakingNews.length)}
             </ArticleCount>
           </ButtonContent>
         </SectionButton>
@@ -1636,9 +1636,15 @@ export default function Dashboard() {
             <span>Client News</span>
             <ArticleCount active={activeSection === 'client'}>
               {(() => {
-                if (activeSection === 'client') return filteredArticles.length;
-                // Calculate client articles for inactive state
-                const clientCount = articles.filter(article => {
+                // Priority: Enhanced > Instant > Fast > Cached > Direct > Calculated
+                if (enhancedClientArticles.length > 0) return enhancedClientArticles.length;
+                if (instantClientNews.length > 0) return instantClientNews.length;
+                if (fastClientNews.length > 0) return fastClientNews.length;
+                if (cachedClientArticles.length > 0) return cachedClientArticles.length;
+                if (directClientArticles.length > 0) return directClientArticles.length;
+                
+                // Fallback: calculate from general articles
+                const clientCount = (instantAllNews.length > 0 ? instantAllNews : articles).filter(article => {
                   const title = (article.title || '').toLowerCase();
                   const content = (article.content || article.description || article.summary || '').toLowerCase();
                   const allClientTerms = [...CLIENT_NETWORKS, 'hbar', 'hedera', 'algo', 'algorand', 'dag', 'constellation', 'xdc', 'xinfin', 'hashpack', 'pack', 'swap'];

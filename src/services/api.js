@@ -191,8 +191,17 @@ export const getEnhancedClientNews = (params = {}) => {
   return api.get('/enhanced-client-news', { params });
 };
 
-export const getCachedClientNews = (limit = 100) => {
+export const getCachedClientNews = (limit = 500) => {
   return api.get('/enhanced-client-news/cached', { params: { limit } });
+};
+
+// Article Management API calls
+export const getArticleCounts = () => {
+  return api.get('/article-management/counts');
+};
+
+export const getArticleStats = () => {
+  return api.get('/article-management/stats');
 };
 
 export const rewriteRSSArticle = (articleData) => {
