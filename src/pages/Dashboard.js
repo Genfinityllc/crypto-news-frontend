@@ -855,7 +855,7 @@ export default function Dashboard() {
           try {
             const broadSearch = await searchNews(broadTerm, { 
               source: 'hybrid', 
-              limit: 20 
+              limit: 200 
             }).catch(() => ({ data: [] }));
             
             if (broadSearch.data && broadSearch.data.length > 0) {
@@ -1302,12 +1302,12 @@ export default function Dashboard() {
           const [databaseResults, hybridResults] = await Promise.all([
             searchNews(clientNetwork, { 
               source: 'database', 
-              limit: 20,
+              limit: 200,
               // Backend should handle date range, but we'll get what we can
             }).catch(() => ({ data: [] })),
             searchNews(clientNetwork, { 
               source: 'hybrid', 
-              limit: 20 
+              limit: 200 
             }).catch(() => ({ data: [] }))
           ]);
           

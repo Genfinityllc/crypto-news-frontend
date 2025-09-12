@@ -174,11 +174,11 @@ export const getCryptoDropdownOptions = () => {
 };
 
 // Enhanced News API calls
-export const getViralNews = (minScore = 75, limit = 20) => {
+export const getViralNews = (minScore = 75, limit = 200) => {
   return api.get('/enhanced-news/viral', { params: { min_score: minScore, limit } });
 };
 
-export const getHighReadabilityNews = (minScore = 97, limit = 20) => {
+export const getHighReadabilityNews = (minScore = 97, limit = 200) => {
   return api.get('/enhanced-news/high-readability', { params: { min_score: minScore, limit } });
 };
 
