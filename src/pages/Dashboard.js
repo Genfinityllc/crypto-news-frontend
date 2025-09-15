@@ -8,7 +8,7 @@ import { usePreloadedNews } from '../hooks/usePreloadedNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
 // eslint-disable-next-line no-unused-vars
-import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews } from '../services/api';
+import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews, getClientCounts } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -667,6 +667,14 @@ export default function Dashboard() {
   const [showClientSubmenu, setShowClientSubmenu] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [clientNewsMode, setClientNewsMode] = useState('instant'); // 'instant', 'enhanced', 'mixed'
+  const [clientCounts, setClientCounts] = useState({
+    'Hedera': 0,
+    'XDC Network': 0,
+    'Algorand': 0,
+    'Constellation': 0,
+    'HashPack': 0,
+    'SWAP': 0
+  });
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   // eslint-disable-next-line no-unused-vars
@@ -1477,13 +1485,28 @@ export default function Dashboard() {
     }
   }, [activeSection]);
 
-  // DISABLED: Old client news loading - now using preloaded system for instant loading
-  // React.useEffect(() => {
-  //   loadCachedClientNews();
-  //   setTimeout(() => {
-  //     fetchEnhancedClientNews();
-  //   }, 2000);
-  // }, []);
+  // Fetch client counts on component mount and periodically
+  React.useEffect(() => {
+    const fetchClientCounts = async () => {
+      try {
+        const response = await getClientCounts();
+        if (response && response.data) {
+          console.log('📊 Fetched client counts:', response.data);
+          setClientCounts(response.data);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching client counts:', error);
+      }
+    };
+    
+    // Fetch immediately
+    fetchClientCounts();
+    
+    // Refresh every 2 minutes
+    const interval = setInterval(fetchClientCounts, 2 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
@@ -1679,6 +1702,14 @@ export default function Dashboard() {
             <span>Client News</span>
             <ArticleCount active={activeSection === 'client'}>
               {(() => {
+                // Use backend client counts as the primary source
+                const totalClientCount = Object.values(clientCounts).reduce((sum, count) => sum + count, 0);
+                
+                // Fallback to calculated count if backend count is 0
+                if (totalClientCount > 0) {
+                  return totalClientCount;
+                }
+                
                 // Priority: Preloaded > Enhanced > Instant > Fast > Cached > Direct > Calculated
                 if (preloadedClientNews.length > 0) return preloadedClientNews.length;
                 if (enhancedClientArticles.length > 0) return enhancedClientArticles.length;
@@ -1687,7 +1718,7 @@ export default function Dashboard() {
                 if (cachedClientArticles.length > 0) return cachedClientArticles.length;
                 if (directClientArticles.length > 0) return directClientArticles.length;
                 
-                // Fallback: calculate from general articles
+                // Final fallback: calculate from general articles
                 const clientCount = (preloadedAllNews.length > 0 ? preloadedAllNews : (instantAllNews.length > 0 ? instantAllNews : articles)).filter(article => {
                   const title = (article.title || '').toLowerCase();
                   const content = (article.content || article.description || article.summary || '').toLowerCase();
@@ -1729,17 +1760,24 @@ export default function Dashboard() {
                   )}
                   <span>{client.name}</span>
                   <ClientArticleCount active={selectedClientFilter === key}>
-                    {key === 'all' ? directClientArticles.length : 
-                     directClientArticles.filter(article => {
-                       const title = (article.title || '').toLowerCase();
-                       const content = (article.content || article.description || article.summary || '').toLowerCase();
-                       const network = (article.network || '').toLowerCase();
-                       return client.terms.some(term => {
-                         const termLower = term.toLowerCase();
-                         return title.includes(termLower) || content.includes(termLower) || network.includes(termLower);
-                       });
-                     }).length
-                    }
+                    {(() => {
+                      if (key === 'all') {
+                        // Sum all client counts
+                        return Object.values(clientCounts).reduce((sum, count) => sum + count, 0);
+                      }
+                      
+                      // Map filter keys to backend count keys
+                      const countMapping = {
+                        'hedera': 'Hedera',
+                        'constellation': 'Constellation', 
+                        'xdc': 'XDC Network',
+                        'algorand': 'Algorand',
+                        'hashpack': 'HashPack'
+                      };
+                      
+                      const backendKey = countMapping[key];
+                      return backendKey ? (clientCounts[backendKey] || 0) : 0;
+                    })()}
                   </ClientArticleCount>
                 </ClientButtonContent>
               </ClientFilterButton>

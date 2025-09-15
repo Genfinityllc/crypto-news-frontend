@@ -117,6 +117,10 @@ export const getFastClientNews = () => {
   return api.get('/fast-news', { params: { category: 'client' } });
 };
 
+export const getClientCounts = () => {
+  return api.get('/fast-news/client-counts');
+};
+
 export const getCacheStats = () => {
   return api.get('/cache/stats');
 };
