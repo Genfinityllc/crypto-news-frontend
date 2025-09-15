@@ -1242,62 +1242,60 @@ export default function Dashboard() {
           );
         }
       
-      // Apply client-specific filter if selected
+      // Apply client-specific filter if selected - use backend network filtering
       if (selectedClientFilter !== 'all') {
-        const filterTerms = CLIENT_FILTERS[selectedClientFilter]?.terms || [];
-        console.log(`🔍 Filtering by ${selectedClientFilter}: ${filterTerms.join(', ')}`);
+        // Map frontend filter keys to backend network names (exact match)
+        const networkMapping = {
+          'hedera': 'Hedera',
+          'constellation': 'Constellation', 
+          'xdc': 'XDC Network',
+          'algorand': 'Algorand',
+          'hashpack': 'HashPack'
+        };
         
-        const filteredByClient = clientArticles.filter(article => {
-          const title = (article.title || '').toLowerCase();
-          const content = (article.content || article.description || article.summary || '').toLowerCase();
-          const network = (article.network || '').toLowerCase();
+        const backendNetworkName = networkMapping[selectedClientFilter];
+        
+        if (backendNetworkName) {
+          console.log(`🔍 Filtering by ${selectedClientFilter} -> ${backendNetworkName}`);
           
-          return filterTerms.some(term => {
-            const termLower = term.toLowerCase();
-            return title.includes(termLower) || 
-                   content.includes(termLower) || 
-                   network.includes(termLower);
+          // Filter using exact network match (same as backend)
+          const filteredByClient = clientArticles.filter(article => {
+            return article.network === backendNetworkName;
           });
-        });
-        
-        console.log(`📊 Filtered to ${filteredByClient.length} ${selectedClientFilter} articles`);
-        
-        // Special case for HashPack: if no direct matches, include Hedera ecosystem articles
-        if (selectedClientFilter === 'hashpack' && filteredByClient.length <= 1) {
-          console.log(`👝 HashPack filter: Including Hedera ecosystem articles as relevant to HashPack wallet users`);
           
-          const hederaArticles = clientArticles.filter(article => {
-            const title = (article.title || '').toLowerCase();
-            const content = (article.content || article.description || article.summary || '').toLowerCase();
-            const network = (article.network || '').toLowerCase();
+          console.log(`📊 Filtered to ${filteredByClient.length} ${selectedClientFilter} articles (exact network match)`);
+          
+          // Special case for HashPack: if no direct matches, include Hedera ecosystem articles
+          if (selectedClientFilter === 'hashpack' && filteredByClient.length <= 1) {
+            console.log(`👝 HashPack filter: Including Hedera ecosystem articles as relevant to HashPack wallet users`);
             
-            return title.includes('hedera') || 
-                   content.includes('hedera') || 
-                   network.includes('hedera') ||
-                   title.includes('hbar') ||
-                   content.includes('hbar');
-          });
+            const hederaArticles = clientArticles.filter(article => {
+              return article.network === 'Hedera';
+            });
+            
+            // Combine HashPack articles with Hedera articles
+            const combined = [...filteredByClient, ...hederaArticles]
+              .filter((article, index, self) => 
+                index === self.findIndex(a => a.id === article.id || a.url === article.url)
+              )
+              .map(article => ({
+                ...article,
+                is_breaking: false, // Remove breaking labels in client section
+                category: 'client-news'
+              }))
+              .sort((a, b) => 
+                new Date(b.published_at || 0) - new Date(a.published_at || 0)
+              );
+            
+            console.log(`👝 HashPack + Hedera articles: ${combined.length} total`);
+            return combined;
+          }
           
-          // Combine HashPack notice with Hedera articles and apply client tagging
-          const combined = [...filteredByClient, ...hederaArticles]
-            .filter((article, index, self) => 
-              index === self.findIndex(a => a.id === article.id || a.url === article.url)
-            )
-            .map(article => ({
-              ...article,
-              network: 'Hedera', // Tag as Hedera for HashPack context
-              is_breaking: false, // Remove breaking labels in client section
-              category: 'client-news'
-            }))
-            .sort((a, b) => 
-              new Date(b.published_at || 0) - new Date(a.published_at || 0)
-            );
-          
-          console.log(`👝 HashPack + Hedera articles: ${combined.length} total`);
-          return combined;
+          return filteredByClient;
+        } else {
+          console.log(`⚠️ Unknown client filter: ${selectedClientFilter}`);
+          return [];
         }
-        
-        return filteredByClient;
       }
       
         return clientArticles;
