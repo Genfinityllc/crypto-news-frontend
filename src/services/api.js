@@ -116,7 +116,7 @@ export const getFastBreakingNews = () => {
 };
 
 export const getFastClientNews = () => {
-  return api.get('/fast-news', { params: { category: 'client' } });
+  return api.get('/fast-news', { params: { network: 'clients', limit: 200 } });
 };
 
 export const getClientCounts = () => {
