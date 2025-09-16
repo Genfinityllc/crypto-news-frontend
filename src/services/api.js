@@ -116,7 +116,14 @@ export const getFastBreakingNews = () => {
 };
 
 export const getFastClientNews = () => {
-  return api.get('/fast-news', { params: { network: 'clients', limit: 200 } });
+  return api.get('/fast-news', { 
+    params: { 
+      network: 'clients', 
+      limit: 200,
+      forceRefresh: true,
+      _cacheBust: Date.now()
+    } 
+  });
 };
 
 export const getClientCounts = () => {

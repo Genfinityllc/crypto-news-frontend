@@ -95,22 +95,27 @@ export function useInstantNews() {
   // Initial instant load - show cached data immediately for ALL categories
   useEffect(() => {
     if (initialLoadRef.current) {
-      console.log('🚀 INSTANT NEWS: Loading ALL categories immediately from cache...');
+      console.log('🚀 INSTANT NEWS: Loading ALL categories with FORCED refresh...');
       
-      // Load all categories in parallel instantly - no waiting!
+      // Clear any existing cached data first
+      setAllNews([]);
+      setBreakingNews([]);
+      setClientNews([]);
+      
+      // Load all categories in parallel with forced refresh - no cache!
       Promise.all([
         fetchNewsInstant('all', false),
-        fetchNewsInstant('breaking', false),
+        fetchNewsInstant('breaking', false), 
         fetchNewsInstant('client', false)
       ]).then(() => {
-        console.log('✅ ALL CATEGORIES loaded instantly!');
-        console.log(`📊 Counts: All=${allNews.length}, Breaking=${breakingNews.length}, Client=${clientNews.length}`);
+        console.log('✅ ALL CATEGORIES loaded with fresh data!');
+        console.log(`📊 Fresh Counts: All=${allNews.length}, Breaking=${breakingNews.length}, Client=${clientNews.length}`);
       });
       
       initialLoadRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchNewsInstant, allNews.length, breakingNews.length, clientNews.length]);
+  }, [fetchNewsInstant]);
 
   // Background updates every 2 minutes for fresh content
   useEffect(() => {
