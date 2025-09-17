@@ -104,7 +104,6 @@ export const getFastNews = (category = 'all', params = {}) => {
   return api.get('/fast-news', { 
     params: { 
       category, 
-      forceRefresh: true, // Force cache refresh to clear fake articles
       _t: Date.now(), // Cache busting parameter
       ...params 
     } 
@@ -120,7 +119,6 @@ export const getFastClientNews = () => {
     params: { 
       network: 'clients', 
       limit: 200,
-      forceRefresh: true,
       _cacheBust: Date.now()
     } 
   });
