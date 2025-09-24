@@ -101,33 +101,91 @@ export const getArticleById = (id) => {
   return api.get(`/news/${id}`);
 };
 
+// Helper function to check if image is a placeholder
+const isPlaceholderImage = (url) => {
+  if (!url) return true;
+  return url.includes('placehold.co') || 
+         url.includes('placeholder') || 
+         url.includes('via.placeholder') ||
+         url.includes('text=') || 
+         url.includes('lorem') ||
+         url.includes('Generated%20') ||
+         url.includes('generated');
+};
+
+// Helper function to check if article has a real image
+const hasRealImage = (article) => {
+  return !isPlaceholderImage(article.cover_image) || 
+         !isPlaceholderImage(article.image_url) ||
+         (article.card_images && !isPlaceholderImage(article.card_images.medium));
+};
+
 // =====================================================
 // ⚡ OPTIMIZED FAST NEWS API - 13x PERFORMANCE BOOST ⚡
 // =====================================================
 // These new endpoints use 4-day caching for lightning-fast responses
 
-export const getFastNews = (category = 'all', params = {}) => {
-  return api.get('/fast-news', { 
-    params: { 
-      category, 
-      _t: Date.now(), // Cache busting parameter
-      ...params 
-    } 
-  });
+export const getFastNews = async (category = 'all', params = {}) => {
+  try {
+    const response = await api.get('/fast-news', { 
+      params: { 
+        category, 
+        _t: Date.now(), // Cache busting parameter
+        ...params 
+      } 
+    });
+    
+    // Filter out articles that only have placeholder images
+    if (response.data && Array.isArray(response.data)) {
+      response.data = response.data.filter(article => hasRealImage(article));
+      console.log(`🖼️ Filtered out articles with placeholder images. Showing ${response.data.length} articles with real images.`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching fast news:', error);
+    throw error;
+  }
 };
 
-export const getFastBreakingNews = () => {
-  return api.get('/fast-news', { params: { category: 'breaking' } });
+export const getFastBreakingNews = async () => {
+  try {
+    const response = await api.get('/fast-news', { params: { category: 'breaking' } });
+    
+    // Filter out articles that only have placeholder images
+    if (response.data && Array.isArray(response.data)) {
+      response.data = response.data.filter(article => hasRealImage(article));
+      console.log(`🖼️ Breaking news filtered: ${response.data.length} articles with real images.`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching breaking news:', error);
+    throw error;
+  }
 };
 
-export const getFastClientNews = () => {
-  return api.get('/fast-news', { 
-    params: { 
-      network: 'clients', 
-      limit: 200,
-      _cacheBust: Date.now()
-    } 
-  });
+export const getFastClientNews = async () => {
+  try {
+    const response = await api.get('/fast-news', { 
+      params: { 
+        network: 'clients', 
+        limit: 200,
+        _cacheBust: Date.now()
+      } 
+    });
+    
+    // Filter out articles that only have placeholder images
+    if (response.data && Array.isArray(response.data)) {
+      response.data = response.data.filter(article => hasRealImage(article));
+      console.log(`🖼️ Client news filtered: ${response.data.length} articles with real images.`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching client news:', error);
+    throw error;
+  }
 };
 
 export const getClientCounts = () => {
