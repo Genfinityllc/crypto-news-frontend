@@ -10,6 +10,8 @@ import Navigation from './components/common/Navigation';
 
 // Pages
 import Dashboard from './pages/Dashboard';
+import AllNews from './pages/AllNews';
+import ClientNews from './pages/ClientNews';
 import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ProfileManager from './components/auth/ProfileManager';
@@ -92,6 +94,11 @@ function App() {
               <Route path="/login" element={<LoginForm />} />
               <Route path="/signup" element={<SignupForm />} />
               
+              {/* News Routes - Public with guaranteed images */}
+              <Route path="/all" element={<AllNews />} />
+              <Route path="/clients" element={<ClientNews />} />
+              <Route path="/clients/:client" element={<ClientNews />} />
+              
               {/* Protected routes */}
               <Route 
                 path="/dashboard" 
@@ -118,11 +125,11 @@ function App() {
                 } 
               />
               
-              {/* Public dashboard (no auth required) */}
-              <Route path="/" element={<Dashboard />} />
+              {/* Default routes */}
+              <Route path="/" element={<AllNews />} />
               
               {/* Redirect unknown routes */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/all" replace />} />
             </Routes>
           </MainContent>
           

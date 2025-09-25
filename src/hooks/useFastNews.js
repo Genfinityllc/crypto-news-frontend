@@ -1,87 +1,91 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getFastNews, getFastBreakingNews, getFastClientNews } from '../services/api';
+import axios from 'axios';
 
-export function useFastNews() {
-  const [allNews, setAllNews] = useState([]);
-  const [breakingNews, setBreakingNews] = useState([]);
-  const [clientNews, setClientNews] = useState([]);
-  const [loading, setLoading] = useState({
-    all: false,
-    breaking: false,
-    client: false
-  });
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+export function useFastNews(category = 'all', options = {}) {
+  const [news, setNews] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchFastNews = useCallback(async (category = 'all') => {
-    setLoading(prev => ({ ...prev, [category]: true }));
+  const fetchNews = useCallback(async () => {
+    setLoading(true);
     setError(null);
     
-    console.log(`🚀 Fetching fast ${category} news...`);
+    console.log(`🚀 Fetching news: category=${category}, options=`, options);
 
     try {
       let response;
-      switch (category) {
-        case 'breaking':
-          response = await getFastBreakingNews();
-          break;
-        case 'client':
-          response = await getFastClientNews();
-          break;
-        default:
-          response = await getFastNews('all');
-      }
       
-      console.log(`✅ Fast ${category} news response:`, response);
-      
-      if (response && response.success) {
-        const articles = response.data || [];
-        console.log(`📰 ${category} articles found:`, articles.length);
+      // Use unified news endpoint for better image reliability
+      if (category === 'all' || options.network) {
+        const params = {
+          onlyWithImages: true,
+          limit: 200,
+          ...options
+        };
         
-        switch (category) {
-          case 'breaking':
-            setBreakingNews(articles);
-            break;
-          case 'client':
-            setClientNews(articles);
-            break;
-          default:
-            setAllNews(articles);
+        if (options.network) {
+          params.network = options.network;
         }
         
+        response = await axios.get(`${API_BASE_URL}/unified-news`, { params });
+        
+      } else if (category === 'client') {
+        response = await axios.get(`${API_BASE_URL}/unified-news`, {
+          params: {
+            network: 'clients',
+            onlyWithImages: true,
+            limit: 200,
+            ...options
+          }
+        });
+        
+      } else if (category === 'breaking') {
+        response = await axios.get(`${API_BASE_URL}/unified-news/breaking`, {
+          params: {
+            onlyWithImages: true,
+            limit: 50,
+            ...options
+          }
+        });
+        
+      } else {
+        // Fallback to original API
+        response = await getFastNews(category, options);
+      }
+      
+      console.log(`✅ News response:`, response.data);
+      
+      if (response.data && response.data.success) {
+        const articles = response.data.data || [];
+        console.log(`📰 Articles found:`, articles.length);
+        setNews(articles);
         return articles;
       } else {
-        throw new Error(`Failed to fetch ${category} news`);
+        throw new Error(`Failed to fetch news: ${response.data?.message || 'Unknown error'}`);
       }
+      
     } catch (error) {
-      console.error(`❌ Error fetching fast ${category} news:`, error);
-      setError(error.message || 'Failed to fetch news');
+      console.error(`❌ Error fetching news:`, error);
+      setError(error.response?.data?.message || error.message || 'Failed to fetch news');
       return [];
     } finally {
-      setLoading(prev => ({ ...prev, [category]: false }));
+      setLoading(false);
     }
-  }, []);
+  }, [category, JSON.stringify(options)]);
 
-  // Fetch all categories on mount
   useEffect(() => {
-    const fetchAllCategories = async () => {
-      console.log('🔄 Fetching all fast news categories...');
-      await Promise.all([
-        fetchFastNews('all'),
-        fetchFastNews('breaking'),
-        fetchFastNews('client')
-      ]);
-    };
-
-    fetchAllCategories();
-  }, [fetchFastNews]);
+    fetchNews();
+  }, [fetchNews]);
 
   return {
-    allNews,
-    breakingNews,
-    clientNews,
+    news,
     loading,
     error,
-    refetch: fetchFastNews
+    refreshNews: fetchNews,
+    refetch: fetchNews
   };
 }
 

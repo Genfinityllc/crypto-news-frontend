@@ -80,11 +80,11 @@ export const verifyToken = (idToken) => {
 
 // News API calls  
 export const getNews = (params = {}) => {
-  return api.get('/news', { params: { source: 'hybrid', ...params } }); // 🔒 DO NOT CHANGE 'hybrid'
+  return api.get('/news', { params: { source: 'hybrid', onlyWithImages: true, ...params } }); // 🔒 DO NOT CHANGE 'hybrid'
 };
 
 export const getBreakingNews = () => {
-  return api.get('/news', { params: { breaking: true, limit: 10, source: 'hybrid' } }); // 🔒 DO NOT CHANGE 'hybrid'
+  return api.get('/news', { params: { breaking: true, limit: 10, source: 'hybrid', onlyWithImages: true } }); // 🔒 DO NOT CHANGE 'hybrid'
 };
 
 export const searchNews = (query, options = {}) => {
@@ -92,6 +92,7 @@ export const searchNews = (query, options = {}) => {
     params: { 
       search: query,
       source: 'hybrid', // 🔒 DO NOT CHANGE 'hybrid' - needed for AI rewrite search
+      onlyWithImages: true,
       ...options 
     } 
   });
@@ -101,95 +102,39 @@ export const getArticleById = (id) => {
   return api.get(`/news/${id}`);
 };
 
-// Helper function to check if image is a placeholder
-const isPlaceholderImage = (url) => {
-  if (!url) return true;
-  return url.includes('placehold.co') || 
-         url.includes('placeholder') || 
-         url.includes('via.placeholder') ||
-         url.includes('text=') || 
-         url.includes('lorem') ||
-         url.includes('Generated%20') ||
-         url.includes('generated');
-};
-
-// Helper function to check if article has a real image
-const hasRealImage = (article) => {
-  return !isPlaceholderImage(article.cover_image) || 
-         !isPlaceholderImage(article.image_url) ||
-         (article.card_images && !isPlaceholderImage(article.card_images.medium));
-};
-
 // =====================================================
 // ⚡ OPTIMIZED FAST NEWS API - 13x PERFORMANCE BOOST ⚡
 // =====================================================
 // These new endpoints use 4-day caching for lightning-fast responses
 
-export const getFastNews = async (category = 'all', params = {}) => {
-  try {
-    const response = await api.get('/fast-news', { 
-      params: { 
-        category, 
-        _t: Date.now(), // Cache busting parameter
-        ...params 
-      } 
-    });
-    
-    // Filter out articles that only have placeholder images
-    if (response.data && Array.isArray(response.data)) {
-      response.data = response.data.filter(article => hasRealImage(article));
-      console.log(`🖼️ Filtered out articles with placeholder images. Showing ${response.data.length} articles with real images.`);
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('Error fetching fast news:', error);
-    throw error;
-  }
+export const getFastNews = (category = 'all', params = {}) => {
+  return api.get('/unified-news', { 
+    params: { 
+      category, 
+      _t: Date.now(), // Cache busting parameter
+      onlyWithImages: true,
+      ...params 
+    } 
+  });
 };
 
-export const getFastBreakingNews = async () => {
-  try {
-    const response = await api.get('/fast-news', { params: { category: 'breaking' } });
-    
-    // Filter out articles that only have placeholder images
-    if (response.data && Array.isArray(response.data)) {
-      response.data = response.data.filter(article => hasRealImage(article));
-      console.log(`🖼️ Breaking news filtered: ${response.data.length} articles with real images.`);
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('Error fetching breaking news:', error);
-    throw error;
-  }
+export const getFastBreakingNews = () => {
+  return api.get('/unified-news/breaking', { params: { onlyWithImages: true } });
 };
 
-export const getFastClientNews = async () => {
-  try {
-    const response = await api.get('/fast-news', { 
-      params: { 
-        network: 'clients', 
-        limit: 200,
-        _cacheBust: Date.now()
-      } 
-    });
-    
-    // Filter out articles that only have placeholder images
-    if (response.data && Array.isArray(response.data)) {
-      response.data = response.data.filter(article => hasRealImage(article));
-      console.log(`🖼️ Client news filtered: ${response.data.length} articles with real images.`);
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('Error fetching client news:', error);
-    throw error;
-  }
+export const getFastClientNews = () => {
+  return api.get('/unified-news', { 
+    params: { 
+      network: 'clients', 
+      limit: 200,
+      onlyWithImages: true,
+      _cacheBust: Date.now()
+    } 
+  });
 };
 
 export const getClientCounts = () => {
-  return api.get('/fast-news/client-counts');
+  return api.get('/unified-news/counts');
 };
 
 export const getCacheStats = () => {
@@ -310,8 +255,8 @@ export const triggerCronJob = (jobName) => {
 };
 
 // Image Generation API calls
-export const generateCardImage = (articleId, size = 'medium') => {
-  return api.post(`/news/generate-card-image/${articleId}`, { size });
+export const generateCardImage = (articleId, size = 'medium', useNanoBanana = false) => {
+  return api.post(`/news/generate-card-image/${articleId}`, { size, useNanoBanana });
 };
 
 export const generateCardImageFromData = (articleData, size = 'medium') => {
@@ -320,6 +265,17 @@ export const generateCardImageFromData = (articleData, size = 'medium') => {
 
 export const batchGenerateCardImages = (articleIds, size = 'medium') => {
   return api.post('/news/generate-card-images/batch', { articleIds, size });
+};
+
+// Nano Banana AI Image Generation
+export const generateNanoBananaImage = (articleId, options = {}) => {
+  const { size = 'medium', style = 'professional' } = options;
+  return api.post(`/news/generate-nano-banana-image/${articleId}`, { size, style });
+};
+
+export const generateNanoBananaImageFromData = (articleData, options = {}) => {
+  const { size = 'medium', style = 'professional' } = options;
+  return api.post('/news/generate-nano-banana-image', { ...articleData, size, style });
 };
 
 export default api;

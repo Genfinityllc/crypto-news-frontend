@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { addBookmark, removeBookmark, generateCardImage, generateAIRewrite, rewriteRSSArticle, addRSSBookmark, removeRSSBookmark, searchNews } from '../../services/api';
+import { addBookmark, removeBookmark, generateCardImage, generateNanoBananaImage, generateAIRewrite, rewriteRSSArticle, addRSSBookmark, removeRSSBookmark, searchNews } from '../../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -610,6 +610,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const [copyFeedback, setCopyFeedback] = useState('');
   const [generatedImage, setGeneratedImage] = useState(null);
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [useAIGeneration, setUseAIGeneration] = useState(false);
 
   const isBookmarked = bookmarks.some(b => b.articleId === article.id);
   const publishedDate = new Date(article.published_at).toLocaleDateString();
@@ -797,13 +798,33 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
     if (article.id) {
       setGeneratingImage(true);
       try {
-        const response = await generateCardImage(article.id, 'medium');
-        if (response.success) {
-          setGeneratedImage(response.data.coverImage);
-          toast.success('Card image generated!');
+        let response;
+        
+        if (useAIGeneration) {
+          // Use Nano Banana AI generation
+          console.log('🎨 Using Nano Banana AI generation for:', article.title);
+          response = await generateNanoBananaImage(article.id, {
+            size: 'medium',
+            style: 'professional'
+          });
+          
+          if (response.success) {
+            setGeneratedImage(response.data.coverImage);
+            toast.success('🤖 AI image generated with Nano Banana!');
+          }
+        } else {
+          // Use traditional generation
+          console.log('🎨 Using traditional generation for:', article.title);
+          response = await generateCardImage(article.id, 'medium', false);
+          
+          if (response.success) {
+            setGeneratedImage(response.data.coverImage);
+            toast.success('🎨 Card image generated!');
+          }
         }
       } catch (error) {
-        toast.error('Failed to generate card image');
+        const errorMsg = useAIGeneration ? 'Failed to generate AI image' : 'Failed to generate card image';
+        toast.error(errorMsg);
         console.error('Image generation error:', error);
       } finally {
         setGeneratingImage(false);
@@ -954,17 +975,43 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
             Read Full Article →
           </ActionButton>
           
-          {/* Always show image generation button */}
-          <ActionButton
-            onClick={handleGenerateImage}
-            disabled={generatingImage}
-            style={{ 
-              background: generatingImage ? '#22c55e80' : 'linear-gradient(45deg, #22c55e, #4ade80)',
-              opacity: generatingImage ? 0.7 : 1
-            }}
-          >
-            {generatingImage ? '🎨 Generating...' : '🎨 Generate Image'}
-          </ActionButton>
+          {/* Image Generation with AI Toggle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={useAIGeneration}
+                onChange={(e) => setUseAIGeneration(e.target.checked)}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  accentColor: '#8b5cf6'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: '500' }}>
+                Use AI Generation (Nano Banana)
+              </span>
+            </div>
+            <ActionButton
+              onClick={handleGenerateImage}
+              disabled={generatingImage}
+              style={{ 
+                background: generatingImage 
+                  ? (useAIGeneration ? '#8b5cf680' : '#22c55e80')
+                  : (useAIGeneration 
+                    ? 'linear-gradient(45deg, #8b5cf6, #a78bfa)' 
+                    : 'linear-gradient(45deg, #22c55e, #4ade80)'
+                  ),
+                opacity: generatingImage ? 0.7 : 1,
+                minWidth: '160px'
+              }}
+            >
+              {generatingImage 
+                ? (useAIGeneration ? '🤖 AI Generating...' : '🎨 Generating...') 
+                : (useAIGeneration ? '🤖 Generate AI Image' : '🎨 Generate Image')
+              }
+            </ActionButton>
+          </div>
           
           <CopyButton 
             onClick={() => handleCopy('title')}

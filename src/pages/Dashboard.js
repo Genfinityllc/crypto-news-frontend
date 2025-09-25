@@ -1488,9 +1488,9 @@ export default function Dashboard() {
     const fetchClientCounts = async () => {
       try {
         const response = await getClientCounts();
-        if (response && response.data) {
+        if (response && response.data && response.data.networks) {
           console.log('📊 Fetched client counts:', response.data);
-          setClientCounts(response.data);
+          setClientCounts(response.data.networks);
         }
       } catch (error) {
         console.error('❌ Error fetching client counts:', error);

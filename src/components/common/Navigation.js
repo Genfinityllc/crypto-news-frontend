@@ -248,11 +248,27 @@ export default function Navigation() {
 
         <NavLinks isOpen={mobileMenuOpen}>
           <NavLink 
-            to="/" 
-            isActive={location.pathname === '/' || location.pathname === '/dashboard'}
+            to="/all" 
+            isActive={location.pathname === '/' || location.pathname === '/all'}
             onClick={closeMobileMenu}
           >
-            Dashboard
+            🌐 All News
+          </NavLink>
+          
+          <NavLink 
+            to="/clients" 
+            isActive={location.pathname.startsWith('/clients')}
+            onClick={closeMobileMenu}
+          >
+            🏢 Client News
+          </NavLink>
+          
+          <NavLink 
+            to="/dashboard" 
+            isActive={location.pathname === '/dashboard'}
+            onClick={closeMobileMenu}
+          >
+            📊 Dashboard
           </NavLink>
           
           {currentUser && (
@@ -262,14 +278,14 @@ export default function Navigation() {
                 isActive={location.pathname === '/bookmarks'}
                 onClick={closeMobileMenu}
               >
-                Bookmarks
+                🔖 Bookmarks
               </NavLink>
               <NavLink 
                 to="/profile" 
                 isActive={location.pathname === '/profile'}
                 onClick={closeMobileMenu}
               >
-                Profile
+                👤 Profile
               </NavLink>
             </>
           )}
