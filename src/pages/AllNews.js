@@ -8,11 +8,27 @@ const Container = styled.div`
   margin: 0 auto;
   padding: 2rem;
   font-family: Arial, Helvetica, sans-serif;
+  
+  @media (max-width: 768px) {
+    padding: 1rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0.75rem;
+  }
 `;
 
 const Header = styled.div`
   text-align: center;
   margin-bottom: 2rem;
+  
+  @media (max-width: 768px) {
+    margin-bottom: 1.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    margin-bottom: 1rem;
+  }
 `;
 
 const Title = styled.h1`
@@ -20,12 +36,34 @@ const Title = styled.h1`
   margin-bottom: 0.5rem;
   font-size: 2.5rem;
   font-weight: bold;
+  
+  @media (max-width: 768px) {
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
 `;
 
 const Subtitle = styled.p`
   color: #aaa;
   font-size: 1.1rem;
   margin-bottom: 2rem;
+  
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 0 1rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
+  }
 `;
 
 const NewsGrid = styled.div`
@@ -37,6 +75,12 @@ const NewsGrid = styled.div`
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
     gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    gap: 1rem;
+    margin-top: 1rem;
   }
 `;
 

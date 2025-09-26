@@ -115,17 +115,38 @@ const CardContent = styled.div`
   flex-direction: column;
   gap: 1rem;
   font-family: Arial, Helvetica, sans-serif;
+  
+  @media (max-width: 768px) {
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
 `;
 
 const CardHeader = styled.div`
   display: flex;
   gap: 1rem;
   margin-bottom: 1rem;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
 `;
 
 const MainContent = styled.div`
   flex: 1;
   min-width: 0;
+  
+  @media (max-width: 768px) {
+    order: 2; /* Put content after image on mobile */
+    width: 100%;
+  }
 `;
 
 const ImageContainer = styled.div`
@@ -151,9 +172,16 @@ const ImageContainer = styled.div`
   }
   
   @media (max-width: 768px) {
+    order: 1; /* Put image first on mobile */
     width: 100%;
+    height: 200px;
+    margin-bottom: 0;
+    border-radius: 8px;
+  }
+  
+  @media (max-width: 480px) {
     height: 180px;
-    margin-bottom: 1rem;
+    border-radius: 6px;
   }
 `;
 
@@ -185,6 +213,19 @@ const MetaInfo = styled.div`
   align-items: center;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+  
+  @media (max-width: 768px) {
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    /* Ensure badges don't overflow on mobile */
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  @media (max-width: 480px) {
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
 `;
 
 // const Badge = styled.span`
@@ -265,10 +306,34 @@ const Title = styled.h3`
   font-weight: 700;
   font-family: Arial, Helvetica, sans-serif;
   transition: all 0.3s;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
   
   &:hover {
     color: #00aaff;
     transform: translateX(4px);
+  }
+  
+  @media (max-width: 768px) {
+    font-size: 1.25rem;
+    line-height: 1.4;
+    margin: 0 0 0.5rem 0;
+    /* CRITICAL: Prevent title squishing on mobile */
+    width: 100%;
+    text-align: left;
+    padding-right: 0;
+    transform: none; /* Disable hover transform on mobile */
+    
+    &:hover {
+      transform: none;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.1rem;
+    line-height: 1.35;
+    margin: 0 0 0.5rem 0;
   }
 `;
 
@@ -277,6 +342,23 @@ const Summary = styled.p`
   margin: 0 0 1rem 0;
   line-height: 1.5;
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.95rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  
+  @media (max-width: 768px) {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0 0 0.75rem 0;
+    /* Ensure proper mobile text spacing */
+    width: 100%;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0 0 0.5rem 0;
+  }
 `;
 
 const AIRewriteContainer = styled.div`

@@ -38,6 +38,14 @@ const ClientFilters = styled.div`
   
   @media (max-width: 768px) {
     gap: 0.3rem;
+    margin: 1.5rem 0;
+    padding: 0 0.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    gap: 0.25rem;
+    margin: 1rem 0;
+    padding: 0 0.25rem;
   }
 `;
 
@@ -54,6 +62,7 @@ const ClientFilter = styled(Link)`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  white-space: nowrap;
 
   &:hover {
     background: ${props => props.active ? '#0056b3' : '#555'};
@@ -64,6 +73,19 @@ const ClientFilter = styled(Link)`
   @media (max-width: 768px) {
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
+    gap: 0.25rem;
+    border-radius: 20px;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    gap: 0.2rem;
+    border-radius: 15px;
+    /* Allow text to wrap on very small screens */
+    white-space: normal;
+    text-align: center;
+    min-width: auto;
   }
 `;
 

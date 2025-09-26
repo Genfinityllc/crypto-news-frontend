@@ -11,6 +11,14 @@ const Nav = styled.nav`
   position: sticky;
   top: 0;
   z-index: 100;
+  
+  @media (max-width: 768px) {
+    padding: 1rem 1rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0.75rem 0.75rem;
+  }
 `;
 
 const NavContainer = styled.div`
