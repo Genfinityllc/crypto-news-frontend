@@ -133,9 +133,17 @@ const CardHeader = styled.div`
   margin-bottom: 1rem;
   
   @media (max-width: 768px) {
-    flex-direction: column;
+    flex-direction: column !important;
     gap: 0.75rem;
     margin-bottom: 0.75rem;
+    width: 100% !important;
+  }
+  
+  @media (max-width: 480px) {
+    flex-direction: column !important;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    width: 100% !important;
   }
 `;
 
@@ -144,8 +152,16 @@ const MainContent = styled.div`
   min-width: 0;
   
   @media (max-width: 768px) {
-    order: 2; /* Put content after image on mobile */
-    width: 100%;
+    order: 2 !important; /* Put content after image on mobile */
+    width: 100% !important;
+    flex: none !important;
+    min-width: auto !important;
+  }
+  
+  @media (max-width: 480px) {
+    order: 2 !important;
+    width: 100% !important;
+    flex: none !important;
   }
 `;
 
@@ -172,16 +188,19 @@ const ImageContainer = styled.div`
   }
   
   @media (max-width: 768px) {
-    order: 1; /* Put image first on mobile */
-    width: 100%;
-    height: 200px;
-    margin-bottom: 0;
+    order: 1 !important; /* Put image first on mobile */
+    width: 100% !important;
+    height: 200px !important;
+    margin-bottom: 0 !important;
     border-radius: 8px;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
   }
   
   @media (max-width: 480px) {
-    height: 180px;
+    height: 180px !important;
     border-radius: 6px;
+    width: 100% !important;
   }
 `;
 
@@ -316,17 +335,18 @@ const Title = styled.h3`
   }
   
   @media (max-width: 768px) {
-    font-size: 1.25rem;
-    line-height: 1.4;
-    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem !important;
+    line-height: 1.4 !important;
+    margin: 0 0 0.5rem 0 !important;
     /* CRITICAL: Prevent title squishing on mobile */
-    width: 100%;
-    text-align: left;
-    padding-right: 0;
-    transform: none; /* Disable hover transform on mobile */
+    width: 100% !important;
+    text-align: left !important;
+    padding-right: 0 !important;
+    transform: none !important; /* Disable hover transform on mobile */
+    max-width: 100% !important;
     
     &:hover {
-      transform: none;
+      transform: none !important;
     }
   }
   
