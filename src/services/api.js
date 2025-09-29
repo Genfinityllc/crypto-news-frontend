@@ -278,4 +278,24 @@ export const generateNanoBananaImageFromData = (articleData, options = {}) => {
   return api.post('/news/generate-nano-banana-image', { ...articleData, size, style });
 };
 
+// Client Network Metadata API calls
+export const getClientNetworkMetadata = (includeArticleCounts = false) => {
+  return api.get('/client-networks/buttons/config', { 
+    params: { includeArticleCounts: includeArticleCounts.toString() } 
+  });
+};
+
+export const getClientNetworkByName = (networkName) => {
+  return api.get(`/client-networks/${networkName}`);
+};
+
+export const getAllClientNetworks = (clientsOnly = true, includeAll = false) => {
+  return api.get('/client-networks', { 
+    params: { 
+      clientsOnly: clientsOnly.toString(), 
+      includeAll: includeAll.toString() 
+    } 
+  });
+};
+
 export default api;

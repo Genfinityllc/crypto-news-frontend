@@ -8,7 +8,7 @@ import { usePreloadedNews } from '../hooks/usePreloadedNews';
 import { useBookmarks } from '../hooks/useBookmarks';
 import NewsCard from '../components/news/NewsCard';
 // eslint-disable-next-line no-unused-vars
-import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews, getClientCounts } from '../services/api';
+import { rewriteArticle, getViralNews, getHighReadabilityNews, searchNews, getCachedClientNews, getEnhancedClientNews, getClientCounts, getClientNetworkMetadata } from '../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
@@ -675,6 +675,8 @@ export default function Dashboard() {
     'HashPack': 0,
     'SWAP': 0
   });
+  const [clientNetworks, setClientNetworks] = useState([]);
+  const [loadingClientNetworks, setLoadingClientNetworks] = useState(true);
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   // eslint-disable-next-line no-unused-vars
@@ -723,51 +725,44 @@ export default function Dashboard() {
     'SWAP'
   ];
 
-  // Individual client definitions for submenu filtering with logos
-  const CLIENT_FILTERS = {
-    'all': {
-      name: 'All Clients',
-      terms: CLIENT_NETWORKS,
-      color: '#ffa502',
-      logo: 'multi', // Special case for multiple logos
-      logos: ['/logos/hedera_icon.png', '/logos/constellation_icon.png', '/logos/xdc_icon.png', '/logos/algorand_icon.png', '/logos/hashpack_icon.png']
-    },
-    'hedera': {
-      name: 'Hedera',
-      terms: ['HBAR', 'Hedera', 'Hedera Hashgraph', 'Hedera Network'],
-      color: '#0066cc',
-      logo: '/logos/hedera_icon.png'
-    },
-    'constellation': {
-      name: 'Constellation', 
-      terms: ['DAG', 'Constellation', 'Constellation Network', 'Constellation Labs'],
-      color: '#8b5cf6',
-      logo: '/logos/constellation_icon.png'
-    },
-    'xdc': {
-      name: 'XDC Network',
-      terms: ['XDC', 'XDC Network', 'XinFin'],
-      color: '#22c55e',
-      logo: '/logos/xdc_icon.png'
-    },
-    'algorand': {
-      name: 'Algorand',
-      terms: ['ALGO', 'Algorand', 'Algorand Foundation'], 
-      color: '#ff4757',
-      logo: '/logos/algorand_icon.png'
-    },
-    'hashpack': {
-      name: 'HashPack',
-      terms: [
-        'HashPack', 'Hashpack', 'PACK',
-        'HashPack wallet', 'HashPack app', 'HashPack mobile',
-        'HashPack extension', 'HashPack browser', 'HashPack NFT',
-        'HashPack staking', 'HashPack DeFi', 'HashPack.app'
-      ],
-      color: '#00b4d8',
-      logo: '/logos/hashpack_icon.png'
+  // Generate CLIENT_FILTERS from API data
+  const CLIENT_FILTERS = React.useMemo(() => {
+    if (clientNetworks.length === 0) {
+      // Fallback to hardcoded data while loading
+      return {
+        'all': {
+          name: 'All Clients',
+          terms: CLIENT_NETWORKS,
+          color: '#ffa502',
+          logo: 'multi',
+          logos: ['/logos/hedera_icon.png', '/logos/constellation_icon.png', '/logos/xdc_icon.png', '/logos/algorand_icon.png', '/logos/hashpack_icon.png']
+        }
+      };
     }
-  };
+
+    const filters = {
+      'all': {
+        name: 'All Clients',
+        terms: CLIENT_NETWORKS,
+        color: '#ffa502',
+        logo: 'multi',
+        logos: clientNetworks.map(network => network.logo)
+      }
+    };
+
+    // Create individual client filters from API data
+    clientNetworks.forEach(network => {
+      const key = network.id; // e.g., 'hedera', 'algorand', etc.
+      filters[key] = {
+        name: network.displayName,
+        terms: [network.name, network.symbol, network.displayName],
+        color: network.color,
+        logo: network.logo
+      };
+    });
+
+    return filters;
+  }, [clientNetworks]);
 
   // Instant cached client news loading
   // eslint-disable-next-line no-unused-vars
@@ -1483,7 +1478,47 @@ export default function Dashboard() {
     }
   }, [activeSection]);
 
-  // Fetch client counts on component mount and periodically
+  // Fetch client network metadata on component mount
+  React.useEffect(() => {
+    const fetchClientNetworkMetadata = async () => {
+      try {
+        setLoadingClientNetworks(true);
+        const response = await getClientNetworkMetadata(true); // Include article counts
+        if (response && response.data) {
+          console.log('🎨 Fetched client network metadata with logos:', response.data);
+          setClientNetworks(response.data);
+          
+          // Also extract counts for the clientCounts state
+          const counts = {};
+          response.data.forEach(network => {
+            if (network.articleCount !== undefined) {
+              counts[network.name] = network.articleCount;
+            }
+          });
+          
+          if (Object.keys(counts).length > 0) {
+            setClientCounts(counts);
+            console.log('📊 Updated client counts from metadata:', counts);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching client network metadata:', error);
+        // Keep the hardcoded fallback if API fails
+      } finally {
+        setLoadingClientNetworks(false);
+      }
+    };
+    
+    // Fetch immediately
+    fetchClientNetworkMetadata();
+    
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchClientNetworkMetadata, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch client counts on component mount and periodically (fallback if metadata doesn't have counts)
   React.useEffect(() => {
     const fetchClientCounts = async () => {
       try {
@@ -1497,14 +1532,16 @@ export default function Dashboard() {
       }
     };
     
-    // Fetch immediately
-    fetchClientCounts();
-    
-    // Refresh every 2 minutes
-    const interval = setInterval(fetchClientCounts, 2 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    // Only fetch if we don't already have counts from metadata
+    if (Object.values(clientCounts).every(count => count === 0)) {
+      fetchClientCounts();
+      
+      // Refresh every 2 minutes  
+      const interval = setInterval(fetchClientCounts, 2 * 60 * 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [clientCounts]);
 
   // Debug: Log client filter results (minimal logging)
   React.useEffect(() => {
@@ -1735,7 +1772,19 @@ export default function Dashboard() {
         <ClientSubmenu>
           <SubmenuTitle>Filter by Client Network:</SubmenuTitle>
           <SubmenuButtons>
-            {Object.entries(CLIENT_FILTERS).map(([key, client]) => (
+            {loadingClientNetworks ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                color: '#aaa', 
+                padding: '0.75rem 1.5rem' 
+              }}>
+                <span>🔄</span>
+                <span>Loading client networks with logos...</span>
+              </div>
+            ) : (
+              Object.entries(CLIENT_FILTERS).map(([key, client]) => (
               <ClientFilterButton
                 key={key}
                 active={selectedClientFilter === key}
@@ -1779,10 +1828,11 @@ export default function Dashboard() {
                   </ClientArticleCount>
                 </ClientButtonContent>
               </ClientFilterButton>
-            ))}
+              ))
+            )}
             
-            {/* Refresh button for client articles */}
-            {directClientArticles.length > 0 && (
+            {/* Refresh button for client articles - only show when not loading */}
+            {!loadingClientNetworks && directClientArticles.length > 0 && (
               <ClientFilterButton
                 color="#6c757d"
                 onClick={() => fetchDirectClientArticles()}
