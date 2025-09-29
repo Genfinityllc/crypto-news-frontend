@@ -132,8 +132,7 @@ const CLIENT_NETWORKS = [
   { name: 'XDC Network', path: '/clients/xdc', emoji: '⚡' },
   { name: 'Algorand', path: '/clients/algorand', emoji: '🔷' },
   { name: 'Constellation', path: '/clients/constellation', emoji: '✨' },
-  { name: 'HashPack', path: '/clients/hashpack', emoji: '📦' },
-  { name: 'SWAP', path: '/clients/swap', emoji: '🔄' }
+  { name: 'HashPack', path: '/clients/hashpack', emoji: '📦' }
 ];
 
 /**
@@ -155,8 +154,7 @@ function ClientNews() {
                       currentClient === 'hedera' ? 'Hedera' :
                       currentClient === 'algorand' ? 'Algorand' :
                       currentClient === 'constellation' ? 'Constellation' :
-                      currentClient === 'hashpack' ? 'HashPack' :
-                      currentClient === 'swap' ? 'SWAP' : 'clients';
+                      currentClient === 'hashpack' ? 'HashPack' : 'clients';
   
   const { 
     news, 
