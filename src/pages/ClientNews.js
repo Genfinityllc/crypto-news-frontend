@@ -439,10 +439,32 @@ function ClientNews() {
           <ClientFilter
             key={clientNetwork.path}
             to={clientNetwork.path}
+            color={clientNetwork.color}
             active={clientNetwork.path === `/clients/${currentClient}` || 
                    (currentClient === 'all' && clientNetwork.path === '/clients')}
           >
-            {clientNetwork.emoji} {clientNetwork.name}
+            {clientNetwork.logo === 'multi' ? (
+              <MultiLogo>
+                {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
+                  <img key={index} src={logo} alt={`Client ${index + 1}`} />
+                ))}
+              </MultiLogo>
+            ) : clientNetwork.logo && !loadingNetworks ? (
+              <ClientLogo 
+                src={clientNetwork.logo} 
+                alt={clientNetwork.name}
+                onError={(e) => {
+                  // Fallback to emoji if logo fails to load
+                  e.target.style.display = 'none';
+                  const span = document.createElement('span');
+                  span.textContent = clientNetwork.emoji || '🏢';
+                  e.target.parentNode.insertBefore(span, e.target);
+                }}
+              />
+            ) : (
+              clientNetwork.emoji || '🏢'
+            )}
+            {clientNetwork.name}
           </ClientFilter>
         ))}
       </ClientFilters>
