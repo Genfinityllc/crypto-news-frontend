@@ -173,6 +173,18 @@ const ArticleCount = styled.div`
   margin-bottom: 1rem;
 `;
 
+// Helper function to get emoji for network
+const getEmojiForNetwork = (networkName) => {
+  const emojiMap = {
+    'Hedera': '🌐',
+    'XDC Network': '⚡', 
+    'Algorand': '🔷',
+    'Constellation': '✨',
+    'HashPack': '📦'
+  };
+  return emojiMap[networkName] || '🏢';
+};
+
 // Fallback client network definitions (used while loading from API)
 const FALLBACK_CLIENT_NETWORKS = [
   { name: 'All Clients', path: '/clients', emoji: '🏢', logo: 'multi', color: '#007bff', logos: [] },
@@ -212,6 +224,7 @@ function ClientNews() {
         path: '/clients',
         logo: 'multi',
         color: '#007bff',
+        emoji: '🏢',
         logos: clientNetworks.map(network => network.logo)
       }
     ];
@@ -220,10 +233,11 @@ function ClientNews() {
     clientNetworks.forEach(network => {
       const path = `/clients/${network.id}`;
       networks.push({
-        name: network.displayName,
+        name: network.displayName || network.name,
         path: path,
         logo: network.logo,
         color: network.color,
+        emoji: getEmojiForNetwork(network.name), // Add emoji fallback
         id: network.id
       });
     });
