@@ -463,7 +463,7 @@ function ClientNews() {
                   <img key={index} src={logo} alt={`Client ${index + 1}`} />
                 ))}
               </MultiLogo>
-            ) : clientNetwork.logo && !loadingNetworks ? (
+            ) : clientNetwork.logo ? (
               <ClientLogo 
                 src={clientNetwork.logo} 
                 alt={clientNetwork.name}
