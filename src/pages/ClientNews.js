@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import NewsCard from '../components/news/NewsCard';
 import { useFastNews } from '../hooks/useFastNews';
+import { getClientNetworkMetadata } from '../services/api';
 
 const Container = styled.div`
   max-width: 1200px;
@@ -51,9 +52,9 @@ const ClientFilters = styled.div`
 
 const ClientFilter = styled(Link)`
   padding: 0.6rem 1.2rem;
-  background: ${props => props.active ? '#007bff' : '#333'};
+  background: ${props => props.active ? (props.color || '#007bff') : '#333'};
   color: ${props => props.active ? '#fff' : '#aaa'};
-  border: 1px solid ${props => props.active ? '#007bff' : '#555'};
+  border: 1px solid ${props => props.active ? (props.color || '#007bff') : '#555'};
   border-radius: 25px;
   text-decoration: none;
   font-size: 0.9rem;
@@ -65,9 +66,10 @@ const ClientFilter = styled(Link)`
   white-space: nowrap;
 
   &:hover {
-    background: ${props => props.active ? '#0056b3' : '#555'};
+    background: ${props => props.active ? (props.color ? `${props.color}dd` : '#0056b3') : '#555'};
     color: #fff;
     text-decoration: none;
+    border-color: ${props => props.color || '#007bff'};
   }
   
   @media (max-width: 768px) {
@@ -86,6 +88,52 @@ const ClientFilter = styled(Link)`
     white-space: normal;
     text-align: center;
     min-width: auto;
+  }
+`;
+
+const ClientLogo = styled.img`
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+  
+  @media (max-width: 768px) {
+    width: 16px;
+    height: 16px;
+  }
+  
+  @media (max-width: 480px) {
+    width: 14px;
+    height: 14px;
+  }
+`;
+
+const MultiLogo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  
+  img {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    border-radius: 1px;
+    opacity: 0.9;
+  }
+  
+  @media (max-width: 768px) {
+    img {
+      width: 12px;
+      height: 12px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    img {
+      width: 10px;
+      height: 10px;
+    }
   }
 `;
 
@@ -125,14 +173,14 @@ const ArticleCount = styled.div`
   margin-bottom: 1rem;
 `;
 
-// Client network definitions
-const CLIENT_NETWORKS = [
-  { name: 'All Clients', path: '/clients', emoji: '🏢' },
-  { name: 'Hedera', path: '/clients/hedera', emoji: '🌐' },
-  { name: 'XDC Network', path: '/clients/xdc', emoji: '⚡' },
-  { name: 'Algorand', path: '/clients/algorand', emoji: '🔷' },
-  { name: 'Constellation', path: '/clients/constellation', emoji: '✨' },
-  { name: 'HashPack', path: '/clients/hashpack', emoji: '📦' }
+// Fallback client network definitions (used while loading from API)
+const FALLBACK_CLIENT_NETWORKS = [
+  { name: 'All Clients', path: '/clients', emoji: '🏢', logo: 'multi', color: '#007bff', logos: [] },
+  { name: 'Hedera', path: '/clients/hedera', emoji: '🌐', logo: '/logos/hedera_icon.png', color: '#0066cc' },
+  { name: 'XDC Network', path: '/clients/xdc', emoji: '⚡', logo: '/logos/xdc_icon.png', color: '#22c55e' },
+  { name: 'Algorand', path: '/clients/algorand', emoji: '🔷', logo: '/logos/algorand_icon.png', color: '#ff4757' },
+  { name: 'Constellation', path: '/clients/constellation', emoji: '✨', logo: '/logos/constellation_icon.png', color: '#8b5cf6' },
+  { name: 'HashPack', path: '/clients/hashpack', emoji: '📦', logo: '/logos/hashpack_icon.png', color: '#00b4d8' }
 ];
 
 /**
@@ -147,6 +195,62 @@ const CLIENT_NETWORKS = [
 function ClientNews() {
   const { client } = useParams();
   const currentClient = client ? client.toLowerCase() : 'all';
+  
+  // State for client network metadata
+  const [clientNetworks, setClientNetworks] = useState([]);
+  const [loadingNetworks, setLoadingNetworks] = useState(true);
+  
+  // Generate CLIENT_NETWORKS from API data or fallback
+  const CLIENT_NETWORKS = React.useMemo(() => {
+    if (clientNetworks.length === 0) {
+      return FALLBACK_CLIENT_NETWORKS;
+    }
+
+    const networks = [
+      {
+        name: 'All Clients',
+        path: '/clients',
+        logo: 'multi',
+        color: '#007bff',
+        logos: clientNetworks.map(network => network.logo)
+      }
+    ];
+
+    // Add individual client networks from API
+    clientNetworks.forEach(network => {
+      const path = `/clients/${network.id}`;
+      networks.push({
+        name: network.displayName,
+        path: path,
+        logo: network.logo,
+        color: network.color,
+        id: network.id
+      });
+    });
+
+    return networks;
+  }, [clientNetworks]);
+
+  // Fetch client network metadata on mount
+  useEffect(() => {
+    const fetchClientNetworks = async () => {
+      try {
+        setLoadingNetworks(true);
+        const response = await getClientNetworkMetadata(true);
+        if (response && response.data) {
+          console.log('🎨 Fetched client network metadata for ClientNews:', response.data);
+          setClientNetworks(response.data);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching client network metadata:', error);
+        // Keep fallback data if API fails
+      } finally {
+        setLoadingNetworks(false);
+      }
+    };
+
+    fetchClientNetworks();
+  }, []);
   
   // Get news with appropriate network filter
   const networkParam = currentClient === 'all' ? 'clients' : 
@@ -172,7 +276,26 @@ function ClientNews() {
     return (
       <Container>
         <Header>
-          <Title>{currentClientInfo.emoji} {currentClientInfo.name} News</Title>
+          <Title>
+            {currentClientInfo.logo && currentClientInfo.logo !== 'multi' && !loadingNetworks ? (
+              <ClientLogo 
+                src={currentClientInfo.logo} 
+                alt={currentClientInfo.name}
+                style={{ marginRight: '0.5rem' }}
+                onError={(e) => {
+                  // Fallback to emoji if logo fails
+                  e.target.style.display = 'none';
+                  const span = document.createElement('span');
+                  span.textContent = currentClientInfo.emoji || '🏢';
+                  span.style.marginRight = '0.5rem';
+                  e.target.parentNode.insertBefore(span, e.target);
+                }}
+              />
+            ) : (
+              currentClientInfo.emoji + ' '
+            )}
+            {currentClientInfo.name} News
+          </Title>
           <Subtitle>Latest news from our valued clients</Subtitle>
         </Header>
         
@@ -181,10 +304,30 @@ function ClientNews() {
             <ClientFilter
               key={clientNetwork.path}
               to={clientNetwork.path}
+              color={clientNetwork.color}
               active={clientNetwork.path === `/clients/${currentClient}` || 
                      (currentClient === 'all' && clientNetwork.path === '/clients')}
             >
-              {clientNetwork.emoji} {clientNetwork.name}
+                {clientNetwork.logo === 'multi' ? (
+                  <MultiLogo>
+                    {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
+                      <img key={index} src={logo} alt={`Client ${index + 1}`} />
+                    ))}
+                  </MultiLogo>
+                ) : (
+                  <ClientLogo 
+                    src={clientNetwork.logo} 
+                    alt={clientNetwork.name}
+                    onError={(e) => {
+                      // Fallback to emoji if logo fails to load
+                      e.target.style.display = 'none';
+                      const span = document.createElement('span');
+                      span.textContent = clientNetwork.emoji || '🏢';
+                      e.target.parentNode.insertBefore(span, e.target);
+                    }}
+                  />
+                )}
+                {clientNetwork.name}
             </ClientFilter>
           ))}
         </ClientFilters>
@@ -198,7 +341,26 @@ function ClientNews() {
     return (
       <Container>
         <Header>
-          <Title>{currentClientInfo.emoji} {currentClientInfo.name} News</Title>
+          <Title>
+            {currentClientInfo.logo && currentClientInfo.logo !== 'multi' && !loadingNetworks ? (
+              <ClientLogo 
+                src={currentClientInfo.logo} 
+                alt={currentClientInfo.name}
+                style={{ marginRight: '0.5rem' }}
+                onError={(e) => {
+                  // Fallback to emoji if logo fails
+                  e.target.style.display = 'none';
+                  const span = document.createElement('span');
+                  span.textContent = currentClientInfo.emoji || '🏢';
+                  span.style.marginRight = '0.5rem';
+                  e.target.parentNode.insertBefore(span, e.target);
+                }}
+              />
+            ) : (
+              currentClientInfo.emoji + ' '
+            )}
+            {currentClientInfo.name} News
+          </Title>
           <Subtitle>Latest news from our valued clients</Subtitle>
         </Header>
         
@@ -207,10 +369,30 @@ function ClientNews() {
             <ClientFilter
               key={clientNetwork.path}
               to={clientNetwork.path}
+              color={clientNetwork.color}
               active={clientNetwork.path === `/clients/${currentClient}` || 
                      (currentClient === 'all' && clientNetwork.path === '/clients')}
             >
-              {clientNetwork.emoji} {clientNetwork.name}
+                {clientNetwork.logo === 'multi' ? (
+                  <MultiLogo>
+                    {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
+                      <img key={index} src={logo} alt={`Client ${index + 1}`} />
+                    ))}
+                  </MultiLogo>
+                ) : (
+                  <ClientLogo 
+                    src={clientNetwork.logo} 
+                    alt={clientNetwork.name}
+                    onError={(e) => {
+                      // Fallback to emoji if logo fails to load
+                      e.target.style.display = 'none';
+                      const span = document.createElement('span');
+                      span.textContent = clientNetwork.emoji || '🏢';
+                      e.target.parentNode.insertBefore(span, e.target);
+                    }}
+                  />
+                )}
+                {clientNetwork.name}
             </ClientFilter>
           ))}
         </ClientFilters>
