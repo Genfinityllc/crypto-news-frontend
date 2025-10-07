@@ -142,8 +142,8 @@ const ArticleEditor = styled.div`
   h2 { 
     font-size: 1.3rem; 
     color: #000000;
-    border-bottom: 2px solid #0066cc;
-    padding-bottom: 4px;
+    margin: 1.5rem 0 0.5rem 0;
+    padding: 0;
   }
   h3 { font-size: 1.1rem; }
   
