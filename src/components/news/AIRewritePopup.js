@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
-import { generateNanoBananaImage, generateNanoBananaImageFromData } from '../../services/api';
+import { generateLoRAImage, generateLoRAImageFromData, getLoRAStatus } from '../../services/api';
 import { toast } from 'react-toastify';
 
 const Overlay = styled.div`
@@ -329,6 +329,36 @@ const GeneratedImage = styled.img`
   border: 2px solid #0066cc;
 `;
 
+const CreditsDisplay = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: ${props => {
+    if (props.status === 'Active') return 'rgba(34, 197, 94, 0.1)';
+    if (props.status === 'Quota Exceeded') return 'rgba(239, 68, 68, 0.1)';
+    return 'rgba(156, 163, 175, 0.1)';
+  }};
+  border: 1px solid ${props => {
+    if (props.status === 'Active') return '#22c55e';
+    if (props.status === 'Quota Exceeded') return '#ef4444';
+    return '#9ca3af';
+  }};
+  color: ${props => {
+    if (props.status === 'Active') return '#22c55e';
+    if (props.status === 'Quota Exceeded') return '#ef4444';
+    return '#9ca3af';
+  }};
+`;
+
+const CreditsIcon = styled.span`
+  font-size: 0.7rem;
+`;
+
 const AIRewritePopup = ({ 
   isOpen, 
   onClose, 
@@ -340,9 +370,13 @@ const AIRewritePopup = ({
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imagePrompt, setImagePrompt] = useState('');
-  const [useNanoBanana, setUseNanoBanana] = useState(true);
+  const [intelligentPrompt, setIntelligentPrompt] = useState('');
+  const [useLoRA, setUseLoRA] = useState(true);
   const [editableTitle, setEditableTitle] = useState('');
   const [editableContent, setEditableContent] = useState('');
+  const [loraStatus, setLoraStatus] = useState(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [downloadingImage, setDownloadingImage] = useState(false);
 
   // Initialize editable content when rewrite data loads
   React.useEffect(() => {
@@ -367,10 +401,36 @@ const AIRewritePopup = ({
       setEditableTitle(finalTitle);
       setEditableContent(finalContent);
       
-      const defaultPrompt = `Create a professional cryptocurrency news cover image for "${finalTitle}". Use modern design with blue/teal accents, blockchain-inspired elements, and ${article?.network || 'crypto'} branding. Style: clean, corporate, high-tech with subtle grid patterns. Include abstract crypto symbols and professional gradients.`;
-      setImagePrompt(defaultPrompt);
+      // Use intelligent prompt if available, otherwise generate default
+      const intelligentCoverPrompt = safeData.intelligentCoverPrompt || `Create a professional cryptocurrency news cover image for "${finalTitle}". Use modern design with blue/teal accents, blockchain-inspired elements, and ${article?.network || 'crypto'} branding. Style: clean, corporate, high-tech with subtle grid patterns. Include abstract crypto symbols and professional gradients.`;
+      
+      setIntelligentPrompt(intelligentCoverPrompt);
+      setImagePrompt(intelligentCoverPrompt);
     }
   }, [rewriteData, isOpen, article]);
+
+  // Fetch LoRA status when popup opens
+  React.useEffect(() => {
+    if (isOpen && showImageGenerator) {
+      setLoadingStatus(true);
+      getLoRAStatus()
+        .then(response => {
+          setLoraStatus(response);
+        })
+        .catch(error => {
+          console.error('Failed to fetch LoRA status:', error);
+          setLoraStatus({ 
+            available: false, 
+            service: 'LoRA AI',
+            status: 'Error',
+            error: 'Failed to check status'
+          });
+        })
+        .finally(() => {
+          setLoadingStatus(false);
+        });
+    }
+  }, [isOpen, showImageGenerator]);
 
   // Lock body scroll when popup is open
   React.useEffect(() => {
@@ -408,6 +468,54 @@ const AIRewritePopup = ({
     handleCopy(fullContent, 'Full article');
   };
 
+  const handleCopyWordPressFormat = () => {
+    // Copy content optimized for WordPress (no line breaks)
+    const wordpressContent = editableContent
+      .replace(/\n\s*\n/g, ' ')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    const fullContent = `${editableTitle}\n\n${wordpressContent}`;
+    handleCopy(fullContent, 'WordPress-ready article');
+  };
+
+  const handleDownloadImage = async () => {
+    if (!generatedImage) return;
+    
+    setDownloadingImage(true);
+    try {
+      // Create a safe filename from the title
+      const safeTitle = editableTitle
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '_')
+        .substring(0, 50);
+      
+      const filename = `${safeTitle}_cover.png`;
+      
+      // Fetch the image and create download
+      const response = await fetch(generatedImage);
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`📥 Cover image downloaded as ${filename}`);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to download image. Try right-clicking to save.');
+    } finally {
+      setDownloadingImage(false);
+    }
+  };
+
   const handleContentChange = (e) => {
     setEditableContent(e.target.innerHTML);
   };
@@ -417,49 +525,51 @@ const AIRewritePopup = ({
     try {
       let imageResult;
       
+      // Enhanced data for intelligent generation
+      const enhancedData = {
+        title: editableTitle,
+        content: editableContent,
+        network: article?.network || 'cryptocurrency',
+        category: article?.category || 'market',
+        source: article?.source || 'analysis',
+        intelligentPrompt: imagePrompt,
+        cryptoElements: safeRewriteData.cryptoElements || {}
+      };
+      
       if (article?.id) {
-        // Database article - use generateNanoBananaImage
-        console.log('🎨 Generating Nano Banana image for database article:', article.title);
-        imageResult = await generateNanoBananaImage(article.id, {
+        // Database article - use generateLoRAImage with enhanced prompt
+        console.log('🎨 Generating intelligent LoRA image for database article:', editableTitle);
+        imageResult = await generateLoRAImage(article.id, {
           prompt: imagePrompt,
-          style: useNanoBanana ? 'professional' : 'default',
-          size: 'medium'
+          style: useLoRA ? 'professional' : 'default',
+          size: 'large',
+          enhancedData: enhancedData
         });
       } else {
-        // RSS article or rewrite data - use generateNanoBananaImageFromData
-        console.log('🎨 Generating Nano Banana image for content:', safeRewriteData.title);
-        const articleData = {
-          title: safeRewriteData.title,
-          content: safeRewriteData.content,
-          network: article?.network || 'cryptocurrency',
-          category: article?.category || 'market',
-          source: article?.source || 'analysis'
-        };
-        imageResult = await generateNanoBananaImageFromData(articleData, {
+        // RSS article or rewrite data - use generateLoRAImageFromData
+        console.log('🎨 Generating intelligent LoRA image for content:', editableTitle);
+        imageResult = await generateLoRAImageFromData(enhancedData, {
           prompt: imagePrompt,
-          style: useNanoBanana ? 'professional' : 'default',
-          size: 'medium'
+          style: useLoRA ? 'professional' : 'default',
+          size: 'large'
         });
       }
       
-      // Set the generated image
-      const imageUrl = imageResult.path || imageResult.url || imageResult;
+      // Set the generated image - handle LoRA response structure
+      const imageUrl = imageResult.data?.coverImage || imageResult.coverImage || imageResult.path || imageResult.url || imageResult;
       setGeneratedImage(imageUrl);
       if (onImageGenerated) {
         onImageGenerated(imageUrl);
       }
-      toast.success('🎨 Cover image generated successfully with Nano Banana AI!');
+      toast.success('🎨 Intelligent cover generated with network logos and visual elements!');
       
     } catch (error) {
-      console.error('Nano Banana image generation error:', error);
+      console.error('Intelligent cover generation error:', error);
       
-      // Fallback to mock image if API fails
-      const fallbackImageUrl = `https://picsum.photos/800/450?random=${Date.now()}&blur=1`;
-      setGeneratedImage(fallbackImageUrl);
-      if (onImageGenerated) {
-        onImageGenerated(fallbackImageUrl);
-      }
-      toast.error('API connection failed - using placeholder image. Check backend server.');
+      // Fallback: Generate placeholder with network branding
+      const fallbackUrl = `https://via.placeholder.com/1800x900/4A90E2/FFFFFF?text=${encodeURIComponent(editableTitle.substring(0, 30))}`;
+      setGeneratedImage(fallbackUrl);
+      toast.warning('Using fallback image generation. Check AI service connection.');
     } finally {
       setGeneratingImage(false);
     }
@@ -507,16 +617,20 @@ const AIRewritePopup = ({
               <MetricValue>{safeRewriteData.readabilityScore || 98}%</MetricValue>
             </Metric>
             <Metric>
+              <MetricLabel>SEO Score</MetricLabel>
+              <MetricValue>{safeRewriteData.seoScore || 97}%</MetricValue>
+            </Metric>
+            <Metric>
               <MetricLabel>Word Count</MetricLabel>
               <MetricValue>{safeRewriteData.wordCount || 'N/A'}</MetricValue>
             </Metric>
             <Metric>
-              <MetricLabel>Sources</MetricLabel>
-              <MetricValue>{safeRewriteData.sources?.length || 5}+</MetricValue>
+              <MetricLabel>Title Words</MetricLabel>
+              <MetricValue>{editableTitle.split(' ').length}</MetricValue>
             </Metric>
             <Metric>
-              <MetricLabel>SEO Score</MetricLabel>
-              <MetricValue>97%</MetricValue>
+              <MetricLabel>Sources</MetricLabel>
+              <MetricValue>{safeRewriteData.sources?.length || 5}+</MetricValue>
             </Metric>
           </MetricsBar>
 
@@ -539,54 +653,93 @@ const AIRewritePopup = ({
               variant="primary" 
               onClick={handleCopyFullArticle}
             >
-              📋 Copy Full Article
+              📋 Copy Article
             </ActionButton>
             
             <ActionButton 
               variant="success" 
-              onClick={() => setShowImageGenerator(!showImageGenerator)}
+              onClick={handleCopyWordPressFormat}
+              style={{ background: 'linear-gradient(45deg, #16a34a, #22c55e)' }}
             >
-              🎨 Generate Cover Image
+              🌐 Copy for WordPress
             </ActionButton>
+            
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <ActionButton 
+                variant="success" 
+                onClick={() => setShowImageGenerator(!showImageGenerator)}
+              >
+                🎨 Generate Cover Image
+              </ActionButton>
+              
+              {showImageGenerator && (
+                <CreditsDisplay status={loraStatus?.available ? 'Active' : 'Unavailable'}>
+                  <CreditsIcon>
+                    {loadingStatus ? '⏳' : 
+                     loraStatus?.available ? '🤖' : 
+                     '⚠️'}
+                  </CreditsIcon>
+                  {loadingStatus ? 'Checking...' : 
+                   loraStatus ? `LoRA ${loraStatus.available ? 'Ready' : 'Unavailable'}` : 'Unknown'}
+                </CreditsDisplay>
+              )}
+            </div>
             
             <CopyButton onClick={() => handleCopy(editableTitle, 'Title')}>
               Copy Title
             </CopyButton>
             
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✅ Google Ads Ready</span>
+              <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✅ WordPress Ready</span>
               <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✅ Copyright Safe</span>
-              <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✅ SEO Optimized</span>
+              <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✅ 3-5 Word Title</span>
             </div>
           </Actions>
 
           {showImageGenerator && (
             <ImageSection>
               <ImageSectionTitle>
-                🎨 Generate Cover Image with Nano Banana
+                🤖 Generate Cover Image with LoRA AI
               </ImageSectionTitle>
               
               <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <input
                   type="checkbox"
-                  checked={useNanoBanana}
-                  onChange={(e) => setUseNanoBanana(e.target.checked)}
+                  checked={useLoRA}
+                  onChange={(e) => setUseLoRA(e.target.checked)}
                   style={{ width: '18px', height: '18px', accentColor: '#0066cc' }}
                 />
                 <span style={{ color: '#0066cc', fontWeight: '600' }}>
-                  Use Nano Banana AI Generation (Recommended)
+                  Use LoRA AI Generation (Recommended)
                 </span>
               </div>
 
               <PromptEditor>
                 <PromptLabel>
-                  Image Generation Prompt (Edit to customize your image):
+                  🤖 Intelligent Image Prompt (Auto-generated with network logos & themes):
                 </PromptLabel>
                 <PromptTextarea
                   value={imagePrompt}
                   onChange={(e) => setImagePrompt(e.target.value)}
-                  placeholder="Describe how you want your cover image to look..."
+                  placeholder="AI-generated prompt with network branding and visual elements..."
+                  style={{ 
+                    background: intelligentPrompt ? '#1a2f1a' : '#2a2a2a',
+                    border: intelligentPrompt ? '1px solid #22c55e' : '1px solid #666'
+                  }}
                 />
+                {intelligentPrompt && (
+                  <div style={{ 
+                    marginTop: '8px', 
+                    padding: '8px 12px', 
+                    background: 'rgba(34, 197, 94, 0.1)', 
+                    border: '1px solid #22c55e', 
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    color: '#22c55e'
+                  }}>
+                    🧠 AI detected: {safeRewriteData.cryptoElements?.primaryNetwork || 'Crypto'} network with {safeRewriteData.cryptoElements?.themes?.join(', ') || 'market'} themes
+                  </div>
+                )}
               </PromptEditor>
 
               <ActionButton
@@ -595,15 +748,35 @@ const AIRewritePopup = ({
                 disabled={generatingImage || !imagePrompt.trim()}
               >
                 {generatingImage 
-                  ? (useNanoBanana ? '🤖 AI Generating...' : '🎨 Generating...') 
-                  : (useNanoBanana ? '🤖 Generate with AI' : '🎨 Generate Image')
+                  ? (useLoRA ? '🤖 LoRA Generating...' : '🎨 Generating...') 
+                  : (useLoRA ? '🤖 Generate with LoRA' : '🎨 Generate Image')
                 }
               </ActionButton>
 
               {generatedImage && (
                 <div style={{ marginTop: '16px' }}>
-                  <h5 style={{ color: '#0066cc', marginBottom: '8px' }}>Generated Cover Image:</h5>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h5 style={{ color: '#0066cc', margin: 0 }}>🎨 Generated Cover Image:</h5>
+                    <ActionButton
+                      variant="success"
+                      onClick={handleDownloadImage}
+                      disabled={downloadingImage}
+                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                    >
+                      {downloadingImage ? '⬇️ Downloading...' : '⬇️ Download'}
+                    </ActionButton>
+                  </div>
                   <GeneratedImage src={generatedImage} alt="Generated cover" />
+                  <div style={{ 
+                    marginTop: '8px', 
+                    padding: '8px', 
+                    background: 'rgba(0, 102, 204, 0.1)', 
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    color: '#0066cc'
+                  }}>
+                    💡 <strong>WordPress Ready:</strong> Right-click to save, or use download button for optimized file
+                  </div>
                 </div>
               )}
             </ImageSection>

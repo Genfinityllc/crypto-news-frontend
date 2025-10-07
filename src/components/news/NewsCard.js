@@ -944,16 +944,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
             Read Full Article →
           </ActionButton>
           
-          <ActionButton
-            onClick={handleGenerateImage}
-            disabled={generatingImage}
-            style={{ 
-              background: generatingImage ? '#22c55e80' : 'linear-gradient(45deg, #22c55e, #4ade80)',
-              opacity: generatingImage ? 0.7 : 1
-            }}
-          >
-            {generatingImage ? '🎨 Generating...' : '🎨 Quick Generate Image'}
-          </ActionButton>
           
           <CopyButton 
             onClick={() => handleCopy('title')}

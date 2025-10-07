@@ -267,15 +267,20 @@ export const batchGenerateCardImages = (articleIds, size = 'medium') => {
   return api.post('/news/generate-card-images/batch', { articleIds, size });
 };
 
-// Nano Banana AI Image Generation
-export const generateNanoBananaImage = (articleId, options = {}) => {
+// LoRA AI Image Generation
+export const generateLoRAImage = (articleId, options = {}) => {
   const { size = 'medium', style = 'professional' } = options;
-  return api.post(`/news/generate-nano-banana-image/${articleId}`, { size, style });
+  return api.post(`/news/generate-lora-image/${articleId}`, { size, style });
 };
 
-export const generateNanoBananaImageFromData = (articleData, options = {}) => {
+export const generateLoRAImageFromData = (articleData, options = {}) => {
   const { size = 'medium', style = 'professional' } = options;
-  return api.post('/news/generate-nano-banana-image', { ...articleData, size, style });
+  return api.post('/news/generate-lora-image', { ...articleData, size, style });
+};
+
+// Get LoRA AI status
+export const getLoRAStatus = () => {
+  return api.get('/news/ai-services-status');
 };
 
 // Client Network Metadata API calls
