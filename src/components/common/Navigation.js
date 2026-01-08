@@ -256,8 +256,16 @@ export default function Navigation() {
 
         <NavLinks isOpen={mobileMenuOpen}>
           <NavLink 
+            to="/" 
+            isActive={location.pathname === '/' || location.pathname === '/cover-generator'}
+            onClick={closeMobileMenu}
+          >
+            Cover Generator
+          </NavLink>
+          
+          <NavLink 
             to="/all" 
-            isActive={location.pathname === '/' || location.pathname === '/all'}
+            isActive={location.pathname === '/all'}
             onClick={closeMobileMenu}
           >
             All News
@@ -277,14 +285,6 @@ export default function Navigation() {
             onClick={closeMobileMenu}
           >
             Dashboard
-          </NavLink>
-          
-          <NavLink 
-            to="/cover-generator" 
-            isActive={location.pathname === '/cover-generator'}
-            onClick={closeMobileMenu}
-          >
-            Cover Generator
           </NavLink>
           
           {currentUser && (

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import styled from 'styled-components';
 import NewsCard from '../components/news/NewsCard';
-import { useFastNews } from '../hooks/useFastNews';
+import { usePreloadedNews } from '../contexts/NewsPreloadContext';
 
 const Container = styled.div`
   max-width: 1200px;
@@ -108,28 +108,49 @@ const ArticleCount = styled.div`
   margin-bottom: 1rem;
 `;
 
+const RefreshButton = styled.button`
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  
+  &:hover {
+    background: #0056b3;
+  }
+`;
+
 /**
- * 📰 ALL NEWS PAGE - Shows all cryptocurrency news articles
+ * ALL NEWS PAGE - Shows all cryptocurrency news articles
  * 
- * Features:
- * - Chronological ordering (newest first)  
- * - 100% guaranteed working images
- * - Persistent state on page refresh
- * - Real-time updates from RSS feeds
+ * Uses preloaded news from context for instant loading.
+ * Falls back to fetching if preload hasn't completed.
  */
 function AllNews() {
   const { 
-    news, 
+    allNews, 
     loading, 
     error, 
-    refreshNews 
-  } = useFastNews();
+    refreshNews,
+    fetchAllNews,
+    isPreloaded 
+  } = usePreloadedNews();
 
-  if (loading) {
+  // Ensure news is loaded if we navigate here directly
+  useEffect(() => {
+    if (!isPreloaded && !loading) {
+      fetchAllNews();
+    }
+  }, [isPreloaded, loading, fetchAllNews]);
+
+  // Show loading only if not preloaded AND actively loading
+  if (loading && !isPreloaded) {
     return (
       <Container>
         <Header>
-          <Title>🌐 All Crypto News</Title>
+          <Title>All Crypto News</Title>
           <Subtitle>Complete cryptocurrency news from all sources</Subtitle>
         </Header>
         <LoadingMessage>Loading latest news articles...</LoadingMessage>
@@ -137,30 +158,19 @@ function AllNews() {
     );
   }
 
-  if (error) {
+  if (error && allNews.length === 0) {
     return (
       <Container>
         <Header>
-          <Title>🌐 All Crypto News</Title>
+          <Title>All Crypto News</Title>
           <Subtitle>Complete cryptocurrency news from all sources</Subtitle>
         </Header>
         <ErrorMessage>
-          Error loading news: {error.message || 'Unknown error occurred'}
+          Error loading news: {error}
           <br />
-          <button 
-            onClick={refreshNews}
-            style={{ 
-              marginTop: '1rem', 
-              padding: '0.5rem 1rem', 
-              background: '#ff6b6b', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
+          <RefreshButton onClick={refreshNews}>
             Retry
-          </button>
+          </RefreshButton>
         </ErrorMessage>
       </Container>
     );
@@ -169,15 +179,16 @@ function AllNews() {
   return (
     <Container>
       <Header>
-        <Title>🌐 All Crypto News</Title>
+        <Title>All Crypto News</Title>
         <Subtitle>Complete cryptocurrency news from all sources • Updated in real-time</Subtitle>
         <ArticleCount>
-          {news.length} articles with confirmed images
+          {allNews.length} articles with confirmed images
+          {loading && ' (refreshing...)'}
         </ArticleCount>
       </Header>
 
       <NewsGrid>
-        {news.map((article) => (
+        {allNews.map((article) => (
           <NewsCard
             key={article.id || article.url}
             article={article}
@@ -185,24 +196,13 @@ function AllNews() {
         ))}
       </NewsGrid>
 
-      {news.length === 0 && !loading && (
+      {allNews.length === 0 && !loading && (
         <LoadingMessage>
           No articles found. This may happen if image validation is in progress.
           <br />
-          <button 
-            onClick={refreshNews}
-            style={{ 
-              marginTop: '1rem', 
-              padding: '0.5rem 1rem', 
-              background: '#007bff', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
+          <RefreshButton onClick={refreshNews}>
             Refresh Articles
-          </button>
+          </RefreshButton>
         </LoadingMessage>
       )}
     </Container>

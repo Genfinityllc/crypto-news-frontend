@@ -5,6 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import styled, { createGlobalStyle } from 'styled-components';
 
 import { AuthProvider } from './contexts/AuthContext';
+import { NewsPreloadProvider } from './contexts/NewsPreloadContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Navigation from './components/common/Navigation';
 
@@ -86,78 +87,78 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <GlobalStyle />
-        <AppContainer>
-          <Navigation />
-          <MainContent>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/login" element={<LoginForm />} />
-              <Route path="/signup" element={<SignupForm />} />
-              
-              {/* News Routes - Public with guaranteed images */}
-              <Route path="/all" element={<AllNews />} />
-              <Route path="/clients" element={<ClientNews />} />
-              <Route path="/clients/:client" element={<ClientNews />} />
-              
-              {/* Cover Generator - Public */}
-              <Route path="/cover-generator" element={<CoverGenerator />} />
-              
-              {/* Protected routes */}
-              <Route 
-                path="/dashboard" 
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/profile" 
-                element={
-                  <ProtectedRoute>
-                    <ProfileManager />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/bookmarks" 
-                element={
-                  <ProtectedRoute>
-                    <Bookmarks />
-                  </ProtectedRoute>
-                } 
-              />
-              
-              {/* Default routes */}
-              <Route path="/" element={<AllNews />} />
-              
-              {/* Redirect unknown routes */}
-              <Route path="*" element={<Navigate to="/all" replace />} />
-            </Routes>
-          </MainContent>
+        <NewsPreloadProvider>
+          <GlobalStyle />
+          <AppContainer>
+            <Navigation />
+            <MainContent>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/login" element={<LoginForm />} />
+                <Route path="/signup" element={<SignupForm />} />
+                
+                {/* Cover Generator - NEW LANDING PAGE */}
+                <Route path="/" element={<CoverGenerator />} />
+                <Route path="/cover-generator" element={<CoverGenerator />} />
+                
+                {/* News Routes - Public with guaranteed images */}
+                <Route path="/all" element={<AllNews />} />
+                <Route path="/clients" element={<ClientNews />} />
+                <Route path="/clients/:client" element={<ClientNews />} />
+                
+                {/* Protected routes */}
+                <Route 
+                  path="/dashboard" 
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/profile" 
+                  element={
+                    <ProtectedRoute>
+                      <ProfileManager />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/bookmarks" 
+                  element={
+                    <ProtectedRoute>
+                      <Bookmarks />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                {/* Redirect unknown routes to landing page */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </MainContent>
+            
+            <Footer>
+              <p>
+                Crypto News Curator &copy; 2024 | 
+                Powered by <a href="https://firebase.google.com" target="_blank" rel="noopener noreferrer">Firebase</a> & 
+                <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a>
+              </p>
+            </Footer>
+          </AppContainer>
           
-          <Footer>
-            <p>
-              Crypto News Curator &copy; 2024 | 
-              Powered by <a href="https://firebase.google.com" target="_blank" rel="noopener noreferrer">Firebase</a> & 
-              <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a>
-            </p>
-          </Footer>
-        </AppContainer>
-        
-        <ToastContainer
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="dark"
-        />
+          <ToastContainer
+            position="top-right"
+            autoClose={3000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="dark"
+          />
+        </NewsPreloadProvider>
       </AuthProvider>
     </Router>
   );
