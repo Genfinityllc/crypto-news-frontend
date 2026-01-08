@@ -51,9 +51,7 @@ const CardTitle = styled.h2`
   font-size: 1.25rem;
   font-weight: 600;
   margin-bottom: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  color: #e6edf3;
 `;
 
 const InputSection = styled.div`
@@ -95,10 +93,43 @@ const TextInput = styled.input`
   }
 `;
 
+const DropdownSection = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const DropdownLabel = styled.label`
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.9rem;
+`;
+
+const SelectDropdown = styled.select`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 1rem;
+  cursor: pointer;
+  
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+  }
+  
+  option {
+    background: #0d1117;
+    color: #e6edf3;
+  }
+`;
+
 const Divider = styled.div`
   display: flex;
   align-items: center;
-  margin: 1.5rem 0;
+  margin: 1rem 0;
   color: #8b949e;
   font-size: 0.85rem;
   
@@ -111,92 +142,6 @@ const Divider = styled.div`
   
   span {
     padding: 0 1rem;
-  }
-`;
-
-const NetworkGridToggle = styled.button`
-  width: 100%;
-  padding: 0.75rem;
-  background: transparent;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  color: #8b949e;
-  font-size: 0.9rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.2s;
-  
-  &:hover {
-    border-color: #00d4ff;
-    color: #e6edf3;
-  }
-`;
-
-const NetworkGridContainer = styled.div`
-  margin-top: 1rem;
-  display: ${props => props.show ? 'block' : 'none'};
-`;
-
-const SearchInput = styled.input`
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  color: #e6edf3;
-  font-size: 0.9rem;
-  margin-bottom: 0.75rem;
-  
-  &:focus {
-    outline: none;
-    border-color: #00d4ff;
-  }
-  
-  &::placeholder {
-    color: #6e7681;
-  }
-`;
-
-const NetworkGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-  max-height: 250px;
-  overflow-y: auto;
-  padding-right: 0.5rem;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: #0d1117;
-    border-radius: 3px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 3px;
-  }
-`;
-
-const NetworkButton = styled.button`
-  padding: 0.5rem;
-  background: ${props => props.selected ? 'rgba(0, 212, 255, 0.15)' : '#0d1117'};
-  border: 1px solid ${props => props.selected ? '#00d4ff' : 'transparent'};
-  border-radius: 8px;
-  color: #e6edf3;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    border-color: #30363d;
-    background: rgba(0, 212, 255, 0.05);
   }
 `;
 
@@ -311,9 +256,6 @@ const ActionButton = styled.button`
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   
   &:hover {
     border-color: #00d4ff;
@@ -387,12 +329,12 @@ const ErrorMessage = styled.div`
 
 export default function CoverGenerator() {
   const [networks, setNetworks] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [networkInput, setNetworkInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedNetwork, setSelectedNetwork] = useState('');
+  const [selectedCompany, setSelectedCompany] = useState('');
   const [articleTitle, setArticleTitle] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingNetworks, setLoadingNetworks] = useState(true);
-  const [showNetworkGrid, setShowNetworkGrid] = useState(false);
   const [currentImage, setCurrentImage] = useState(null);
   const [currentMeta, setCurrentMeta] = useState(null);
   const [history, setHistory] = useState([]);
@@ -411,13 +353,13 @@ export default function CoverGenerator() {
       
       if (data.success) {
         setNetworks(data.networks || []);
+        setCompanies(data.companies || []);
       } else {
         throw new Error(data.error || 'Failed to load networks');
       }
     } catch (err) {
       console.error('Failed to load networks:', err);
-      setError('Could not load network suggestions. You can still type any network name.');
-      // Set some default networks as fallback
+      // Set fallback data
       setNetworks([
         { symbol: 'BTC', name: 'Bitcoin' },
         { symbol: 'ETH', name: 'Ethereum' },
@@ -426,21 +368,32 @@ export default function CoverGenerator() {
         { symbol: 'HBAR', name: 'Hedera' },
         { symbol: 'ADA', name: 'Cardano' },
         { symbol: 'DOGE', name: 'Dogecoin' },
-        { symbol: 'WLFI', name: 'World Liberty Financial' },
       ]);
-    } finally {
-      setLoadingNetworks(false);
+      setCompanies([
+        { symbol: 'WLFI', name: 'World Liberty Financial' },
+        { symbol: 'BLACKROCK', name: 'BlackRock' },
+        { symbol: 'GRAYSCALE', name: 'Grayscale' },
+      ]);
     }
   };
 
-  const filteredNetworks = networks.filter(n => 
-    n.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (n.name && n.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Update input when dropdown changes
+  const handleNetworkSelect = (e) => {
+    const value = e.target.value;
+    setSelectedNetwork(value);
+    setSelectedCompany('');
+    if (value) {
+      setNetworkInput(value);
+    }
+  };
 
-  const handleNetworkSelect = (symbol) => {
-    setNetworkInput(symbol);
-    setShowNetworkGrid(false);
+  const handleCompanySelect = (e) => {
+    const value = e.target.value;
+    setSelectedCompany(value);
+    setSelectedNetwork('');
+    if (value) {
+      setNetworkInput(value);
+    }
   };
 
   const handleGenerate = async () => {
@@ -517,7 +470,7 @@ export default function CoverGenerator() {
   return (
     <PageContainer>
       <Header>
-        <Title>🎨 Cover Generator</Title>
+        <Title>Cover Generator</Title>
         <Subtitle>Create stunning 3D cryptocurrency cover images</Subtitle>
       </Header>
 
@@ -525,56 +478,59 @@ export default function CoverGenerator() {
         {/* Left Panel: Controls */}
         <div>
           <Card>
-            <CardTitle>🪙 Network / Company</CardTitle>
+            <CardTitle>Network / Company</CardTitle>
             
             <InputSection>
-              <label htmlFor="networkInput">Enter network or company name:</label>
+              <label htmlFor="networkInput">Enter name or select from dropdown:</label>
               <TextInput
                 type="text"
                 id="networkInput"
                 placeholder="e.g., Bitcoin, WLFI, Hedera, BlackRock..."
                 value={networkInput}
-                onChange={(e) => setNetworkInput(e.target.value)}
+                onChange={(e) => {
+                  setNetworkInput(e.target.value);
+                  setSelectedNetwork('');
+                  setSelectedCompany('');
+                }}
                 hasValue={networkInput.length > 0}
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
               />
               <div className="hint">Type any crypto network, token, or company name</div>
             </InputSection>
 
-            <Divider><span>or browse networks</span></Divider>
+            <Divider><span>or select from list</span></Divider>
 
-            <NetworkGridToggle onClick={() => setShowNetworkGrid(!showNetworkGrid)}>
-              {showNetworkGrid ? '▲ Hide' : '▼ Show'} Network List ({networks.length})
-            </NetworkGridToggle>
+            <DropdownSection>
+              <DropdownLabel>Cryptocurrency Networks</DropdownLabel>
+              <SelectDropdown 
+                value={selectedNetwork} 
+                onChange={handleNetworkSelect}
+              >
+                <option value="">-- Select Network --</option>
+                {networks.map(n => (
+                  <option key={n.symbol} value={n.symbol}>
+                    {n.name} ({n.symbol})
+                  </option>
+                ))}
+              </SelectDropdown>
+            </DropdownSection>
 
-            <NetworkGridContainer show={showNetworkGrid}>
-              <SearchInput
-                type="text"
-                placeholder="Filter networks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              
-              {loadingNetworks ? (
-                <div style={{ textAlign: 'center', padding: '1rem', color: '#8b949e' }}>
-                  Loading networks...
-                </div>
-              ) : (
-                <NetworkGrid>
-                  {filteredNetworks.map(n => (
-                    <NetworkButton
-                      key={n.symbol}
-                      selected={networkInput.toUpperCase() === n.symbol}
-                      onClick={() => handleNetworkSelect(n.symbol)}
-                    >
-                      {n.symbol}
-                    </NetworkButton>
-                  ))}
-                </NetworkGrid>
-              )}
-            </NetworkGridContainer>
+            <DropdownSection>
+              <DropdownLabel>Companies / Institutions</DropdownLabel>
+              <SelectDropdown 
+                value={selectedCompany} 
+                onChange={handleCompanySelect}
+              >
+                <option value="">-- Select Company --</option>
+                {companies.map(c => (
+                  <option key={c.symbol} value={c.symbol}>
+                    {c.name}
+                  </option>
+                ))}
+              </SelectDropdown>
+            </DropdownSection>
 
-            <InputSection style={{ marginTop: '1.5rem' }}>
+            <InputSection style={{ marginTop: '1rem' }}>
               <label htmlFor="articleTitle">Article Title (optional)</label>
               <TextInput
                 type="text"
@@ -597,25 +553,25 @@ export default function CoverGenerator() {
                   <Spinner /> Generating (~45s)...
                 </>
               ) : (
-                <>✨ Generate Cover</>
+                <>Generate Cover</>
               )}
             </GenerateButton>
             
-            {error && <ErrorMessage>⚠️ {error}</ErrorMessage>}
+            {error && <ErrorMessage>{error}</ErrorMessage>}
           </Card>
         </div>
 
         {/* Right Panel: Results */}
         <ResultsSection>
           <Card>
-            <CardTitle>🖼️ Generated Cover</CardTitle>
+            <CardTitle>Generated Cover</CardTitle>
             
             <CurrentGeneration empty={!currentImage}>
               {currentImage ? (
                 <img src={currentImage} alt={`${currentMeta?.network} Cover`} />
               ) : (
                 <EmptyState>
-                  <div className="icon">🎨</div>
+                  <div className="icon">IMG</div>
                   <p>Enter a network name and click Generate</p>
                 </EmptyState>
               )}
@@ -624,13 +580,13 @@ export default function CoverGenerator() {
             {currentMeta && (
               <GenerationInfo>
                 <MetaInfo>
-                  <span>🪙 {currentMeta.network}</span>
-                  <span>⚡ {currentMeta.method}</span>
-                  <span>⏱️ {currentMeta.duration}</span>
+                  <span>Network: {currentMeta.network}</span>
+                  <span>Method: {currentMeta.method}</span>
+                  <span>Time: {currentMeta.duration}</span>
                 </MetaInfo>
                 <ActionButtons>
-                  <ActionButton onClick={handleDownload}>⬇️ Download</ActionButton>
-                  <ActionButton onClick={handleGenerate} disabled={loading}>🔄 Regenerate</ActionButton>
+                  <ActionButton onClick={handleDownload}>Download</ActionButton>
+                  <ActionButton onClick={handleGenerate} disabled={loading}>Regenerate</ActionButton>
                 </ActionButtons>
               </GenerationInfo>
             )}
@@ -639,7 +595,7 @@ export default function CoverGenerator() {
           {/* History */}
           <Card>
             <HistoryHeader>
-              <CardTitle>📚 Generation History</CardTitle>
+              <CardTitle>Generation History</CardTitle>
               <HistoryCount>{history.length} images</HistoryCount>
             </HistoryHeader>
             
