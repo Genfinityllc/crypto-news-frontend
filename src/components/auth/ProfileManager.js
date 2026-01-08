@@ -4,17 +4,31 @@ import { updateUserProfile } from '../../services/api';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 
+const API_BASE = 'https://crypto-news-curator-backend-production.up.railway.app';
+
 const ProfileContainer = styled.div`
-  max-width: 600px;
+  max-width: 800px;
   margin: 2rem auto;
   padding: 2rem;
-  background: #1a1a1a;
-  border-radius: 12px;
-  border: 1px solid #333;
 `;
 
 const Title = styled.h2`
   color: white;
+  margin-bottom: 1.5rem;
+`;
+
+const SectionTitle = styled.h3`
+  color: white;
+  margin: 2rem 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #333;
+`;
+
+const Card = styled.div`
+  background: #1a1a1a;
+  border-radius: 12px;
+  border: 1px solid #333;
+  padding: 1.5rem;
   margin-bottom: 1.5rem;
 `;
 
@@ -83,6 +97,8 @@ const CheckboxGroup = styled.div`
   background: #2a2a2a;
   border-radius: 6px;
   border: 1px solid #444;
+  max-height: 300px;
+  overflow-y: auto;
 `;
 
 const CheckboxItem = styled.label`
@@ -99,9 +115,9 @@ const CheckboxItem = styled.label`
 
 const Button = styled.button`
   padding: 12px 24px;
-  background: #0066cc;
+  background: ${props => props.secondary ? 'transparent' : '#0066cc'};
   color: white;
-  border: none;
+  border: ${props => props.secondary ? '1px solid #444' : 'none'};
   border-radius: 6px;
   font-size: 16px;
   font-weight: 600;
@@ -109,7 +125,7 @@ const Button = styled.button`
   transition: all 0.2s;
 
   &:hover:not(:disabled) {
-    background: #0052a3;
+    background: ${props => props.secondary ? '#333' : '#0052a3'};
   }
 
   &:disabled {
@@ -136,8 +152,76 @@ const UserInfo = styled.div`
   }
 `;
 
+const GenerationsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+`;
+
+const GenerationItem = styled.div`
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #2a2a2a;
+  
+  img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+  }
+`;
+
+const GenerationOverlay = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem;
+  background: linear-gradient(transparent, rgba(0,0,0,0.8));
+`;
+
+const NetworkTag = styled.span`
+  display: inline-block;
+  padding: 0.2rem 0.4rem;
+  background: #0066cc;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+`;
+
+const ButtonRow = styled.div`
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+`;
+
+const ErrorMessage = styled.div`
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid #ff4444;
+  color: #ff6666;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+`;
+
+const SuccessMessage = styled.div`
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid #22c55e;
+  color: #4ade80;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+`;
+
 export default function ProfileManager() {
-  const { currentUser, userProfile, refreshProfile } = useAuth();
+  const { currentUser, userProfile, refreshProfile, changePassword } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
     displayName: '',
@@ -152,6 +236,18 @@ export default function ProfileManager() {
     }
   });
   const [loading, setLoading] = useState(false);
+  const [generations, setGenerations] = useState([]);
+  const [loadingGenerations, setLoadingGenerations] = useState(true);
+  
+  // Password change state
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
     if (userProfile) {
@@ -170,6 +266,34 @@ export default function ProfileManager() {
       });
     }
   }, [userProfile]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchUserGenerations();
+    }
+  }, [currentUser]);
+
+  const fetchUserGenerations = async () => {
+    try {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch(`${API_BASE}/api/cover-generator/my-covers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setGenerations(data.covers || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch generations:', error);
+    } finally {
+      setLoadingGenerations(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -200,6 +324,16 @@ export default function ProfileManager() {
         [name]: value
       }));
     }
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setPasswordError('');
+    setPasswordSuccess('');
   };
 
   const handleCategoryChange = (category) => {
@@ -255,6 +389,43 @@ export default function ProfileManager() {
     }
   };
 
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      await changePassword(passwordData.currentPassword, passwordData.newPassword);
+      setPasswordSuccess('Password changed successfully!');
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+      toast.success('Password changed successfully!');
+    } catch (error) {
+      console.error('Password change error:', error);
+      if (error.code === 'auth/wrong-password') {
+        setPasswordError('Current password is incorrect');
+      } else {
+        setPasswordError(error.message || 'Failed to change password');
+      }
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   if (!currentUser) {
     return <div>Please sign in to view your profile.</div>;
   }
@@ -263,53 +434,141 @@ export default function ProfileManager() {
     <ProfileContainer>
       <Title>User Profile</Title>
       
-      <UserInfo>
-        <h3>Account Information</h3>
-        <p><strong>Email:</strong> {currentUser.email}</p>
-        <p><strong>Email Verified:</strong> {currentUser.emailVerified ? 'Yes' : 'No'}</p>
-        <p><strong>Account Created:</strong> {new Date(currentUser.metadata.creationTime).toLocaleDateString()}</p>
-      </UserInfo>
+      {/* Account Information */}
+      <Card>
+        <UserInfo>
+          <h3>Account Information</h3>
+          <p><strong>Email:</strong> {currentUser.email}</p>
+          <p><strong>Email Verified:</strong> {currentUser.emailVerified ? 'Yes' : 'No'}</p>
+          <p><strong>Account Created:</strong> {new Date(currentUser.metadata.creationTime).toLocaleDateString()}</p>
+        </UserInfo>
 
-      <Form onSubmit={handleSubmit}>
-        <FormGroup>
-          <Label htmlFor="displayName">Display Name</Label>
-          <Input
-            id="displayName"
-            name="displayName"
-            type="text"
-            value={formData.displayName}
-            onChange={handleChange}
-            placeholder="Your display name"
-          />
-        </FormGroup>
+        <Form onSubmit={handleSubmit}>
+          <FormGroup>
+            <Label htmlFor="displayName">Display Name</Label>
+            <Input
+              id="displayName"
+              name="displayName"
+              type="text"
+              value={formData.displayName}
+              onChange={handleChange}
+              placeholder="Your display name"
+            />
+          </FormGroup>
 
-        <FormGroup>
-          <Label htmlFor="username">Username</Label>
-          <Input
-            id="username"
-            name="username"
-            type="text"
-            value={formData.username}
-            onChange={handleChange}
-            placeholder="Your username"
-          />
-        </FormGroup>
+          <FormGroup>
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              name="username"
+              type="text"
+              value={formData.username}
+              onChange={handleChange}
+              placeholder="Your username"
+            />
+          </FormGroup>
 
-        <FormGroup>
-          <Label htmlFor="theme">Theme</Label>
-          <Select
-            id="theme"
-            name="theme"
-            value={formData.preferences.theme}
-            onChange={handleChange}
-          >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </Select>
-        </FormGroup>
+          <FormGroup>
+            <Label htmlFor="theme">Theme</Label>
+            <Select
+              id="theme"
+              name="theme"
+              value={formData.preferences.theme}
+              onChange={handleChange}
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </Select>
+          </FormGroup>
 
-        <FormGroup>
-          <Label>Notification Preferences</Label>
+          <Button type="submit" disabled={loading}>
+            {loading ? 'Updating...' : 'Update Profile'}
+          </Button>
+        </Form>
+      </Card>
+
+      {/* Password Change Section */}
+      <SectionTitle>Change Password</SectionTitle>
+      <Card>
+        {passwordError && <ErrorMessage>{passwordError}</ErrorMessage>}
+        {passwordSuccess && <SuccessMessage>{passwordSuccess}</SuccessMessage>}
+        
+        <Form onSubmit={handlePasswordSubmit}>
+          <FormGroup>
+            <Label htmlFor="currentPassword">Current Password</Label>
+            <Input
+              id="currentPassword"
+              name="currentPassword"
+              type="password"
+              value={passwordData.currentPassword}
+              onChange={handlePasswordChange}
+              placeholder="Enter current password"
+              autoComplete="current-password"
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="newPassword">New Password</Label>
+            <Input
+              id="newPassword"
+              name="newPassword"
+              type="password"
+              value={passwordData.newPassword}
+              onChange={handlePasswordChange}
+              placeholder="Enter new password"
+              autoComplete="new-password"
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+            <Input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              value={passwordData.confirmPassword}
+              onChange={handlePasswordChange}
+              placeholder="Confirm new password"
+              autoComplete="new-password"
+            />
+          </FormGroup>
+
+          <Button type="submit" disabled={passwordLoading}>
+            {passwordLoading ? 'Changing...' : 'Change Password'}
+          </Button>
+        </Form>
+      </Card>
+
+      {/* Cover Generations Section */}
+      <SectionTitle>My Cover Generations</SectionTitle>
+      <Card>
+        {loadingGenerations ? (
+          <EmptyState>Loading generations...</EmptyState>
+        ) : generations.length === 0 ? (
+          <EmptyState>
+            <p>No saved cover generations yet.</p>
+            <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+              Generate covers from the Cover Generator page and they'll appear here.
+            </p>
+          </EmptyState>
+        ) : (
+          <GenerationsGrid>
+            {generations.map((gen, index) => (
+              <GenerationItem key={gen.id || index}>
+                <img src={gen.imageUrl} alt={gen.network} />
+                <GenerationOverlay>
+                  <NetworkTag>{gen.network}</NetworkTag>
+                </GenerationOverlay>
+              </GenerationItem>
+            ))}
+          </GenerationsGrid>
+        )}
+      </Card>
+
+      {/* Notification Preferences */}
+      <SectionTitle>Notification Preferences</SectionTitle>
+      <Card>
+        <Form onSubmit={handleSubmit}>
           <CheckboxGroup>
             <CheckboxItem>
               <input
@@ -330,30 +589,37 @@ export default function ProfileManager() {
               Push Notifications
             </CheckboxItem>
           </CheckboxGroup>
-        </FormGroup>
 
-        <FormGroup>
-          <Label>Notification Categories</Label>
-          <CheckboxGroup>
-            {['breaking', 'market', 'technology', 'regulation', 'analysis'].map(category => (
-              <CheckboxItem key={category}>
-                <input
-                  type="checkbox"
-                  checked={formData.preferences.notifications.categories.includes(category)}
-                  onChange={() => handleCategoryChange(category)}
-                />
-                {category.charAt(0).toUpperCase() + category.slice(1)} News
-              </CheckboxItem>
-            ))}
-          </CheckboxGroup>
-        </FormGroup>
+          <FormGroup>
+            <Label>Notification Categories</Label>
+            <CheckboxGroup>
+              {['breaking', 'market', 'technology', 'regulation', 'analysis'].map(category => (
+                <CheckboxItem key={category}>
+                  <input
+                    type="checkbox"
+                    checked={formData.preferences.notifications.categories.includes(category)}
+                    onChange={() => handleCategoryChange(category)}
+                  />
+                  {category.charAt(0).toUpperCase() + category.slice(1)} News
+                </CheckboxItem>
+              ))}
+            </CheckboxGroup>
+          </FormGroup>
 
-        <FormGroup>
-          <Label>Favorite Networks</Label>
+          <Button type="submit" disabled={loading}>
+            {loading ? 'Updating...' : 'Update Preferences'}
+          </Button>
+        </Form>
+      </Card>
+
+      {/* Favorite Networks */}
+      <SectionTitle>Favorite Networks</SectionTitle>
+      <Card>
+        <Form onSubmit={handleSubmit}>
           <CheckboxGroup>
             {/* Client Networks - Priority */}
             <CheckboxItem style={{ backgroundColor: '#1f2937', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.5rem' }}>
-              <strong style={{ color: '#22d3ee', fontSize: '0.9rem' }}>🌟 CLIENT NETWORKS</strong>
+              <strong style={{ color: '#22d3ee', fontSize: '0.9rem' }}>CLIENT NETWORKS</strong>
             </CheckboxItem>
             {['XRP', 'XDC Network', 'Hedera', 'Constellation', 'Algorand'].map(network => (
               <CheckboxItem key={network}>
@@ -368,19 +634,15 @@ export default function ProfileManager() {
             
             {/* Popular Networks */}
             <CheckboxItem style={{ backgroundColor: '#1f2937', padding: '0.5rem', borderRadius: '4px', margin: '1rem 0 0.5rem 0' }}>
-              <strong style={{ color: '#fbbf24', fontSize: '0.9rem' }}>🔥 POPULAR NETWORKS</strong>
+              <strong style={{ color: '#fbbf24', fontSize: '0.9rem' }}>POPULAR NETWORKS</strong>
             </CheckboxItem>
             {[
               'Bitcoin', 'Ethereum', 'BNB', 'Solana', 'Cardano', 'Dogecoin', 'Avalanche', 'Polygon', 
-              'Chainlink', 'Toncoin', 'Shiba Inu', 'Wrapped Bitcoin', 'Polkadot', 'Bitcoin Cash', 
-              'TRON', 'Near Protocol', 'Uniswap', 'Litecoin', 'Pepe', 'Internet Computer', 
-              'Kaspa', 'Aptos', 'Stellar', 'Cronos', 'Mantle', 'Ethereum Classic', 'Arbitrum',
+              'Chainlink', 'Toncoin', 'Shiba Inu', 'Polkadot', 'Bitcoin Cash', 'TRON', 'Near Protocol', 
+              'Uniswap', 'Litecoin', 'Pepe', 'Kaspa', 'Aptos', 'Stellar', 'Cronos', 'Arbitrum',
               'VeChain', 'Filecoin', 'Cosmos', 'Maker', 'Optimism', 'Injective', 'Render',
-              'Sei', 'Theta Network', 'Immutable', 'Hedera', 'Fantom', 'Rocket Pool ETH',
-              'The Graph', 'Aave', 'Bonk', 'Flow', 'Lido DAO', 'MultiversX', 'Arweave',
-              'Flare', 'ORDI', 'Sandbox', 'Quant', 'BitTorrent', 'Sui', 'Mina',
-              'dYdX', 'Axie Infinity', 'Decentraland', 'Gala', 'Enjin Coin', 'Chiliz',
-              'Kava', 'IOTA', '1inch Network', 'eCash', 'Conflux', 'SafeMoon V2'
+              'Sei', 'Theta Network', 'Immutable', 'Fantom', 'The Graph', 'Aave', 'Bonk', 
+              'Flow', 'MultiversX', 'Arweave', 'Flare', 'Sandbox', 'Quant', 'Sui', 'Mina'
             ].map(network => (
               <CheckboxItem key={network}>
                 <input
@@ -392,12 +654,12 @@ export default function ProfileManager() {
               </CheckboxItem>
             ))}
           </CheckboxGroup>
-        </FormGroup>
 
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Updating...' : 'Update Profile'}
-        </Button>
-      </Form>
+          <Button type="submit" disabled={loading}>
+            {loading ? 'Updating...' : 'Update Networks'}
+          </Button>
+        </Form>
+      </Card>
     </ProfileContainer>
   );
 }

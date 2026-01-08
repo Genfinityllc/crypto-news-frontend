@@ -815,7 +815,7 @@ const AIRewritePopup = ({
 
           <ImageSection>
             <ImageSectionTitle>
-              🎨 Universal LoRA Cover Image
+              Cover Image
             </ImageSectionTitle>
             
             {generatingImage && (
@@ -828,10 +828,7 @@ const AIRewritePopup = ({
                 border: '1px solid rgba(0, 102, 204, 0.3)'
               }}>
                 <div style={{ color: '#0066cc', marginBottom: '12px', fontSize: '1rem', fontWeight: '600' }}>
-                  🎨 Generating Universal LoRA image...
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '16px' }}>
-                  Using your HF Spaces SDXL pipeline
+                  Generating cover image...
                 </div>
                 
                 {/* Progress Bar */}
@@ -860,13 +857,13 @@ const AIRewritePopup = ({
                   color: '#aaa',
                   marginBottom: '8px'
                 }}>
-                  <span>⏱️ Typical time: 2-5 minutes</span>
-                  <span>🔄 High quality generation</span>
+                  <span>Typical time: 30-60 seconds</span>
+                  <span>High quality generation</span>
                 </div>
                 
                 {/* Status Messages */}
                 <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>
-                  Please wait while your custom LoRA model generates the perfect cover...
+                  Please wait while the cover image is being generated...
                 </div>
                 
                 <style jsx>{`

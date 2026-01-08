@@ -76,6 +76,21 @@ const LinkText = styled.p`
   }
 `;
 
+const ForgotPasswordLink = styled.button`
+  background: none;
+  border: none;
+  color: #0066cc;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: right;
+  padding: 0;
+  margin-top: -0.5rem;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
 const ErrorMessage = styled.div`
   background: #ff4444;
   color: white;
@@ -84,13 +99,39 @@ const ErrorMessage = styled.div`
   margin-bottom: 1rem;
 `;
 
+const SuccessMessage = styled.div`
+  background: #22c55e;
+  color: white;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+`;
+
+const BackButton = styled.button`
+  background: transparent;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 1rem;
+  
+  &:hover {
+    border-color: #666;
+    color: white;
+  }
+`;
+
 export default function LoginForm() {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [loading, setLoading] = useState(false);
-  const { signin, error, clearError } = useAuth();
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const { signin, resetPassword, error, clearError } = useAuth();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -100,6 +141,7 @@ export default function LoginForm() {
       [name]: value
     }));
     if (error) clearError();
+    setResetEmailSent(false);
   };
 
   const handleSubmit = async (e) => {
@@ -121,6 +163,74 @@ export default function LoginForm() {
       setLoading(false);
     }
   };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.email) {
+      toast.error('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await resetPassword(formData.email);
+      setResetEmailSent(true);
+      toast.success('Password reset email sent! Check your inbox.');
+    } catch (error) {
+      toast.error('Failed to send reset email. Please check your email address.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (showForgotPassword) {
+    return (
+      <FormContainer>
+        <BackButton onClick={() => {
+          setShowForgotPassword(false);
+          setResetEmailSent(false);
+          clearError();
+        }}>
+          ← Back to Sign In
+        </BackButton>
+        
+        <Title>Reset Password</Title>
+        
+        {error && (
+          <ErrorMessage>
+            {error}
+          </ErrorMessage>
+        )}
+        
+        {resetEmailSent && (
+          <SuccessMessage>
+            Password reset email sent! Check your inbox and follow the instructions to reset your password.
+          </SuccessMessage>
+        )}
+
+        <Form onSubmit={handleForgotPassword}>
+          <Input
+            type="email"
+            name="email"
+            placeholder="Enter your email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            autoComplete="email"
+          />
+          
+          <Button type="submit" disabled={loading || resetEmailSent}>
+            {loading ? 'Sending...' : resetEmailSent ? 'Email Sent' : 'Send Reset Email'}
+          </Button>
+        </Form>
+
+        <LinkText>
+          Remember your password? <Link to="#" onClick={() => setShowForgotPassword(false)}>Sign in</Link>
+        </LinkText>
+      </FormContainer>
+    );
+  }
 
   return (
     <FormContainer>
@@ -152,6 +262,10 @@ export default function LoginForm() {
           required
           autoComplete="current-password"
         />
+        
+        <ForgotPasswordLink type="button" onClick={() => setShowForgotPassword(true)}>
+          Forgot Password?
+        </ForgotPasswordLink>
         
         <Button type="submit" disabled={loading}>
           {loading ? 'Signing In...' : 'Sign In'}

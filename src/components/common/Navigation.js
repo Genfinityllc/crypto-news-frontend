@@ -260,7 +260,7 @@ export default function Navigation() {
             isActive={location.pathname === '/' || location.pathname === '/all'}
             onClick={closeMobileMenu}
           >
-            🌐 All News
+            All News
           </NavLink>
           
           <NavLink 
@@ -268,7 +268,7 @@ export default function Navigation() {
             isActive={location.pathname.startsWith('/clients')}
             onClick={closeMobileMenu}
           >
-            🏢 Client News
+            Client News
           </NavLink>
           
           <NavLink 
@@ -276,7 +276,7 @@ export default function Navigation() {
             isActive={location.pathname === '/dashboard'}
             onClick={closeMobileMenu}
           >
-            📊 Dashboard
+            Dashboard
           </NavLink>
           
           <NavLink 
@@ -284,7 +284,7 @@ export default function Navigation() {
             isActive={location.pathname === '/cover-generator'}
             onClick={closeMobileMenu}
           >
-            🎨 Cover Generator
+            Cover Generator
           </NavLink>
           
           {currentUser && (
@@ -294,14 +294,14 @@ export default function Navigation() {
                 isActive={location.pathname === '/bookmarks'}
                 onClick={closeMobileMenu}
               >
-                🔖 Bookmarks
+                Bookmarks
               </NavLink>
               <NavLink 
                 to="/profile" 
                 isActive={location.pathname === '/profile'}
                 onClick={closeMobileMenu}
               >
-                👤 Profile
+                Profile
               </NavLink>
             </>
           )}

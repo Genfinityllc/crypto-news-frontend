@@ -4,7 +4,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { auth, db } from '../config/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -113,6 +117,35 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function resetPassword(email) {
+    try {
+      setError(null);
+      await sendPasswordResetEmail(auth, email);
+      return true;
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    try {
+      setError(null);
+      if (!currentUser) throw new Error('No user logged in');
+      
+      // Re-authenticate user first
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      
+      // Update password
+      await updatePassword(currentUser, newPassword);
+      return true;
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -154,6 +187,8 @@ export function AuthProvider({ children }) {
     signin,
     logout,
     refreshProfile,
+    resetPassword,
+    changePassword,
     clearError: () => setError(null)
   };
 
