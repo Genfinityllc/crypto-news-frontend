@@ -279,6 +279,14 @@ export default function Navigation() {
             📊 Dashboard
           </NavLink>
           
+          <NavLink 
+            to="/cover-generator" 
+            isActive={location.pathname === '/cover-generator'}
+            onClick={closeMobileMenu}
+          >
+            🎨 Cover Generator
+          </NavLink>
+          
           {currentUser && (
             <>
               <NavLink 

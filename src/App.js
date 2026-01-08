@@ -12,6 +12,7 @@ import Navigation from './components/common/Navigation';
 import Dashboard from './pages/Dashboard';
 import AllNews from './pages/AllNews';
 import ClientNews from './pages/ClientNews';
+import CoverGenerator from './pages/CoverGenerator';
 import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ProfileManager from './components/auth/ProfileManager';
@@ -98,6 +99,9 @@ function App() {
               <Route path="/all" element={<AllNews />} />
               <Route path="/clients" element={<ClientNews />} />
               <Route path="/clients/:client" element={<ClientNews />} />
+              
+              {/* Cover Generator - Public */}
+              <Route path="/cover-generator" element={<CoverGenerator />} />
               
               {/* Protected routes */}
               <Route 
