@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { generateLoRAImage, generateLoRAImageFromData, getLoRAStatus } from '../../services/api';
+import { generateImageDirectly } from '../../services/directHFSpaces';
 import { toast } from 'react-toastify';
 
 const Overlay = styled.div`
@@ -30,6 +31,7 @@ const Modal = styled.div`
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
   position: relative;
   margin: auto;
+  z-index: 999;
   
   &::-webkit-scrollbar {
     width: 6px;
@@ -269,6 +271,37 @@ const CopyButton = styled.button`
   }
 `;
 
+const PopupNotification = styled.div`
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: ${props => props.type === 'error' ? '#dc2626' : '#16a34a'};
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  z-index: 1001;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  max-width: 80%;
+  text-align: center;
+  animation: slideInFromTop 0.3s ease-out;
+  
+  @keyframes slideInFromTop {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+`;
+
 const ImageSection = styled.div`
   background: #1a1a1a;
   border-radius: 12px;
@@ -377,11 +410,98 @@ const AIRewritePopup = ({
   const [loraStatus, setLoraStatus] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [downloadingImage, setDownloadingImage] = useState(false);
+  const [popupNotification, setPopupNotification] = useState(null);
 
-  // Initialize editable content when rewrite data loads
+  // Internal notification system for popup
+  const showPopupNotification = (message, type = 'success') => {
+    setPopupNotification({ message, type });
+    setTimeout(() => {
+      setPopupNotification(null);
+    }, 15000); // 15 seconds
+  };
+
+  // AUTO-GENERATE Universal LoRA image using HF Spaces directly
+  const handleGenerateUniversalLoRA = async () => {
+    setGeneratingImage(true);
+    try {
+      const currentTitle = editableTitle || article?.title;
+      console.log('🚀 Auto-generating Universal LoRA image for:', currentTitle);
+      console.log('🔍 Article data received:', {
+        originalTitle: article?.title,
+        editableTitle: editableTitle,
+        finalTitle: currentTitle,
+        network: article?.network,
+        content_preview: article?.content?.substring(0, 100),
+        url: article?.url,
+        hasArticle: !!article
+      });
+      
+      // Validate article data before proceeding
+      if (!article) {
+        throw new Error('No article data provided for LoRA generation');
+      }
+      
+      if (!currentTitle) {
+        throw new Error('Article title is required for LoRA generation');
+      }
+      
+      console.log('✅ Article validation passed, calling generateImageDirectly with updated title...');
+      
+      // Create updated article object with current editable title
+      const articleWithUpdatedTitle = {
+        ...article,
+        title: currentTitle
+      };
+      
+      // Use the direct HF Spaces service for Universal LoRA generation
+      const response = await generateImageDirectly(articleWithUpdatedTitle);
+      
+      console.log('🔍 HF Spaces response:', {
+        success: response?.success,
+        coverUrl: response?.coverUrl,
+        generationMethod: response?.generationMethod,
+        clientId: response?.clientId,
+        style: response?.style,
+        hasMetadata: !!response?.metadata,
+        fullResponse: response
+      });
+      
+      if (response && response.success) {
+        console.log('🔍 ULTRA DEBUG: Setting generatedImage with URL:', response.coverUrl);
+        setGeneratedImage(response.coverUrl);
+        console.log('🔍 ULTRA DEBUG: generatedImage state should be set to:', response.coverUrl);
+        // DON'T replace the original article image - just show in popup for download
+        showPopupNotification('🎨 Universal LoRA cover auto-generated!', 'success');
+        console.log('✅ Generation method:', response.generationMethod);
+        console.log('🎯 Client/Style:', response.clientId, response.style);
+      } else {
+        console.error('❌ Response indicates failure:', response);
+        throw new Error(`HF Spaces response failed: ${response?.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('❌ DETAILED Universal LoRA generation error:', {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        errorType: error.constructor.name,
+        articleTitle: article?.title,
+        articleExists: !!article,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Show the actual error instead of generic message
+      const errorMsg = error.message || 'Unknown error occurred';
+      showPopupNotification(`LoRA generation failed: ${errorMsg}`, 'error');
+      console.log('🚨 Showing error to user:', errorMsg);
+    } finally {
+      setGeneratingImage(false);
+      console.log('🏁 Generation process completed, generatingImage set to false');
+    }
+  };
+
+  // Initialize editable content when rewrite data loads (ONLY ONCE)
   React.useEffect(() => {
-    console.log('AIRewritePopup: useEffect triggered', { rewriteData, isOpen });
-    if (isOpen) {
+    console.log('AIRewritePopup: useEffect triggered', { rewriteData, isOpen, currentEditableTitle: editableTitle });
+    if (isOpen && (!editableTitle || editableTitle === 'AI Rewrite Loading...')) {
       const safeData = rewriteData || {
         title: 'AI Rewrite Loading...',
         content: '<p>Content is being processed...</p>'
@@ -391,14 +511,23 @@ const AIRewritePopup = ({
       const finalTitle = safeData.title || safeData.rewrittenTitle || article?.title || 'AI Rewrite Loading...';
       const finalContent = safeData.content || safeData.rewrittenContent || safeData.rewrittenText || '<p>Content is being processed...</p>';
       
-      console.log('AIRewritePopup: Setting editable content', {
+      // Show success notification when real rewrite data loads
+      if (rewriteData && finalTitle !== 'AI Rewrite Loading...') {
+        showPopupNotification('🤖 AI rewrite generated successfully with OpenAI GPT-4!', 'success');
+      }
+      
+      console.log('AIRewritePopup: Setting editable content (INITIAL LOAD ONLY)', {
         originalRewriteData: rewriteData,
         finalTitle,
         finalContentLength: finalContent?.length,
-        safeData
+        safeData,
+        willUpdateTitle: !editableTitle || editableTitle === 'AI Rewrite Loading...'
       });
       
-      setEditableTitle(finalTitle);
+      // Only set title if it's not already set by user
+      if (!editableTitle || editableTitle === 'AI Rewrite Loading...') {
+        setEditableTitle(finalTitle);
+      }
       setEditableContent(finalContent);
       
       // Use intelligent prompt if available, otherwise generate default
@@ -406,8 +535,47 @@ const AIRewritePopup = ({
       
       setIntelligentPrompt(intelligentCoverPrompt);
       setImagePrompt(intelligentCoverPrompt);
+      
+      // AUTO-GENERATE Universal LoRA image when popup opens (with longer delay for rewrite title)
+      setTimeout(() => {
+        if (article && !generatedImage && !generatingImage && editableTitle && editableTitle !== 'AI Rewrite Loading...') {
+          console.log('🚀 Starting auto-generation with confirmed rewrite title:', editableTitle);
+          handleGenerateUniversalLoRA();
+        } else {
+          console.log('⏳ Rewrite title not ready yet, waiting...', { editableTitle, finalTitle });
+          // Try again after another delay if rewrite title isn't loaded
+          setTimeout(() => {
+            if (article && !generatedImage && !generatingImage && editableTitle && editableTitle !== 'AI Rewrite Loading...') {
+              console.log('🚀 Starting delayed auto-generation with rewrite title:', editableTitle);
+              handleGenerateUniversalLoRA();
+            }
+          }, 5000);
+        }
+      }, 7000);
     }
-  }, [rewriteData, isOpen, article]);
+  }, [rewriteData, isOpen, article, editableTitle]);
+
+  // AUTO-GENERATE when rewrite title becomes available
+  React.useEffect(() => {
+    if (isOpen && 
+        editableTitle && 
+        editableTitle !== 'AI Rewrite Loading...' && 
+        editableTitle !== '' &&
+        article && 
+        !generatedImage && 
+        !generatingImage) {
+      
+      console.log('🎯 TRIGGER: Rewrite title ready for auto-generation:', editableTitle);
+      
+      // Small delay to ensure everything is settled
+      const autoGenTimer = setTimeout(() => {
+        console.log('🚀 AUTO-GENERATING with rewrite title:', editableTitle);
+        handleGenerateUniversalLoRA();
+      }, 2000);
+      
+      return () => clearTimeout(autoGenTimer);
+    }
+  }, [editableTitle, isOpen, article, generatedImage, generatingImage]);
 
   // Fetch LoRA status when popup opens
   React.useEffect(() => {
@@ -448,9 +616,9 @@ const AIRewritePopup = ({
   const handleCopy = async (content, type = 'content') => {
     try {
       await navigator.clipboard.writeText(content);
-      toast.success(`${type} copied to clipboard!`);
+      showPopupNotification(`${type} copied to clipboard!`, 'success');
     } catch (error) {
-      toast.error('Failed to copy to clipboard');
+      showPopupNotification('Failed to copy to clipboard', 'error');
     }
   };
 
@@ -507,10 +675,10 @@ const AIRewritePopup = ({
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      toast.success(`📥 Cover image downloaded as ${filename}`);
+      showPopupNotification(`📥 Cover image downloaded as ${filename}`, 'success');
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Failed to download image. Try right-clicking to save.');
+      showPopupNotification('Failed to download image. Try right-clicking to save.', 'error');
     } finally {
       setDownloadingImage(false);
     }
@@ -521,58 +689,8 @@ const AIRewritePopup = ({
   };
 
   const handleGenerateImage = async () => {
-    setGeneratingImage(true);
-    try {
-      let imageResult;
-      
-      // Enhanced data for intelligent generation
-      const enhancedData = {
-        title: editableTitle,
-        content: editableContent,
-        network: article?.network || 'cryptocurrency',
-        category: article?.category || 'market',
-        source: article?.source || 'analysis',
-        intelligentPrompt: imagePrompt,
-        cryptoElements: safeRewriteData.cryptoElements || {}
-      };
-      
-      if (article?.id) {
-        // Database article - use generateLoRAImage with enhanced prompt
-        console.log('🎨 Generating intelligent LoRA image for database article:', editableTitle);
-        imageResult = await generateLoRAImage(article.id, {
-          prompt: imagePrompt,
-          style: useLoRA ? 'professional' : 'default',
-          size: 'large',
-          enhancedData: enhancedData
-        });
-      } else {
-        // RSS article or rewrite data - use generateLoRAImageFromData
-        console.log('🎨 Generating intelligent LoRA image for content:', editableTitle);
-        imageResult = await generateLoRAImageFromData(enhancedData, {
-          prompt: imagePrompt,
-          style: useLoRA ? 'professional' : 'default',
-          size: 'large'
-        });
-      }
-      
-      // Set the generated image - handle LoRA response structure
-      const imageUrl = imageResult.data?.coverImage || imageResult.coverImage || imageResult.path || imageResult.url || imageResult;
-      setGeneratedImage(imageUrl);
-      if (onImageGenerated) {
-        onImageGenerated(imageUrl);
-      }
-      toast.success('🎨 Intelligent cover generated with network logos and visual elements!');
-      
-    } catch (error) {
-      console.error('Intelligent cover generation error:', error);
-      
-      // Fallback: Generate placeholder with network branding
-      const fallbackUrl = `https://via.placeholder.com/1800x900/4A90E2/FFFFFF?text=${encodeURIComponent(editableTitle.substring(0, 30))}`;
-      setGeneratedImage(fallbackUrl);
-      toast.warning('Using fallback image generation. Check AI service connection.');
-    } finally {
-      setGeneratingImage(false);
-    }
+    // Use the Universal LoRA generation instead of backend API
+    await handleGenerateUniversalLoRA();
   };
 
   if (!isOpen) return null;
@@ -603,6 +721,11 @@ const AIRewritePopup = ({
   return createPortal(
     <Overlay onClick={handleOverlayClick}>
       <Modal>
+        {popupNotification && (
+          <PopupNotification type={popupNotification.type}>
+            {popupNotification.type === 'error' ? '❌' : '✅'} {popupNotification.message}
+          </PopupNotification>
+        )}
         <Header>
           <Title>
             ✨ AI Rewritten Article
@@ -637,7 +760,15 @@ const AIRewritePopup = ({
           <ArticleContent>
             <ArticleTitle
               value={editableTitle}
-              onChange={(e) => setEditableTitle(e.target.value)}
+              onChange={(e) => {
+                console.log('📝 User editing title:', e.target.value);
+                setEditableTitle(e.target.value);
+                // Clear generated image when title changes so user can regenerate with new title
+                if (generatedImage) {
+                  console.log('🔄 Title changed - clearing generated image for regeneration');
+                  setGeneratedImage(null);
+                }
+              }}
               placeholder="Article title..."
             />
             <ArticleEditor
@@ -665,24 +796,10 @@ const AIRewritePopup = ({
             </ActionButton>
             
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <ActionButton 
-                variant="success" 
-                onClick={() => setShowImageGenerator(!showImageGenerator)}
-              >
-                🎨 Generate Cover Image
-              </ActionButton>
-              
-              {showImageGenerator && (
-                <CreditsDisplay status={loraStatus?.available ? 'Active' : 'Unavailable'}>
-                  <CreditsIcon>
-                    {loadingStatus ? '⏳' : 
-                     loraStatus?.available ? '🤖' : 
-                     '⚠️'}
-                  </CreditsIcon>
-                  {loadingStatus ? 'Checking...' : 
-                   loraStatus ? `LoRA ${loraStatus.available ? 'Ready' : 'Unavailable'}` : 'Unknown'}
-                </CreditsDisplay>
-              )}
+              <CreditsDisplay status="Active">
+                <CreditsIcon>🎨</CreditsIcon>
+                Universal LoRA Ready
+              </CreditsDisplay>
             </div>
             
             <CopyButton onClick={() => handleCopy(editableTitle, 'Title')}>
@@ -696,67 +813,91 @@ const AIRewritePopup = ({
             </div>
           </Actions>
 
-          {showImageGenerator && (
-            <ImageSection>
-              <ImageSectionTitle>
-                🤖 Generate Cover Image with LoRA AI
-              </ImageSectionTitle>
-              
-              <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <input
-                  type="checkbox"
-                  checked={useLoRA}
-                  onChange={(e) => setUseLoRA(e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: '#0066cc' }}
-                />
-                <span style={{ color: '#0066cc', fontWeight: '600' }}>
-                  Use LoRA AI Generation (Recommended)
-                </span>
+          <ImageSection>
+            <ImageSectionTitle>
+              🎨 Universal LoRA Cover Image
+            </ImageSectionTitle>
+            
+            {generatingImage && (
+              <div style={{ 
+                padding: '20px', 
+                textAlign: 'center',
+                background: 'rgba(0, 102, 204, 0.1)', 
+                borderRadius: '8px',
+                marginBottom: '16px',
+                border: '1px solid rgba(0, 102, 204, 0.3)'
+              }}>
+                <div style={{ color: '#0066cc', marginBottom: '12px', fontSize: '1rem', fontWeight: '600' }}>
+                  🎨 Generating Universal LoRA image...
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '16px' }}>
+                  Using your HF Spaces SDXL pipeline
+                </div>
+                
+                {/* Progress Bar */}
+                <div style={{ 
+                  width: '100%', 
+                  height: '8px', 
+                  background: '#333', 
+                  borderRadius: '4px', 
+                  overflow: 'hidden',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #0066cc, #00b4d8)',
+                    borderRadius: '4px',
+                    animation: 'progress-animation 240s ease-out forwards',
+                    width: '0%'
+                  }} />
+                </div>
+                
+                {/* Time Estimates */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: '0.8rem', 
+                  color: '#aaa',
+                  marginBottom: '8px'
+                }}>
+                  <span>⏱️ Typical time: 2-5 minutes</span>
+                  <span>🔄 High quality generation</span>
+                </div>
+                
+                {/* Status Messages */}
+                <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>
+                  Please wait while your custom LoRA model generates the perfect cover...
+                </div>
+                
+                <style jsx>{`
+                  @keyframes progress-animation {
+                    0% { width: 0%; }
+                    5% { width: 15%; }
+                    15% { width: 25%; }
+                    30% { width: 40%; }
+                    50% { width: 60%; }
+                    70% { width: 75%; }
+                    85% { width: 85%; }
+                    95% { width: 92%; }
+                    100% { width: 95%; }
+                  }
+                `}</style>
               </div>
+            )}
 
-              <PromptEditor>
-                <PromptLabel>
-                  🤖 Intelligent Image Prompt (Auto-generated with network logos & themes):
-                </PromptLabel>
-                <PromptTextarea
-                  value={imagePrompt}
-                  onChange={(e) => setImagePrompt(e.target.value)}
-                  placeholder="AI-generated prompt with network branding and visual elements..."
-                  style={{ 
-                    background: intelligentPrompt ? '#1a2f1a' : '#2a2a2a',
-                    border: intelligentPrompt ? '1px solid #22c55e' : '1px solid #666'
-                  }}
-                />
-                {intelligentPrompt && (
-                  <div style={{ 
-                    marginTop: '8px', 
-                    padding: '8px 12px', 
-                    background: 'rgba(34, 197, 94, 0.1)', 
-                    border: '1px solid #22c55e', 
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    color: '#22c55e'
-                  }}>
-                    🧠 AI detected: {safeRewriteData.cryptoElements?.primaryNetwork || 'Crypto'} network with {safeRewriteData.cryptoElements?.themes?.join(', ') || 'market'} themes
-                  </div>
-                )}
-              </PromptEditor>
-
-              <ActionButton
-                variant="primary"
-                onClick={handleGenerateImage}
-                disabled={generatingImage || !imagePrompt.trim()}
-              >
-                {generatingImage 
-                  ? (useLoRA ? '🤖 LoRA Generating...' : '🎨 Generating...') 
-                  : (useLoRA ? '🤖 Generate with LoRA' : '🎨 Generate Image')
-                }
-              </ActionButton>
-
-              {generatedImage && (
-                <div style={{ marginTop: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <h5 style={{ color: '#0066cc', margin: 0 }}>🎨 Generated Cover Image:</h5>
+            {generatedImage && (
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h5 style={{ color: '#0066cc', margin: 0 }}>🎨 Universal LoRA Generated:</h5>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <ActionButton
+                      variant="primary"
+                      onClick={handleGenerateImage}
+                      disabled={generatingImage}
+                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                    >
+                      {generatingImage ? '🎨 Generating...' : '🔄 Generate Again'}
+                    </ActionButton>
                     <ActionButton
                       variant="success"
                       onClick={handleDownloadImage}
@@ -766,21 +907,44 @@ const AIRewritePopup = ({
                       {downloadingImage ? '⬇️ Downloading...' : '⬇️ Download'}
                     </ActionButton>
                   </div>
-                  <GeneratedImage src={generatedImage} alt="Generated cover" />
-                  <div style={{ 
-                    marginTop: '8px', 
-                    padding: '8px', 
-                    background: 'rgba(0, 102, 204, 0.1)', 
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    color: '#0066cc'
-                  }}>
-                    💡 <strong>WordPress Ready:</strong> Right-click to save, or use download button for optimized file
-                  </div>
                 </div>
-              )}
-            </ImageSection>
-          )}
+                {console.log('🖼️ RENDER DEBUG: generatedImage state:', generatedImage)}
+                <GeneratedImage src={generatedImage} alt="Universal LoRA generated cover" />
+                <div style={{ 
+                  marginTop: '8px', 
+                  padding: '8px', 
+                  background: 'rgba(34, 197, 94, 0.1)', 
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  color: '#22c55e'
+                }}>
+                  ✅ <strong>Universal LoRA Generated:</strong> Professional crypto cover with trained styling • Right-click to save
+                </div>
+              </div>
+            )}
+
+            {!generatingImage && !generatedImage && (
+              <div style={{ 
+                padding: '16px', 
+                textAlign: 'center',
+                background: 'rgba(0, 102, 204, 0.1)', 
+                borderRadius: '8px'
+              }}>
+                <div style={{ color: '#0066cc', marginBottom: '8px' }}>
+                  {editableTitle && editableTitle !== 'AI Rewrite Loading...' 
+                    ? '🎨 Auto-generating cover with your rewrite title...' 
+                    : '⏳ Waiting for rewrite to complete for auto-generation...'}
+                </div>
+                <ActionButton
+                  variant="primary"
+                  onClick={handleGenerateImage}
+                  style={{ marginTop: '8px' }}
+                >
+                  🎨 Generate Cover Now (Manual)
+                </ActionButton>
+              </div>
+            )}
+          </ImageSection>
         </Content>
       </Modal>
     </Overlay>,

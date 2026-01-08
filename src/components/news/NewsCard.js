@@ -757,7 +757,7 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
       // Set the AI rewrite data
       setAiRewrite(transformedResult);
       setShowRewritePopup(true);
-      toast.success('🤖 AI rewrite generated successfully with OpenAI GPT-4!');
+      // Note: Success notification will show inside the popup
       
     } catch (error) {
       console.error('AI rewrite error:', error);
@@ -816,22 +816,42 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   };
 
   const handleGenerateImage = async () => {
-    if (article.id) {
-      setGeneratingImage(true);
-      try {
-        console.log('🎨 Using traditional generation for:', article.title);
-        const response = await generateCardImage(article.id, 'medium', false);
-        
-        if (response.success) {
-          setGeneratedImage(response.data.coverImage);
-          toast.success('🎨 Card image generated!');
-        }
-      } catch (error) {
-        toast.error('Failed to generate card image');
-        console.error('Image generation error:', error);
-      } finally {
-        setGeneratingImage(false);
+    setGeneratingImage(true);
+    try {
+      console.log('🚀 Using direct HF Spaces bypass for:', article.title);
+      
+      // Import the direct HF Spaces service
+      const { generateImageDirectly } = await import('../../services/directHFSpaces');
+      
+      const response = await generateImageDirectly(article);
+      
+      if (response.success) {
+        setGeneratedImage(response.coverUrl);
+        toast.success('🎨 Universal LoRA image generated directly!');
+        console.log('✅ Generation method:', response.generationMethod);
+        console.log('🎯 Client/Style:', response.clientId, response.style);
       }
+    } catch (error) {
+      console.error('❌ Direct HF Spaces failed, trying traditional...', error);
+      
+      // Only try fallback for database articles with IDs
+      if (article.id) {
+        try {
+          const response = await generateCardImage(article.id, 'medium', false);
+          if (response.success) {
+            setGeneratedImage(response.data.coverImage);
+            toast.success('🎨 Fallback image generated!');
+          }
+        } catch (fallbackError) {
+          toast.error('Image generation failed completely');
+          console.error('Both direct and fallback failed:', fallbackError);
+        }
+      } else {
+        toast.error('HF Spaces unavailable - no fallback for RSS articles');
+        console.error('No fallback available for RSS article:', error);
+      }
+    } finally {
+      setGeneratingImage(false);
     }
   };
 
@@ -943,7 +963,6 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
           <ActionButton onClick={handleTitleClick}>
             Read Full Article →
           </ActionButton>
-          
           
           <CopyButton 
             onClick={() => handleCopy('title')}

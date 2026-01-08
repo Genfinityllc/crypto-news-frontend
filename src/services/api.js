@@ -267,20 +267,20 @@ export const batchGenerateCardImages = (articleIds, size = 'medium') => {
   return api.post('/news/generate-card-images/batch', { articleIds, size });
 };
 
-// LoRA AI Image Generation
+// LoRA AI Image Generation (with longer timeout for real generation)
 export const generateLoRAImage = (articleId, options = {}) => {
   const { size = 'medium', style = 'professional' } = options;
-  return api.post(`/news/generate-lora-image/${articleId}`, { size, style });
+  return api.post(`/news/generate-lora-image/${articleId}`, { size, style, useLoRA: true }, { timeout: 180000 });
 };
 
 export const generateLoRAImageFromData = (articleData, options = {}) => {
   const { size = 'medium', style = 'professional' } = options;
-  return api.post('/news/generate-lora-image', { ...articleData, size, style });
+  return api.post('/news/generate-lora-image', { ...articleData, size, style, useLoRA: true }, { timeout: 180000 });
 };
 
 // Get LoRA AI status
 export const getLoRAStatus = () => {
-  return api.get('/news/ai-services-status');
+  return api.get('/ai-cover/status');
 };
 
 // Client Network Metadata API calls
