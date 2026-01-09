@@ -483,7 +483,10 @@ export default function CoverGenerator() {
   
   // Rating state
   const [logoRating, setLogoRating] = useState(null);
+  const [logoSize, setLogoSize] = useState(null);
+  const [logoStyle, setLogoStyle] = useState(null);
   const [backgroundRating, setBackgroundRating] = useState(null);
+  const [backgroundStyle, setBackgroundStyle] = useState(null);
   const [feedbackKeyword, setFeedbackKeyword] = useState('');
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
@@ -504,7 +507,10 @@ export default function CoverGenerator() {
   useEffect(() => {
     if (currentImage) {
       setLogoRating(null);
+      setLogoSize(null);
+      setLogoStyle(null);
       setBackgroundRating(null);
+      setBackgroundStyle(null);
       setFeedbackKeyword('');
       setRatingSubmitted(false);
     }
@@ -619,8 +625,10 @@ export default function CoverGenerator() {
   }, [currentUser]);
 
   const submitRating = async () => {
-    if (!logoRating && !backgroundRating) {
-      toast.warning('Please rate at least one aspect');
+    // Need at least one rating to submit
+    const hasAnyRating = logoRating || logoSize || logoStyle || backgroundRating || backgroundStyle;
+    if (!hasAnyRating) {
+      toast.warning('Please provide at least one rating');
       return;
     }
     
@@ -634,8 +642,13 @@ export default function CoverGenerator() {
           imageUrl: currentImage,
           network: currentMeta?.network,
           promptUsed: currentMeta?.prompt,
+          // Quality ratings
           logoRating,
           backgroundRating,
+          // Detailed ratings
+          logoSize,
+          logoStyle,
+          backgroundStyle,
           feedbackKeyword: feedbackKeyword.trim() || null,
           userId: currentUser?.uid || null
         })
@@ -645,7 +658,7 @@ export default function CoverGenerator() {
       
       if (data.success) {
         setRatingSubmitted(true);
-        toast.success('Thanks for your feedback!');
+        toast.success('Thanks for your feedback! This helps improve future generations.');
       } else {
         throw new Error(data.error);
       }
@@ -762,11 +775,36 @@ export default function CoverGenerator() {
     });
   };
 
-  const ratingOptions = [
+  // Quality rating options
+  const qualityOptions = [
     { value: 'excellent', label: 'So Good!' },
     { value: 'good', label: 'Good' },
     { value: 'okay', label: 'Just Okay' },
     { value: 'bad', label: 'Bad' }
+  ];
+  
+  // Logo size options
+  const logoSizeOptions = [
+    { value: 'too_small', label: 'Too Small' },
+    { value: 'perfect', label: 'Perfect Size' },
+    { value: 'too_large', label: 'Too Large' }
+  ];
+  
+  // Logo style options
+  const logoStyleOptions = [
+    { value: 'perfect_3d', label: 'Perfect 3D' },
+    { value: 'good_detail', label: 'Good Detail' },
+    { value: 'looks_flat', label: 'Looks Flat' },
+    { value: 'distorted', label: 'Distorted' }
+  ];
+  
+  // Background style options
+  const bgStyleOptions = [
+    { value: 'love_it', label: 'Love It!' },
+    { value: 'good', label: 'Good' },
+    { value: 'generic', label: 'Generic/Boring' },
+    { value: 'too_busy', label: 'Too Busy' },
+    { value: 'wrong_theme', label: 'Wrong Theme' }
   ];
 
   return (
@@ -917,10 +955,11 @@ export default function CoverGenerator() {
               <RatingSection>
                 <RatingTitle>Rate this generation (helps improve results)</RatingTitle>
                 
+                {/* Logo Quality */}
                 <RatingRow>
                   <RatingLabel>Logo Quality:</RatingLabel>
                   <RatingOptions>
-                    {ratingOptions.map(opt => (
+                    {qualityOptions.map(opt => (
                       <RatingButton
                         key={`logo-${opt.value}`}
                         rating={opt.value}
@@ -933,15 +972,67 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
+                {/* Logo Size */}
                 <RatingRow>
-                  <RatingLabel>Background Scene:</RatingLabel>
+                  <RatingLabel>Logo Size:</RatingLabel>
                   <RatingOptions>
-                    {ratingOptions.map(opt => (
+                    {logoSizeOptions.map(opt => (
+                      <RatingButton
+                        key={`size-${opt.value}`}
+                        rating={opt.value === 'perfect' ? 'good' : 'okay'}
+                        selected={logoSize === opt.value}
+                        onClick={() => setLogoSize(opt.value)}
+                      >
+                        {opt.label}
+                      </RatingButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                {/* Logo Style */}
+                <RatingRow>
+                  <RatingLabel>Logo Style:</RatingLabel>
+                  <RatingOptions>
+                    {logoStyleOptions.map(opt => (
+                      <RatingButton
+                        key={`style-${opt.value}`}
+                        rating={opt.value.includes('perfect') || opt.value.includes('good') ? 'good' : 'bad'}
+                        selected={logoStyle === opt.value}
+                        onClick={() => setLogoStyle(opt.value)}
+                      >
+                        {opt.label}
+                      </RatingButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                {/* Background Quality */}
+                <RatingRow>
+                  <RatingLabel>Background Quality:</RatingLabel>
+                  <RatingOptions>
+                    {qualityOptions.map(opt => (
                       <RatingButton
                         key={`bg-${opt.value}`}
                         rating={opt.value}
                         selected={backgroundRating === opt.value}
                         onClick={() => setBackgroundRating(opt.value)}
+                      >
+                        {opt.label}
+                      </RatingButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                {/* Background Style */}
+                <RatingRow>
+                  <RatingLabel>Background Style:</RatingLabel>
+                  <RatingOptions>
+                    {bgStyleOptions.map(opt => (
+                      <RatingButton
+                        key={`bgstyle-${opt.value}`}
+                        rating={opt.value === 'love_it' || opt.value === 'good' ? 'good' : 'bad'}
+                        selected={backgroundStyle === opt.value}
+                        onClick={() => setBackgroundStyle(opt.value)}
                       >
                         {opt.label}
                       </RatingButton>
@@ -960,7 +1051,7 @@ export default function CoverGenerator() {
                 
                 <SubmitRatingButton
                   onClick={submitRating}
-                  disabled={submittingRating || (!logoRating && !backgroundRating)}
+                  disabled={submittingRating || (!logoRating && !logoSize && !logoStyle && !backgroundRating && !backgroundStyle)}
                 >
                   {submittingRating ? 'Submitting...' : 'Submit Feedback'}
                 </SubmitRatingButton>
