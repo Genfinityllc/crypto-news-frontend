@@ -255,6 +255,7 @@ export default function Navigation() {
         </MobileMenuButton>
 
         <NavLinks isOpen={mobileMenuOpen}>
+          {/* Cover Generator - always visible */}
           <NavLink 
             to="/" 
             isActive={location.pathname === '/' || location.pathname === '/cover-generator'}
@@ -263,32 +264,33 @@ export default function Navigation() {
             Cover Generator
           </NavLink>
           
-          <NavLink 
-            to="/all" 
-            isActive={location.pathname === '/all'}
-            onClick={closeMobileMenu}
-          >
-            All News
-          </NavLink>
-          
-          <NavLink 
-            to="/clients" 
-            isActive={location.pathname.startsWith('/clients')}
-            onClick={closeMobileMenu}
-          >
-            Client News
-          </NavLink>
-          
-          <NavLink 
-            to="/dashboard" 
-            isActive={location.pathname === '/dashboard'}
-            onClick={closeMobileMenu}
-          >
-            Dashboard
-          </NavLink>
-          
+          {/* Other pages only visible when logged in */}
           {currentUser && (
             <>
+              <NavLink 
+                to="/all" 
+                isActive={location.pathname === '/all'}
+                onClick={closeMobileMenu}
+              >
+                All News
+              </NavLink>
+              
+              <NavLink 
+                to="/clients" 
+                isActive={location.pathname.startsWith('/clients')}
+                onClick={closeMobileMenu}
+              >
+                Client News
+              </NavLink>
+              
+              <NavLink 
+                to="/dashboard" 
+                isActive={location.pathname === '/dashboard'}
+                onClick={closeMobileMenu}
+              >
+                Dashboard
+              </NavLink>
+              
               <NavLink 
                 to="/bookmarks" 
                 isActive={location.pathname === '/bookmarks'}
@@ -296,6 +298,7 @@ export default function Navigation() {
               >
                 Bookmarks
               </NavLink>
+              
               <NavLink 
                 to="/profile" 
                 isActive={location.pathname === '/profile'}

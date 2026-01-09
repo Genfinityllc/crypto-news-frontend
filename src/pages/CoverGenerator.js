@@ -545,15 +545,21 @@ export default function CoverGenerator() {
     if (!currentUser) return;
     
     try {
-      const token = localStorage.getItem('firebaseToken');
+      // Get fresh token directly from Firebase
+      const freshToken = await currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', freshToken);
+      
+      console.log('Loading saved covers for user:', currentUser.uid);
+      
       const response = await fetch(`${API_BASE}/api/cover-generator/my-covers`, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${freshToken}`
         }
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Loaded covers:', data);
         if (data.success && data.covers) {
           setHistory(prev => {
             const existingUrls = new Set(prev.map(h => h.imageUrl));
@@ -579,12 +585,17 @@ export default function CoverGenerator() {
     if (!currentUser) return false;
     
     try {
-      const token = localStorage.getItem('firebaseToken');
+      // Get fresh token directly from Firebase (tokens expire after 1 hour)
+      const freshToken = await currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', freshToken);
+      
+      console.log('Saving cover with fresh token for user:', currentUser.uid);
+      
       const response = await fetch(`${API_BASE}/api/cover-generator/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${freshToken}`
         },
         body: JSON.stringify({
           imageUrl,
@@ -593,10 +604,13 @@ export default function CoverGenerator() {
         })
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        return data.success;
+      const data = await response.json();
+      console.log('Save response:', data);
+      
+      if (response.ok && data.success) {
+        return true;
       }
+      console.error('Save failed:', data.error);
       return false;
     } catch (err) {
       console.error('Failed to save cover:', err);

@@ -97,16 +97,35 @@ function App() {
                 <Route path="/login" element={<LoginForm />} />
                 <Route path="/signup" element={<SignupForm />} />
                 
-                {/* Cover Generator - NEW LANDING PAGE */}
+                {/* Cover Generator - Always accessible (landing page) */}
                 <Route path="/" element={<CoverGenerator />} />
                 <Route path="/cover-generator" element={<CoverGenerator />} />
                 
-                {/* News Routes - Public with guaranteed images */}
-                <Route path="/all" element={<AllNews />} />
-                <Route path="/clients" element={<ClientNews />} />
-                <Route path="/clients/:client" element={<ClientNews />} />
-                
-                {/* Protected routes */}
+                {/* Protected routes - only visible when logged in */}
+                <Route 
+                  path="/all" 
+                  element={
+                    <ProtectedRoute>
+                      <AllNews />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/clients" 
+                  element={
+                    <ProtectedRoute>
+                      <ClientNews />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/clients/:client" 
+                  element={
+                    <ProtectedRoute>
+                      <ClientNews />
+                    </ProtectedRoute>
+                  } 
+                />
                 <Route 
                   path="/dashboard" 
                   element={
