@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE = 'https://crypto-news-curator-backend-production.up.railway.app';
 
@@ -327,7 +328,32 @@ const ErrorMessage = styled.div`
   margin-top: 0.5rem;
 `;
 
+const SavedBadge = styled.span`
+  font-size: 0.7rem;
+  background: #238636;
+  color: white;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+`;
+
+const LoginHint = styled.div`
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.5rem;
+  text-align: center;
+  
+  a {
+    color: #00d4ff;
+    cursor: pointer;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
 export default function CoverGenerator() {
+  const { currentUser } = useAuth();
   const [networks, setNetworks] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [networkInput, setNetworkInput] = useState('');
@@ -344,6 +370,13 @@ export default function CoverGenerator() {
   useEffect(() => {
     loadNetworks();
   }, []);
+
+  // Load user's saved covers on mount/login
+  useEffect(() => {
+    if (currentUser) {
+      loadSavedCovers();
+    }
+  }, [currentUser]);
 
   const loadNetworks = async () => {
     try {
@@ -376,6 +409,70 @@ export default function CoverGenerator() {
       ]);
     }
   };
+
+  const loadSavedCovers = useCallback(async () => {
+    if (!currentUser) return;
+    
+    try {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch(`${API_BASE}/api/cover-generator/my-covers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.covers) {
+          // Merge saved covers into history (avoid duplicates)
+          setHistory(prev => {
+            const existingUrls = new Set(prev.map(h => h.imageUrl));
+            const newCovers = data.covers
+              .filter(c => !existingUrls.has(c.image_url))
+              .map(c => ({
+                id: c.id,
+                imageUrl: c.image_url,
+                network: c.network,
+                timestamp: c.created_at,
+                saved: true
+              }));
+            return [...prev, ...newCovers];
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load saved covers:', err);
+    }
+  }, [currentUser]);
+
+  const saveCover = useCallback(async (imageUrl, network, title) => {
+    if (!currentUser) return false;
+    
+    try {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch(`${API_BASE}/api/cover-generator/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          imageUrl,
+          network,
+          title: title || `${network} Cover`
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.success;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to save cover:', err);
+      return false;
+    }
+  }, [currentUser]);
 
   // Update input when dropdown changes
   const handleNetworkSelect = (e) => {
@@ -420,21 +517,37 @@ export default function CoverGenerator() {
       const data = await response.json();
 
       if (data.success) {
-        setCurrentImage(data.imageUrl);
+        const imageUrl = data.imageUrl;
+        const network = data.network || networkToUse;
+        
+        setCurrentImage(imageUrl);
         setCurrentMeta({
-          network: data.network || networkToUse,
+          network: network,
           method: data.method,
           duration: data.duration
         });
         
+        // Auto-save for logged-in users
+        let saved = false;
+        if (currentUser) {
+          saved = await saveCover(imageUrl, network, articleTitle);
+          if (saved) {
+            toast.success('Cover generated and saved to your profile!');
+          } else {
+            toast.success('Cover generated! (save failed)');
+          }
+        } else {
+          toast.success('Cover generated successfully!');
+        }
+        
         // Add to history
         setHistory(prev => [{
-          imageUrl: data.imageUrl,
-          network: data.network || networkToUse,
-          timestamp: new Date().toISOString()
+          imageUrl: imageUrl,
+          network: network,
+          timestamp: new Date().toISOString(),
+          saved: saved
         }, ...prev]);
         
-        toast.success('Cover generated successfully!');
       } else {
         throw new Error(data.error || 'Generation failed');
       }
@@ -462,7 +575,7 @@ export default function CoverGenerator() {
     setCurrentImage(item.imageUrl);
     setCurrentMeta({
       network: item.network,
-      method: 'history',
+      method: item.saved ? 'saved' : 'history',
       duration: '-'
     });
   };
@@ -557,6 +670,12 @@ export default function CoverGenerator() {
               )}
             </GenerateButton>
             
+            {!currentUser && (
+              <LoginHint>
+                <a href="/login">Sign in</a> to auto-save your generations
+              </LoginHint>
+            )}
+            
             {error && <ErrorMessage>{error}</ErrorMessage>}
           </Card>
         </div>
@@ -595,21 +714,26 @@ export default function CoverGenerator() {
           {/* History */}
           <Card>
             <HistoryHeader>
-              <CardTitle>Generation History</CardTitle>
+              <CardTitle>
+                Generation History
+                {currentUser && <SavedBadge>Auto-saved</SavedBadge>}
+              </CardTitle>
               <HistoryCount>{history.length} images</HistoryCount>
             </HistoryHeader>
             
             {history.length === 0 ? (
               <p style={{ color: '#8b949e', textAlign: 'center' }}>
                 Generated images will appear here
+                {currentUser && ' and save to your profile'}
               </p>
             ) : (
               <HistoryGrid>
                 {history.map((item, index) => (
-                  <HistoryItem key={index} onClick={() => handleHistoryClick(item)}>
+                  <HistoryItem key={item.id || index} onClick={() => handleHistoryClick(item)}>
                     <img src={item.imageUrl} alt={item.network} />
                     <HistoryOverlay>
                       <NetworkTag>{item.network}</NetworkTag>
+                      {item.saved && <SavedBadge>Saved</SavedBadge>}
                     </HistoryOverlay>
                   </HistoryItem>
                 ))}
