@@ -1041,12 +1041,19 @@ export default function CoverGenerator() {
                 </RatingRow>
                 
                 <KeywordInput>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#8b949e' }}>
+                    Suggest a keyword or phrase for future generations:
+                  </label>
                   <input
                     type="text"
-                    placeholder="Suggest a keyword to improve future generations..."
+                    placeholder="e.g., 'neon city lights', 'underwater scene', 'golden sunset'..."
                     value={feedbackKeyword}
                     onChange={(e) => setFeedbackKeyword(e.target.value)}
+                    maxLength={100}
                   />
+                  <div style={{ fontSize: '0.75rem', color: '#6e7681', marginTop: '0.25rem' }}>
+                    Words or phrases you'd like to see in future prompts
+                  </div>
                 </KeywordInput>
                 
                 <SubmitRatingButton
