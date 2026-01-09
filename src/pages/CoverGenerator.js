@@ -268,6 +268,120 @@ const ActionButton = styled.button`
   }
 `;
 
+// Rating System Styles
+const RatingSection = styled.div`
+  background: #0d1117;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 1rem;
+`;
+
+const RatingTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin-bottom: 1rem;
+`;
+
+const RatingRow = styled.div`
+  margin-bottom: 1rem;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const RatingLabel = styled.div`
+  font-size: 0.85rem;
+  color: #8b949e;
+  margin-bottom: 0.5rem;
+`;
+
+const RatingOptions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+const RatingButton = styled.button`
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+  
+  ${props => {
+    if (props.selected) {
+      switch(props.rating) {
+        case 'excellent':
+          return `background: #238636; border-color: #238636; color: white;`;
+        case 'good':
+          return `background: #1f6feb; border-color: #1f6feb; color: white;`;
+        case 'okay':
+          return `background: #9e6a03; border-color: #9e6a03; color: white;`;
+        case 'bad':
+          return `background: #da3633; border-color: #da3633; color: white;`;
+        default:
+          return `background: #30363d; border-color: #30363d; color: #e6edf3;`;
+      }
+    }
+    return `background: transparent; border-color: #30363d; color: #8b949e;`;
+  }}
+  
+  &:hover {
+    opacity: 0.8;
+  }
+`;
+
+const KeywordInput = styled.div`
+  margin-top: 1rem;
+  
+  input {
+    width: 100%;
+    padding: 0.75rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #e6edf3;
+    font-size: 0.9rem;
+    
+    &:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    
+    &::placeholder {
+      color: #6e7681;
+    }
+  }
+`;
+
+const SubmitRatingButton = styled.button`
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: ${props => props.disabled ? '#30363d' : '#238636'};
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  transition: all 0.2s;
+  
+  &:hover:not(:disabled) {
+    background: #2ea043;
+  }
+`;
+
+const RatingSubmitted = styled.div`
+  text-align: center;
+  color: #238636;
+  font-size: 0.9rem;
+  padding: 0.75rem;
+`;
+
 const HistoryGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -360,11 +474,19 @@ export default function CoverGenerator() {
   const [selectedNetwork, setSelectedNetwork] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('');
   const [articleTitle, setArticleTitle] = useState('');
+  const [customKeyword, setCustomKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentImage, setCurrentImage] = useState(null);
   const [currentMeta, setCurrentMeta] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
+  
+  // Rating state
+  const [logoRating, setLogoRating] = useState(null);
+  const [backgroundRating, setBackgroundRating] = useState(null);
+  const [feedbackKeyword, setFeedbackKeyword] = useState('');
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [submittingRating, setSubmittingRating] = useState(false);
 
   // Load networks on mount
   useEffect(() => {
@@ -377,6 +499,16 @@ export default function CoverGenerator() {
       loadSavedCovers();
     }
   }, [currentUser]);
+
+  // Reset rating when new image is generated
+  useEffect(() => {
+    if (currentImage) {
+      setLogoRating(null);
+      setBackgroundRating(null);
+      setFeedbackKeyword('');
+      setRatingSubmitted(false);
+    }
+  }, [currentImage]);
 
   const loadNetworks = async () => {
     try {
@@ -392,7 +524,6 @@ export default function CoverGenerator() {
       }
     } catch (err) {
       console.error('Failed to load networks:', err);
-      // Set fallback data
       setNetworks([
         { symbol: 'BTC', name: 'Bitcoin' },
         { symbol: 'ETH', name: 'Ethereum' },
@@ -424,7 +555,6 @@ export default function CoverGenerator() {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.covers) {
-          // Merge saved covers into history (avoid duplicates)
           setHistory(prev => {
             const existingUrls = new Set(prev.map(h => h.imageUrl));
             const newCovers = data.covers
@@ -474,7 +604,45 @@ export default function CoverGenerator() {
     }
   }, [currentUser]);
 
-  // Update input when dropdown changes
+  const submitRating = async () => {
+    if (!logoRating && !backgroundRating) {
+      toast.warning('Please rate at least one aspect');
+      return;
+    }
+    
+    setSubmittingRating(true);
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/cover-generator/rating`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: currentImage,
+          network: currentMeta?.network,
+          promptUsed: currentMeta?.prompt,
+          logoRating,
+          backgroundRating,
+          feedbackKeyword: feedbackKeyword.trim() || null,
+          userId: currentUser?.uid || null
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setRatingSubmitted(true);
+        toast.success('Thanks for your feedback!');
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err) {
+      console.error('Failed to submit rating:', err);
+      toast.error('Failed to submit rating');
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
   const handleNetworkSelect = (e) => {
     const value = e.target.value;
     setSelectedNetwork(value);
@@ -510,7 +678,8 @@ export default function CoverGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           network: networkToUse.toUpperCase(),
-          title: articleTitle || undefined
+          title: articleTitle || undefined,
+          customKeyword: customKeyword.trim() || undefined
         })
       });
 
@@ -524,10 +693,10 @@ export default function CoverGenerator() {
         setCurrentMeta({
           network: network,
           method: data.method,
-          duration: data.duration
+          duration: data.duration,
+          prompt: data.promptUsed
         });
         
-        // Auto-save for logged-in users
         let saved = false;
         if (currentUser) {
           saved = await saveCover(imageUrl, network, articleTitle);
@@ -540,7 +709,6 @@ export default function CoverGenerator() {
           toast.success('Cover generated successfully!');
         }
         
-        // Add to history
         setHistory(prev => [{
           imageUrl: imageUrl,
           network: network,
@@ -579,6 +747,13 @@ export default function CoverGenerator() {
       duration: '-'
     });
   };
+
+  const ratingOptions = [
+    { value: 'excellent', label: 'So Good!' },
+    { value: 'good', label: 'Good' },
+    { value: 'okay', label: 'Just Okay' },
+    { value: 'bad', label: 'Bad' }
+  ];
 
   return (
     <PageContainer>
@@ -656,6 +831,19 @@ export default function CoverGenerator() {
               <div className="hint">Adds context for more relevant imagery</div>
             </InputSection>
 
+            <InputSection>
+              <label htmlFor="customKeyword">Custom Keyword (optional)</label>
+              <TextInput
+                type="text"
+                id="customKeyword"
+                placeholder="e.g., space, futuristic, wall street..."
+                value={customKeyword}
+                onChange={(e) => setCustomKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
+              />
+              <div className="hint">Add a keyword to influence the style</div>
+            </InputSection>
+
             <GenerateButton
               onClick={handleGenerate}
               disabled={!networkInput.trim() || loading}
@@ -708,6 +896,67 @@ export default function CoverGenerator() {
                   <ActionButton onClick={handleGenerate} disabled={loading}>Regenerate</ActionButton>
                 </ActionButtons>
               </GenerationInfo>
+            )}
+
+            {/* Rating Section */}
+            {currentImage && !ratingSubmitted && (
+              <RatingSection>
+                <RatingTitle>Rate this generation (helps improve results)</RatingTitle>
+                
+                <RatingRow>
+                  <RatingLabel>Logo Quality:</RatingLabel>
+                  <RatingOptions>
+                    {ratingOptions.map(opt => (
+                      <RatingButton
+                        key={`logo-${opt.value}`}
+                        rating={opt.value}
+                        selected={logoRating === opt.value}
+                        onClick={() => setLogoRating(opt.value)}
+                      >
+                        {opt.label}
+                      </RatingButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                <RatingRow>
+                  <RatingLabel>Background Scene:</RatingLabel>
+                  <RatingOptions>
+                    {ratingOptions.map(opt => (
+                      <RatingButton
+                        key={`bg-${opt.value}`}
+                        rating={opt.value}
+                        selected={backgroundRating === opt.value}
+                        onClick={() => setBackgroundRating(opt.value)}
+                      >
+                        {opt.label}
+                      </RatingButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                <KeywordInput>
+                  <input
+                    type="text"
+                    placeholder="Suggest a keyword to improve future generations..."
+                    value={feedbackKeyword}
+                    onChange={(e) => setFeedbackKeyword(e.target.value)}
+                  />
+                </KeywordInput>
+                
+                <SubmitRatingButton
+                  onClick={submitRating}
+                  disabled={submittingRating || (!logoRating && !backgroundRating)}
+                >
+                  {submittingRating ? 'Submitting...' : 'Submit Feedback'}
+                </SubmitRatingButton>
+              </RatingSection>
+            )}
+            
+            {ratingSubmitted && (
+              <RatingSubmitted>
+                Thank you for your feedback! It helps improve future generations.
+              </RatingSubmitted>
             )}
           </Card>
 
