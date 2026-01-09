@@ -334,10 +334,17 @@ const RatingButton = styled.button`
   }
 `;
 
-const KeywordInput = styled.div`
+const FeedbackInput = styled.div`
   margin-top: 1rem;
   
-  input {
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    color: #8b949e;
+  }
+  
+  textarea {
     width: 100%;
     padding: 0.75rem;
     background: #161b22;
@@ -345,6 +352,9 @@ const KeywordInput = styled.div`
     border-radius: 8px;
     color: #e6edf3;
     font-size: 0.9rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 80px;
     
     &:focus {
       outline: none;
@@ -354,6 +364,12 @@ const KeywordInput = styled.div`
     &::placeholder {
       color: #6e7681;
     }
+  }
+  
+  .hint {
+    font-size: 0.75rem;
+    color: #6e7681;
+    margin-top: 0.25rem;
   }
 `;
 
@@ -1040,21 +1056,19 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
-                <KeywordInput>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#8b949e' }}>
-                    Suggest a keyword or phrase for future generations:
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g., 'neon city lights', 'underwater scene', 'golden sunset'..."
+                <FeedbackInput>
+                  <label>Tell us how to improve (optional):</label>
+                  <textarea
+                    placeholder="Share any feedback... e.g., 'Make the logo bigger', 'I prefer darker backgrounds', 'Add more 3D depth', 'Try a space theme next time'..."
                     value={feedbackKeyword}
                     onChange={(e) => setFeedbackKeyword(e.target.value)}
-                    maxLength={100}
+                    maxLength={500}
+                    rows={3}
                   />
-                  <div style={{ fontSize: '0.75rem', color: '#6e7681', marginTop: '0.25rem' }}>
-                    Words or phrases you'd like to see in future prompts
+                  <div className="hint">
+                    Your feedback helps improve future generations. Be specific!
                   </div>
-                </KeywordInput>
+                </FeedbackInput>
                 
                 <SubmitRatingButton
                   onClick={submitRating}
