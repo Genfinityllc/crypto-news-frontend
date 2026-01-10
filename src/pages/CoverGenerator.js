@@ -12,22 +12,19 @@ const PageContainer = styled.div`
 `;
 
 const Header = styled.header`
-  text-align: center;
+  text-align: left;
   margin-bottom: 2rem;
 `;
 
 const Title = styled.h1`
   font-size: 2.5rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #00d4ff, #8b5cf6, #ff00aa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #ffffff;
   margin-bottom: 0.5rem;
 `;
 
 const Subtitle = styled.p`
-  color: #8b949e;
+  color: #ffffff;
   font-size: 1.1rem;
 `;
 
