@@ -163,11 +163,19 @@ const GenerationItem = styled.div`
   border-radius: 8px;
   overflow: hidden;
   background: #2a2a2a;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  &:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 25px rgba(0, 102, 204, 0.3);
+  }
   
   img {
     width: 100%;
     aspect-ratio: 16/9;
     object-fit: cover;
+    display: block;
   }
 `;
 
@@ -176,18 +184,84 @@ const GenerationOverlay = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 0.5rem;
-  background: linear-gradient(transparent, rgba(0,0,0,0.8));
+  padding: 0.75rem;
+  background: linear-gradient(transparent, rgba(0,0,0,0.9));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 `;
 
 const NetworkTag = styled.span`
   display: inline-block;
-  padding: 0.2rem 0.4rem;
+  padding: 0.25rem 0.5rem;
   background: #0066cc;
   border-radius: 4px;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: white;
+`;
+
+const DownloadBtn = styled.button`
+  padding: 0.25rem 0.5rem;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  color: white;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: rgba(255,255,255,0.3);
+  }
+`;
+
+const ImageModal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+  
+  img {
+    max-width: 90%;
+    max-height: 70vh;
+    border-radius: 8px;
+  }
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+`;
+
+const ModalButton = styled.button`
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  ${props => props.primary ? `
+    background: #0066cc;
+    border: none;
+    color: white;
+    &:hover { background: #0052a3; }
+  ` : `
+    background: transparent;
+    border: 1px solid #666;
+    color: white;
+    &:hover { background: rgba(255,255,255,0.1); }
+  `}
 `;
 
 const EmptyState = styled.div`
@@ -238,6 +312,7 @@ export default function ProfileManager() {
   const [loading, setLoading] = useState(false);
   const [generations, setGenerations] = useState([]);
   const [loadingGenerations, setLoadingGenerations] = useState(true);
+  const [selectedImage, setSelectedImage] = useState(null);
   
   // Password change state
   const [passwordData, setPasswordData] = useState({
@@ -275,17 +350,25 @@ export default function ProfileManager() {
 
   const fetchUserGenerations = async () => {
     try {
-      const token = localStorage.getItem('firebaseToken');
+      // Get fresh token
+      const freshToken = await currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', freshToken);
+      
       const response = await fetch(`${API_BASE}/api/cover-generator/my-covers`, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${freshToken}`
         }
       });
       
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setGenerations(data.covers || []);
+          // Normalize the image URL field (API returns image_url, we use imageUrl)
+          const normalized = (data.covers || []).map(cover => ({
+            ...cover,
+            imageUrl: cover.image_url || cover.imageUrl
+          }));
+          setGenerations(normalized);
         }
       }
     } catch (error) {
@@ -293,6 +376,25 @@ export default function ProfileManager() {
     } finally {
       setLoadingGenerations(false);
     }
+  };
+
+  const handleImageClick = (gen) => {
+    setSelectedImage(gen);
+  };
+
+  const handleDownload = (imageUrl, network) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `${network || 'cover'}-${Date.now()}.png`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Download started!');
+  };
+
+  const closeModal = () => {
+    setSelectedImage(null);
   };
 
   const handleChange = (e) => {
@@ -552,18 +654,55 @@ export default function ProfileManager() {
             </p>
           </EmptyState>
         ) : (
-          <GenerationsGrid>
-            {generations.map((gen, index) => (
-              <GenerationItem key={gen.id || index}>
-                <img src={gen.imageUrl} alt={gen.network} />
-                <GenerationOverlay>
-                  <NetworkTag>{gen.network}</NetworkTag>
-                </GenerationOverlay>
-              </GenerationItem>
-            ))}
-          </GenerationsGrid>
+          <>
+            <p style={{ color: '#888', marginBottom: '1rem', fontSize: '0.9rem' }}>
+              Click any image to view full size and download. {generations.length} cover{generations.length !== 1 ? 's' : ''} saved.
+            </p>
+            <GenerationsGrid>
+              {generations.map((gen, index) => (
+                <GenerationItem key={gen.id || index} onClick={() => handleImageClick(gen)}>
+                  <img 
+                    src={gen.imageUrl} 
+                    alt={gen.network || 'Cover'} 
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <GenerationOverlay>
+                    <NetworkTag>{gen.network || 'Cover'}</NetworkTag>
+                    <DownloadBtn onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownload(gen.imageUrl, gen.network);
+                    }}>
+                      Download
+                    </DownloadBtn>
+                  </GenerationOverlay>
+                </GenerationItem>
+              ))}
+            </GenerationsGrid>
+          </>
         )}
       </Card>
+
+      {/* Full Image Modal */}
+      {selectedImage && (
+        <ImageModal onClick={closeModal}>
+          <img 
+            src={selectedImage.imageUrl} 
+            alt={selectedImage.network || 'Cover'} 
+            onClick={(e) => e.stopPropagation()}
+          />
+          <ModalActions onClick={(e) => e.stopPropagation()}>
+            <ModalButton primary onClick={() => handleDownload(selectedImage.imageUrl, selectedImage.network)}>
+              Download Image
+            </ModalButton>
+            <ModalButton onClick={closeModal}>
+              Close
+            </ModalButton>
+          </ModalActions>
+          <p style={{ color: '#888', marginTop: '1rem', fontSize: '0.9rem' }}>
+            {selectedImage.network} • {selectedImage.created_at ? new Date(selectedImage.created_at).toLocaleDateString() : 'Recently created'}
+          </p>
+        </ImageModal>
+      )}
 
       {/* Notification Preferences */}
       <SectionTitle>Notification Preferences</SectionTitle>
