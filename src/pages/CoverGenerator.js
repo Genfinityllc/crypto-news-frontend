@@ -1056,7 +1056,7 @@ export default function CoverGenerator() {
                 
                 {/* Logo Size */}
                 <RatingRow>
-                  <RatingLabel>Logo Size (1-3 = too small, 4-6 = good, 7-10 = too large)</RatingLabel>
+                  <RatingLabel>Logo Size (1 = very bad size, 10 = perfect size)</RatingLabel>
                   <RatingOptions>
                     {ratingScale.map(value => (
                       <NumberButton
