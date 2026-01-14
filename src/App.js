@@ -88,15 +88,15 @@ function App() {
     <Router>
       <AuthProvider>
         <NewsPreloadProvider>
-          <GlobalStyle />
-          <AppContainer>
-            <Navigation />
-            <MainContent>
-              <Routes>
-                {/* Public routes */}
-                <Route path="/login" element={<LoginForm />} />
-                <Route path="/signup" element={<SignupForm />} />
-                
+        <GlobalStyle />
+        <AppContainer>
+          <Navigation />
+          <MainContent>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginForm />} />
+              <Route path="/signup" element={<SignupForm />} />
+              
                 {/* Cover Generator - Always accessible (landing page) */}
                 <Route path="/" element={<CoverGenerator />} />
                 <Route path="/cover-generator" element={<CoverGenerator />} />
@@ -126,57 +126,57 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                <Route 
-                  path="/dashboard" 
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/profile" 
-                  element={
-                    <ProtectedRoute>
-                      <ProfileManager />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/bookmarks" 
-                  element={
-                    <ProtectedRoute>
-                      <Bookmarks />
-                    </ProtectedRoute>
-                  } 
-                />
-                
+              <Route 
+                path="/dashboard" 
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <ProfileManager />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/bookmarks" 
+                element={
+                  <ProtectedRoute>
+                    <Bookmarks />
+                  </ProtectedRoute>
+                } 
+              />
+              
                 {/* Redirect unknown routes to landing page */}
                 <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </MainContent>
-            
-            <Footer>
-              <p>
-                Crypto News Curator &copy; 2024 | 
-                Powered by <a href="https://firebase.google.com" target="_blank" rel="noopener noreferrer">Firebase</a> & 
-                <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a>
-              </p>
-            </Footer>
-          </AppContainer>
+            </Routes>
+          </MainContent>
           
-          <ToastContainer
-            position="top-right"
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="dark"
-          />
+          <Footer>
+            <p>
+              Crypto News Curator &copy; 2024 | 
+              Powered by <a href="https://firebase.google.com" target="_blank" rel="noopener noreferrer">Firebase</a> & 
+              <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a>
+            </p>
+          </Footer>
+        </AppContainer>
+        
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="dark"
+        />
         </NewsPreloadProvider>
       </AuthProvider>
     </Router>

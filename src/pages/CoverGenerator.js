@@ -1102,7 +1102,15 @@ export default function CoverGenerator() {
               <HistoryGrid>
                 {history.map((item, index) => (
                   <HistoryItem key={item.id || index} onClick={() => handleHistoryClick(item)}>
-                    <img src={item.imageUrl} alt={item.network} />
+                    <img 
+                      src={item.imageUrl} 
+                      alt={item.network}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+                        e.target.parentElement.style.minHeight = '120px';
+                      }}
+                    />
                     <HistoryOverlay>
                       <NetworkTag>{item.network}</NetworkTag>
                       {item.saved && <SavedBadge>Saved</SavedBadge>}

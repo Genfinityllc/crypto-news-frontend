@@ -273,24 +273,24 @@ export default function Navigation() {
                 onClick={closeMobileMenu}
               >
                 All News
-              </NavLink>
-              
-              <NavLink 
-                to="/clients" 
-                isActive={location.pathname.startsWith('/clients')}
-                onClick={closeMobileMenu}
-              >
+          </NavLink>
+          
+          <NavLink 
+            to="/clients" 
+            isActive={location.pathname.startsWith('/clients')}
+            onClick={closeMobileMenu}
+          >
                 Client News
-              </NavLink>
-              
-              <NavLink 
-                to="/dashboard" 
-                isActive={location.pathname === '/dashboard'}
-                onClick={closeMobileMenu}
-              >
+          </NavLink>
+          
+          <NavLink 
+            to="/dashboard" 
+            isActive={location.pathname === '/dashboard'}
+            onClick={closeMobileMenu}
+          >
                 Dashboard
-              </NavLink>
-              
+          </NavLink>
+          
               <NavLink 
                 to="/bookmarks" 
                 isActive={location.pathname === '/bookmarks'}
