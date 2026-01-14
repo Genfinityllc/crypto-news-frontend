@@ -300,17 +300,21 @@ const RatingOptions = styled.div`
   flex-wrap: wrap;
 `;
 
-const RatingButton = styled.button`
-  padding: 0.4rem 0.75rem;
+const NumberButton = styled.button`
+  width: 36px;
+  height: 32px;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid;
   
   ${props => {
+    const value = props.value;
+    const rating = value >= 8 ? 'excellent' : value >= 6 ? 'good' : value >= 4 ? 'okay' : 'bad';
     if (props.selected) {
-      switch(props.rating) {
+      switch(rating) {
         case 'excellent':
           return `background: #238636; border-color: #238636; color: white;`;
         case 'good':
@@ -328,42 +332,6 @@ const RatingButton = styled.button`
   
   &:hover {
     opacity: 0.8;
-  }
-`;
-
-const SliderRow = styled.div`
-  margin-bottom: 1.25rem;
-  
-  .slider-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-  }
-  
-  .slider-label {
-    font-size: 0.85rem;
-    color: #8b949e;
-  }
-  
-  .slider-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    ${props => {
-      const val = props.value;
-      if (val >= 8) return 'background: #238636; color: white;';
-      if (val >= 6) return 'background: #1f6feb; color: white;';
-      if (val >= 4) return 'background: #9e6a03; color: white;';
-      return 'background: #da3633; color: white;';
-    }}
-  }
-  
-  .slider-hint {
-    font-size: 0.75rem;
-    color: #6e7681;
-    margin-top: 0.35rem;
   }
 `;
 
@@ -573,11 +541,12 @@ export default function CoverGenerator() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
   
-  // Rating state - 1-10 numeric scale
-  const [logoQuality, setLogoQuality] = useState(5);
-  const [logoSize, setLogoSize] = useState(5);  // 1-3=too small, 4-6=good, 7-10=too large
-  const [backgroundQuality, setBackgroundQuality] = useState(5);
-  const [backgroundStyle, setBackgroundStyle] = useState(5);
+  // Rating state - 1-10 numeric scale (checkbox buttons)
+  const [logoQuality, setLogoQuality] = useState(null);
+  const [logoSize, setLogoSize] = useState(null);  // 1-3=too small, 4-6=good, 7-10=too large
+  const [logoStyle, setLogoStyle] = useState(null);
+  const [backgroundQuality, setBackgroundQuality] = useState(null);
+  const [backgroundStyle, setBackgroundStyle] = useState(null);
   const [feedbackKeyword, setFeedbackKeyword] = useState('');
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
@@ -597,10 +566,11 @@ export default function CoverGenerator() {
   // Reset rating when new image is generated
   useEffect(() => {
     if (currentImage) {
-      setLogoQuality(5);
-      setLogoSize(5);
-      setBackgroundQuality(5);
-      setBackgroundStyle(5);
+      setLogoQuality(null);
+      setLogoSize(null);
+      setLogoStyle(null);
+      setBackgroundQuality(null);
+      setBackgroundStyle(null);
       setFeedbackKeyword('');
       setRatingSubmitted(false);
     }
@@ -715,10 +685,10 @@ export default function CoverGenerator() {
   }, [currentUser]);
 
   const submitRating = async () => {
-    // Any rating is valid (even 5 means they interacted with it)
-    const hasChanged = logoQuality !== 5 || logoSize !== 5 || backgroundQuality !== 5 || backgroundStyle !== 5 || feedbackKeyword.trim();
-    if (!hasChanged) {
-      toast.warning('Please adjust at least one rating or provide feedback');
+    const hasAnyRating = logoQuality !== null || logoSize !== null || logoStyle !== null ||
+      backgroundQuality !== null || backgroundStyle !== null || feedbackKeyword.trim();
+    if (!hasAnyRating) {
+      toast.warning('Please provide at least one rating or feedback');
       return;
     }
     
@@ -735,10 +705,12 @@ export default function CoverGenerator() {
           // 1-10 numeric ratings
           logoQuality,
           logoSize,
+          logoStyle,
           backgroundQuality,
           backgroundStyle,
           feedbackKeyword: feedbackKeyword.trim() || null,
-          userId: currentUser?.uid || null
+          userId: currentUser?.uid || null,
+          userEmail: currentUser?.email || null
         })
       });
       
@@ -788,9 +760,15 @@ export default function CoverGenerator() {
     setError(null);
     
     try {
+      let authHeader = {};
+      if (currentUser) {
+        const freshToken = await currentUser.getIdToken(true);
+        authHeader = { 'Authorization': `Bearer ${freshToken}` };
+      }
+
       const response = await fetch(`${API_BASE}/api/cover-generator/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
           network: networkToUse.toUpperCase(),
           title: articleTitle || undefined,
@@ -863,13 +841,8 @@ export default function CoverGenerator() {
     });
   };
 
-  // Helper function to get description for slider values
-  const getQualityLabel = (val) => {
-    if (val >= 8) return 'Excellent';
-    if (val >= 6) return 'Good';
-    if (val >= 4) return 'Average';
-    return 'Poor';
-  };
+  // Rating scale (1-10)
+  const ratingScale = Array.from({ length: 10 }, (_, i) => i + 1);
 
   return (
     <PageContainer>
@@ -1014,76 +987,95 @@ export default function CoverGenerator() {
               </GenerationInfo>
             )}
 
-            {/* Rating Section - 1-10 Sliders */}
+            {/* Rating Section - 1-10 Checkboxes */}
             {currentImage && !ratingSubmitted && (
               <RatingSection>
                 <RatingTitle>📊 Rate This Generation (1-10)</RatingTitle>
                 
-                {/* Logo Quality Slider */}
-                <SliderRow value={logoQuality}>
-                  <div className="slider-header">
-                    <span className="slider-label">Logo Quality</span>
-                    <span className="slider-value">{logoQuality}/10</span>
-                  </div>
-                  <RatingSlider
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={logoQuality}
-                    onChange={(e) => setLogoQuality(parseInt(e.target.value))}
-                  />
-                  <div className="slider-hint">How well is the logo rendered? (detail, clarity, 3D effect)</div>
-                </SliderRow>
+                {/* Logo Quality */}
+                <RatingRow>
+                  <RatingLabel>Logo Quality</RatingLabel>
+                  <RatingOptions>
+                    {ratingScale.map(value => (
+                      <NumberButton
+                        key={`logoQuality-${value}`}
+                        value={value}
+                        selected={logoQuality === value}
+                        onClick={() => setLogoQuality(value)}
+                      >
+                        {value}
+                      </NumberButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
                 
-                {/* Logo Size Slider */}
-                <SliderRow value={logoSize <= 3 ? 3 : logoSize >= 7 ? 3 : 7}>
-                  <div className="slider-header">
-                    <span className="slider-label">Logo Size</span>
-                    <span className="slider-value">
-                      {logoSize <= 3 ? 'Too Small' : logoSize >= 7 ? 'Too Large' : 'Good Size'}
-                    </span>
-                  </div>
-                  <RatingSlider
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={logoSize}
-                    onChange={(e) => setLogoSize(parseInt(e.target.value))}
-                  />
-                  <div className="slider-hint">1-3 = Too Small (need bigger) | 4-6 = Good Size | 7-10 = Too Large (need smaller)</div>
-                </SliderRow>
+                {/* Logo Size */}
+                <RatingRow>
+                  <RatingLabel>Logo Size (1-3 = too small, 4-6 = good, 7-10 = too large)</RatingLabel>
+                  <RatingOptions>
+                    {ratingScale.map(value => (
+                      <NumberButton
+                        key={`logoSize-${value}`}
+                        value={value}
+                        selected={logoSize === value}
+                        onClick={() => setLogoSize(value)}
+                      >
+                        {value}
+                      </NumberButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
                 
-                {/* Background Quality Slider */}
-                <SliderRow value={backgroundQuality}>
-                  <div className="slider-header">
-                    <span className="slider-label">Background Quality</span>
-                    <span className="slider-value">{backgroundQuality}/10</span>
-                  </div>
-                  <RatingSlider
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={backgroundQuality}
-                    onChange={(e) => setBackgroundQuality(parseInt(e.target.value))}
-                  />
-                  <div className="slider-hint">How good is the background rendering quality?</div>
-                </SliderRow>
+                {/* Logo Style */}
+                <RatingRow>
+                  <RatingLabel>Logo Style</RatingLabel>
+                  <RatingOptions>
+                    {ratingScale.map(value => (
+                      <NumberButton
+                        key={`logoStyle-${value}`}
+                        value={value}
+                        selected={logoStyle === value}
+                        onClick={() => setLogoStyle(value)}
+                      >
+                        {value}
+                      </NumberButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
                 
-                {/* Background Style Slider */}
-                <SliderRow value={backgroundStyle}>
-                  <div className="slider-header">
-                    <span className="slider-label">Background Style</span>
-                    <span className="slider-value">{backgroundStyle}/10</span>
-                  </div>
-                  <RatingSlider
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={backgroundStyle}
-                    onChange={(e) => setBackgroundStyle(parseInt(e.target.value))}
-                  />
-                  <div className="slider-hint">Is this the right style/theme for the image?</div>
-                </SliderRow>
+                {/* Background Quality */}
+                <RatingRow>
+                  <RatingLabel>Background Quality</RatingLabel>
+                  <RatingOptions>
+                    {ratingScale.map(value => (
+                      <NumberButton
+                        key={`bgQuality-${value}`}
+                        value={value}
+                        selected={backgroundQuality === value}
+                        onClick={() => setBackgroundQuality(value)}
+                      >
+                        {value}
+                      </NumberButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
+                
+                {/* Background Style */}
+                <RatingRow>
+                  <RatingLabel>Background Style</RatingLabel>
+                  <RatingOptions>
+                    {ratingScale.map(value => (
+                      <NumberButton
+                        key={`bgStyle-${value}`}
+                        value={value}
+                        selected={backgroundStyle === value}
+                        onClick={() => setBackgroundStyle(value)}
+                      >
+                        {value}
+                      </NumberButton>
+                    ))}
+                  </RatingOptions>
+                </RatingRow>
                 
                 <FeedbackInput>
                   <label>💬 Additional Feedback (optional):</label>
