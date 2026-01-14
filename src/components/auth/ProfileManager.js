@@ -156,6 +156,28 @@ const GenerationsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  
+  /* Scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 const GenerationItem = styled.div`
@@ -538,50 +560,50 @@ export default function ProfileManager() {
       
       {/* Account Information */}
       <Card>
-        <UserInfo>
-          <h3>Account Information</h3>
-          <p><strong>Email:</strong> {currentUser.email}</p>
-          <p><strong>Email Verified:</strong> {currentUser.emailVerified ? 'Yes' : 'No'}</p>
-          <p><strong>Account Created:</strong> {new Date(currentUser.metadata.creationTime).toLocaleDateString()}</p>
-        </UserInfo>
+      <UserInfo>
+        <h3>Account Information</h3>
+        <p><strong>Email:</strong> {currentUser.email}</p>
+        <p><strong>Email Verified:</strong> {currentUser.emailVerified ? 'Yes' : 'No'}</p>
+        <p><strong>Account Created:</strong> {new Date(currentUser.metadata.creationTime).toLocaleDateString()}</p>
+      </UserInfo>
 
-        <Form onSubmit={handleSubmit}>
-          <FormGroup>
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
-              name="displayName"
-              type="text"
-              value={formData.displayName}
-              onChange={handleChange}
-              placeholder="Your display name"
-            />
-          </FormGroup>
+      <Form onSubmit={handleSubmit}>
+        <FormGroup>
+          <Label htmlFor="displayName">Display Name</Label>
+          <Input
+            id="displayName"
+            name="displayName"
+            type="text"
+            value={formData.displayName}
+            onChange={handleChange}
+            placeholder="Your display name"
+          />
+        </FormGroup>
 
-          <FormGroup>
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              name="username"
-              type="text"
-              value={formData.username}
-              onChange={handleChange}
-              placeholder="Your username"
-            />
-          </FormGroup>
+        <FormGroup>
+          <Label htmlFor="username">Username</Label>
+          <Input
+            id="username"
+            name="username"
+            type="text"
+            value={formData.username}
+            onChange={handleChange}
+            placeholder="Your username"
+          />
+        </FormGroup>
 
-          <FormGroup>
-            <Label htmlFor="theme">Theme</Label>
-            <Select
-              id="theme"
-              name="theme"
-              value={formData.preferences.theme}
-              onChange={handleChange}
-            >
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </Select>
-          </FormGroup>
+        <FormGroup>
+          <Label htmlFor="theme">Theme</Label>
+          <Select
+            id="theme"
+            name="theme"
+            value={formData.preferences.theme}
+            onChange={handleChange}
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </Select>
+        </FormGroup>
 
           <Button type="submit" disabled={loading}>
             {loading ? 'Updating...' : 'Update Profile'}
@@ -622,7 +644,7 @@ export default function ProfileManager() {
             />
           </FormGroup>
 
-          <FormGroup>
+        <FormGroup>
             <Label htmlFor="confirmPassword">Confirm New Password</Label>
             <Input
               id="confirmPassword"
@@ -729,21 +751,21 @@ export default function ProfileManager() {
             </CheckboxItem>
           </CheckboxGroup>
 
-          <FormGroup>
-            <Label>Notification Categories</Label>
-            <CheckboxGroup>
-              {['breaking', 'market', 'technology', 'regulation', 'analysis'].map(category => (
-                <CheckboxItem key={category}>
-                  <input
-                    type="checkbox"
-                    checked={formData.preferences.notifications.categories.includes(category)}
-                    onChange={() => handleCategoryChange(category)}
-                  />
-                  {category.charAt(0).toUpperCase() + category.slice(1)} News
-                </CheckboxItem>
-              ))}
-            </CheckboxGroup>
-          </FormGroup>
+        <FormGroup>
+          <Label>Notification Categories</Label>
+          <CheckboxGroup>
+            {['breaking', 'market', 'technology', 'regulation', 'analysis'].map(category => (
+              <CheckboxItem key={category}>
+                <input
+                  type="checkbox"
+                  checked={formData.preferences.notifications.categories.includes(category)}
+                  onChange={() => handleCategoryChange(category)}
+                />
+                {category.charAt(0).toUpperCase() + category.slice(1)} News
+              </CheckboxItem>
+            ))}
+          </CheckboxGroup>
+        </FormGroup>
 
           <Button type="submit" disabled={loading}>
             {loading ? 'Updating...' : 'Update Preferences'}
@@ -794,10 +816,10 @@ export default function ProfileManager() {
             ))}
           </CheckboxGroup>
 
-          <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading}>
             {loading ? 'Updating...' : 'Update Networks'}
-          </Button>
-        </Form>
+        </Button>
+      </Form>
       </Card>
     </ProfileContainer>
   );
