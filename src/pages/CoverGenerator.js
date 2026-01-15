@@ -621,6 +621,7 @@ export default function CoverGenerator() {
         { symbol: 'CFTC', name: 'CFTC' },
         { symbol: 'ABERDEEN', name: 'Aberdeen' },
         { symbol: 'ARROW', name: 'Arrow' },
+        { symbol: 'ARCHAX', name: 'Archax' },
         { symbol: 'AVERYDENNISON', name: 'Avery Dennison' },
         { symbol: 'BLOCKCHAINFORENERGY', name: 'Blockchain for Energy' },
         { symbol: 'BOEING', name: 'Boeing' },
