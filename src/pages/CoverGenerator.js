@@ -124,6 +124,27 @@ const SelectDropdown = styled.select`
   }
 `;
 
+const ToggleRow = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+`;
+
+const ToggleButton = styled.button`
+  padding: 0.6rem 1rem;
+  border-radius: 10px;
+  border: 1px solid ${props => props.selected ? '#00d4ff' : '#30363d'};
+  background: ${props => props.selected ? 'rgba(0, 212, 255, 0.15)' : '#0d1117'};
+  color: ${props => props.selected ? '#00d4ff' : '#e6edf3'};
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: #00d4ff;
+  }
+`;
+
 const Divider = styled.div`
   display: flex;
   align-items: center;
@@ -535,6 +556,7 @@ export default function CoverGenerator() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [articleTitle, setArticleTitle] = useState('');
   const [customKeyword, setCustomKeyword] = useState('');
+  const [logoTextMode, setLogoTextMode] = useState('full');
   const [loading, setLoading] = useState(false);
   const [currentImage, setCurrentImage] = useState(null);
   const [currentMeta, setCurrentMeta] = useState(null);
@@ -818,7 +840,8 @@ export default function CoverGenerator() {
         body: JSON.stringify({
           network: networkToUse.toUpperCase(),
           title: articleTitle || undefined,
-          customKeyword: customKeyword.trim() || undefined
+          customKeyword: customKeyword.trim() || undefined,
+          logoTextMode
         })
       });
 
@@ -977,6 +1000,27 @@ export default function CoverGenerator() {
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
               />
               <div className="hint">Add a keyword to influence the style</div>
+            </InputSection>
+
+            <InputSection>
+              <label>Logo Text Mode</label>
+              <ToggleRow>
+                <ToggleButton
+                  type="button"
+                  selected={logoTextMode === 'full'}
+                  onClick={() => setLogoTextMode('full')}
+                >
+                  Full Logo (text + mark)
+                </ToggleButton>
+                <ToggleButton
+                  type="button"
+                  selected={logoTextMode === 'mark'}
+                  onClick={() => setLogoTextMode('mark')}
+                >
+                  Logo Mark Only
+                </ToggleButton>
+              </ToggleRow>
+              <div className="hint">Choose whether to preserve the full logo text or only the symbol.</div>
             </InputSection>
 
             <GenerateButton
