@@ -864,6 +864,7 @@ export default function CoverGenerator() {
   const [bgColor, setBgColor] = useState('');
   const [elementColor, setElementColor] = useState('');
   const [accentLightColor, setAccentLightColor] = useState('');
+  const [lightingColor, setLightingColor] = useState('');
 
   const [logoMaterial, setLogoMaterial] = useState('default');
   const [logoBaseColor, setLogoBaseColor] = useState('');
@@ -1261,6 +1262,7 @@ export default function CoverGenerator() {
         bgColor: bgColor || undefined,
         elementColor: elementColor || undefined,
         accentLightColor: accentLightColor || undefined,
+        lightingColor: lightingColor || undefined,
         logoMaterial: logoMaterial !== 'default' ? logoMaterial : undefined,
         logoBaseColor: logoBaseColor || undefined,
         logoAccentLight: logoAccentLight || undefined,
@@ -1616,6 +1618,14 @@ export default function CoverGenerator() {
                         onChange={(e) => setAccentLightColor(e.target.value)}
                       />
                     </ColorField>
+                    <ColorField>
+                      <label>Lighting</label>
+                      <ColorInput
+                        type="color"
+                        value={lightingColor || '#6e3cbc'}
+                        onChange={(e) => setLightingColor(e.target.value)}
+                      />
+                    </ColorField>
                   </ColorRow>
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Logo Overrides</div>
                   <ColorRow>
@@ -1655,7 +1665,7 @@ export default function CoverGenerator() {
                       />
                     </ColorField>
                   </ColorRow>
-                  {(bgColor || elementColor || accentLightColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight) && (
+                  {(bgColor || elementColor || accentLightColor || lightingColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight) && (
                     <button
                       style={{
                         background: 'transparent',
@@ -1668,7 +1678,7 @@ export default function CoverGenerator() {
                         marginTop: '0.5rem'
                       }}
                       onClick={() => {
-                        setBgColor(''); setElementColor(''); setAccentLightColor('');
+                        setBgColor(''); setElementColor(''); setAccentLightColor(''); setLightingColor('');
                         setLogoMaterial('default'); setLogoBaseColor(''); setLogoAccentLight('');
                       }}
                     >
