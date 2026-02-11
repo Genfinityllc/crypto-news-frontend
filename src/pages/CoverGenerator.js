@@ -286,7 +286,6 @@ const ActionButton = styled.button`
   }
 `;
 
-// Rating System Styles
 const RatingSection = styled.div`
   background: #0d1117;
   border-radius: 12px;
@@ -547,6 +546,258 @@ const LoginHint = styled.div`
   }
 `;
 
+const AddLogoButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px dashed #30363d;
+  border-radius: 8px;
+  color: #8b949e;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 0.75rem;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #00d4ff;
+    color: #00d4ff;
+  }
+`;
+
+const LogoSlotRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  align-items: center;
+`;
+
+const RemoveLogoBtn = styled.button`
+  background: transparent;
+  border: none;
+  color: #f85149;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+
+  &:hover {
+    background: rgba(248, 81, 73, 0.1);
+  }
+`;
+
+const AdminSection = styled.div`
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+`;
+
+const AdminTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #f0883e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  cursor: pointer;
+`;
+
+const UploadRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0.75rem;
+`;
+
+const SmallInput = styled.input`
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 0.85rem;
+  width: ${props => props.width || '80px'};
+
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+  }
+
+  &::placeholder {
+    color: #6e7681;
+  }
+`;
+
+const UploadButton = styled.button`
+  padding: 0.5rem 1rem;
+  background: #238636;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.85rem;
+  cursor: pointer;
+
+  &:hover {
+    background: #2ea043;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const TypeToggle = styled.button`
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid ${props => props.active ? '#8b5cf6' : '#30363d'};
+  background: ${props => props.active ? 'rgba(139, 92, 246, 0.2)' : 'transparent'};
+  color: ${props => props.active ? '#8b5cf6' : '#8b949e'};
+  font-size: 0.8rem;
+  cursor: pointer;
+`;
+
+const StyleSection = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const StyleGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+`;
+
+const StyleThumb = styled.div`
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid ${props => props.selected ? '#00d4ff' : 'transparent'};
+  transition: all 0.2s;
+  aspect-ratio: 1;
+
+  &:hover {
+    border-color: #00d4ff;
+    transform: scale(1.05);
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+`;
+
+const StyleLabel = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.2rem 0.3rem;
+  background: rgba(0, 0, 0, 0.75);
+  color: #e6edf3;
+  font-size: 0.6rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const CategoryFilters = styled.div`
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+`;
+
+const CategoryChip = styled.button`
+  padding: 0.3rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid ${props => props.active ? '#00d4ff' : '#30363d'};
+  background: ${props => props.active ? 'rgba(0, 212, 255, 0.1)' : 'transparent'};
+  color: ${props => props.active ? '#00d4ff' : '#8b949e'};
+  font-size: 0.75rem;
+  cursor: pointer;
+`;
+
+const NoStyleNote = styled.div`
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.25rem;
+`;
+
+const ColorRow = styled.div`
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+`;
+
+const ColorField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  
+  label {
+    font-size: 0.75rem;
+    color: #8b949e;
+  }
+`;
+
+const ColorInput = styled.input`
+  width: 40px;
+  height: 30px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  cursor: pointer;
+  padding: 2px;
+  
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  
+  &::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
+  }
+`;
+
+const InlineDropdownRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const SmallSelect = styled.select`
+  padding: 0.5rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex: 1;
+
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+  }
+
+  option {
+    background: #0d1117;
+    color: #e6edf3;
+  }
+`;
+
 export default function CoverGenerator() {
   const { currentUser } = useAuth();
   const [networks, setNetworks] = useState([]);
@@ -562,10 +813,30 @@ export default function CoverGenerator() {
   const [currentMeta, setCurrentMeta] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
-  
-  // Rating state - 1-10 numeric scale (checkbox buttons)
+
+  const [additionalLogos, setAdditionalLogos] = useState([]);
+
+  const [styles, setStyles] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedStyle, setSelectedStyle] = useState(null);
+  const [activeCategory, setActiveCategory] = useState('all');
+
+  const [bgColor, setBgColor] = useState('');
+  const [elementColor, setElementColor] = useState('');
+  const [accentLightColor, setAccentLightColor] = useState('');
+
+  const [logoMaterial, setLogoMaterial] = useState('default');
+  const [logoBaseColor, setLogoBaseColor] = useState('');
+  const [logoAccentLight, setLogoAccentLight] = useState('');
+
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadSymbol, setUploadSymbol] = useState('');
+  const [uploadName, setUploadName] = useState('');
+  const [uploadType, setUploadType] = useState('company');
+  const [uploading, setUploading] = useState(false);
+
   const [logoQuality, setLogoQuality] = useState(null);
-  const [logoSize, setLogoSize] = useState(null);  // 1-3=too small, 4-6=good, 7-10=too large
+  const [logoSize, setLogoSize] = useState(null);
   const [logoStyle, setLogoStyle] = useState(null);
   const [backgroundQuality, setBackgroundQuality] = useState(null);
   const [backgroundStyle, setBackgroundStyle] = useState(null);
@@ -573,19 +844,19 @@ export default function CoverGenerator() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  // Load networks on mount
+  const isAdmin = currentUser?.email === 'valor@genfinite.com' || currentUser?.email === 'valor@genfinityllc.com';
+
   useEffect(() => {
     loadNetworks();
+    loadStyles();
   }, []);
 
-  // Load user's saved covers on mount/login
   useEffect(() => {
     if (currentUser) {
       loadSavedCovers();
     }
   }, [currentUser]);
 
-  // Reset rating when new image is generated
   useEffect(() => {
     if (currentImage) {
       setLogoQuality(null);
@@ -617,15 +888,53 @@ export default function CoverGenerator() {
         { symbol: 'ETH', name: 'Ethereum' },
         { symbol: 'XRP', name: 'XRP (Ripple)' },
         { symbol: 'SOL', name: 'Solana' },
-        { symbol: 'HBAR', name: 'Hedera' },
+        { symbol: 'HBAR', name: 'Hedera Hashgraph' },
         { symbol: 'ADA', name: 'Cardano' },
+        { symbol: 'AVAX', name: 'Avalanche' },
+        { symbol: 'DOT', name: 'Polkadot' },
+        { symbol: 'MATIC', name: 'Polygon' },
+        { symbol: 'LINK', name: 'Chainlink' },
+        { symbol: 'UNI', name: 'Uniswap' },
         { symbol: 'DOGE', name: 'Dogecoin' },
+        { symbol: 'LTC', name: 'Litecoin' },
+        { symbol: 'ATOM', name: 'Cosmos' },
+        { symbol: 'NEAR', name: 'NEAR Protocol' },
+        { symbol: 'ALGO', name: 'Algorand' },
+        { symbol: 'XLM', name: 'Stellar' },
+        { symbol: 'SUI', name: 'Sui' },
+        { symbol: 'APT', name: 'Aptos' },
+        { symbol: 'ARB', name: 'Arbitrum' },
+        { symbol: 'OP', name: 'Optimism' },
+        { symbol: 'INJ', name: 'Injective' },
+        { symbol: 'SEI', name: 'Sei' },
+        { symbol: 'TIA', name: 'Celestia' },
+        { symbol: 'PEPE', name: 'Pepe' },
+        { symbol: 'SHIB', name: 'Shiba Inu' },
+        { symbol: 'BNB', name: 'Binance' },
+        { symbol: 'TRX', name: 'Tron' },
+        { symbol: 'TON', name: 'Toncoin' },
+        { symbol: 'FIL', name: 'Filecoin' },
+        { symbol: 'XMR', name: 'Monero' },
+        { symbol: 'CRO', name: 'Cronos' },
+        { symbol: 'RUNE', name: 'THORChain' },
+        { symbol: 'TAO', name: 'Bittensor' },
+        { symbol: 'QNT', name: 'Quant' },
+        { symbol: 'ONDO', name: 'Ondo' },
+        { symbol: 'IMX', name: 'Immutable X' },
+        { symbol: 'DAG', name: 'Constellation (DAG)' },
+        { symbol: 'XDC', name: 'XDC Network' },
+        { symbol: 'USDC', name: 'USD Coin' },
+        { symbol: 'USDT', name: 'Tether' },
+        { symbol: 'ZEC', name: 'Zcash' },
+        { symbol: 'CANTON', name: 'Canton' },
+        { symbol: 'MONAD', name: 'Monad' },
+        { symbol: 'AXELAR', name: 'Axelar' },
       ]);
       setCompanies([
-        { symbol: 'WLFI', name: 'World Liberty Financial' },
         { symbol: 'BLACKROCK', name: 'BlackRock' },
         { symbol: 'GRAYSCALE', name: 'Grayscale' },
         { symbol: '21SHARES', name: '21Shares' },
+        { symbol: 'WLFI', name: 'World Liberty Financial' },
         { symbol: 'BITMINE', name: 'Bitmine' },
         { symbol: 'MOONPAY', name: 'MoonPay' },
         { symbol: 'NVIDIA', name: 'NVIDIA' },
@@ -671,7 +980,25 @@ export default function CoverGenerator() {
         { symbol: 'UBISOFT', name: 'Ubisoft' },
         { symbol: 'WORLDPAY', name: 'Worldpay' },
         { symbol: 'ZAIN', name: 'Zain' },
+        { symbol: 'AXIOM', name: 'Axiom' },
+        { symbol: 'PLUGANDPLAY', name: 'Plug and Play' },
+        { symbol: 'RAZE', name: 'Raze' },
+        { symbol: 'RIPPLE', name: 'Ripple' },
+        { symbol: 'COINBASE', name: 'Coinbase' },
       ]);
+    }
+  };
+
+  const loadStyles = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/style-catalog`);
+      const data = await response.json();
+      if (data.success) {
+        setStyles(data.styles || []);
+        setCategories(data.categories || []);
+      }
+    } catch (err) {
+      console.error('Failed to load styles:', err);
     }
   };
 
@@ -679,11 +1006,8 @@ export default function CoverGenerator() {
     if (!currentUser) return;
     
     try {
-      // Get fresh token directly from Firebase
       const freshToken = await currentUser.getIdToken(true);
       localStorage.setItem('firebaseToken', freshToken);
-      
-      console.log('Loading saved covers for user:', currentUser.uid);
       
       const response = await fetch(`${API_BASE}/api/cover-generator/my-covers`, {
         headers: {
@@ -693,7 +1017,6 @@ export default function CoverGenerator() {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Loaded covers:', data);
         if (data.success && data.covers) {
           setHistory(prev => {
             const existingUrls = new Set(prev.map(h => h.imageUrl));
@@ -719,11 +1042,8 @@ export default function CoverGenerator() {
     if (!currentUser) return false;
     
     try {
-      // Get fresh token directly from Firebase (tokens expire after 1 hour)
       const freshToken = await currentUser.getIdToken(true);
       localStorage.setItem('firebaseToken', freshToken);
-      
-      console.log('Saving cover with fresh token for user:', currentUser.uid);
       
       const response = await fetch(`${API_BASE}/api/cover-generator/save`, {
         method: 'POST',
@@ -739,7 +1059,6 @@ export default function CoverGenerator() {
       });
       
       const data = await response.json();
-      console.log('Save response:', data);
       
       if (response.ok && data.success) {
         return true;
@@ -770,7 +1089,6 @@ export default function CoverGenerator() {
           imageUrl: currentImage,
           network: currentMeta?.network,
           promptUsed: currentMeta?.prompt,
-          // 1-10 numeric ratings
           logoQuality,
           logoSize,
           logoStyle,
@@ -816,6 +1134,62 @@ export default function CoverGenerator() {
     }
   };
 
+  const handleAddLogo = () => {
+    if (additionalLogos.length < 2) {
+      setAdditionalLogos(prev => [...prev, { network: '', company: '' }]);
+    }
+  };
+
+  const handleRemoveLogo = (index) => {
+    setAdditionalLogos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAdditionalLogoChange = (index, field, value) => {
+    setAdditionalLogos(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === 'network') updated[index].company = '';
+      if (field === 'company') updated[index].network = '';
+      return updated;
+    });
+  };
+
+  const handleUploadLogo = async () => {
+    if (!uploadFile || !uploadSymbol || !uploadName) {
+      toast.warning('Please fill in all fields and select a file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', uploadFile);
+      formData.append('symbol', uploadSymbol.toUpperCase().replace(/\s+/g, ''));
+      formData.append('name', uploadName);
+      formData.append('type', uploadType);
+
+      const response = await fetch(`${API_BASE}/api/cover-generator/upload-logo`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success(`Logo uploaded: ${uploadName}`);
+        setUploadFile(null);
+        setUploadSymbol('');
+        setUploadName('');
+        loadNetworks();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err) {
+      toast.error(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     const networkToUse = networkInput.trim();
     
@@ -834,15 +1208,32 @@ export default function CoverGenerator() {
         authHeader = { 'Authorization': `Bearer ${freshToken}` };
       }
 
+      const extraNetworks = additionalLogos
+        .map(l => (l.network || l.company).trim().toUpperCase())
+        .filter(Boolean);
+
+      const body = {
+        network: networkToUse.toUpperCase(),
+        title: articleTitle || undefined,
+        customKeyword: customKeyword.trim() || undefined,
+        logoTextMode,
+        styleId: selectedStyle || undefined,
+        bgColor: bgColor || undefined,
+        elementColor: elementColor || undefined,
+        accentLightColor: accentLightColor || undefined,
+        logoMaterial: logoMaterial !== 'default' ? logoMaterial : undefined,
+        logoBaseColor: logoBaseColor || undefined,
+        logoAccentLight: logoAccentLight || undefined,
+      };
+
+      if (extraNetworks.length > 0) {
+        body.additionalNetworks = extraNetworks;
+      }
+
       const response = await fetch(`${API_BASE}/api/cover-generator/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({
-          network: networkToUse.toUpperCase(),
-          title: articleTitle || undefined,
-          customKeyword: customKeyword.trim() || undefined,
-          logoTextMode
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();
@@ -910,7 +1301,10 @@ export default function CoverGenerator() {
     });
   };
 
-  // Rating scale (1-10)
+  const filteredStyles = activeCategory === 'all'
+    ? styles
+    : styles.filter(s => s.category === activeCategory);
+
   const ratingScale = Array.from({ length: 10 }, (_, i) => i + 1);
 
   return (
@@ -921,13 +1315,12 @@ export default function CoverGenerator() {
       </Header>
 
       <MainGrid>
-        {/* Left Panel: Controls */}
         <div>
           <Card>
-            <CardTitle>Network / Company</CardTitle>
+            <CardTitle>Networks / Companies (up to 3)</CardTitle>
             
             <InputSection>
-              <label htmlFor="networkInput">Enter name or select from dropdown:</label>
+              <label htmlFor="networkInput">Type name or select below:</label>
               <TextInput
                 type="text"
                 id="networkInput"
@@ -941,42 +1334,103 @@ export default function CoverGenerator() {
                 hasValue={networkInput.length > 0}
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
               />
-              <div className="hint">Type any crypto network, token, or company name</div>
             </InputSection>
 
-            <Divider><span>or select from list</span></Divider>
-
-            <DropdownSection>
-              <DropdownLabel>Cryptocurrency Networks</DropdownLabel>
-              <SelectDropdown 
-                value={selectedNetwork} 
-                onChange={handleNetworkSelect}
-              >
-                <option value="">-- Select Network --</option>
+            <InlineDropdownRow>
+              <SmallSelect value={selectedNetwork} onChange={handleNetworkSelect}>
+                <option value="">-- Network --</option>
                 {networks.map(n => (
                   <option key={n.symbol} value={n.symbol}>
                     {n.name} ({n.symbol})
                   </option>
                 ))}
-              </SelectDropdown>
-            </DropdownSection>
-
-            <DropdownSection>
-              <DropdownLabel>Companies / Institutions</DropdownLabel>
-              <SelectDropdown 
-                value={selectedCompany} 
-                onChange={handleCompanySelect}
-              >
-                <option value="">-- Select Company --</option>
+              </SmallSelect>
+              <SmallSelect value={selectedCompany} onChange={handleCompanySelect}>
+                <option value="">-- Company --</option>
                 {companies.map(c => (
                   <option key={c.symbol} value={c.symbol}>
                     {c.name}
                   </option>
                 ))}
-              </SelectDropdown>
-            </DropdownSection>
+              </SmallSelect>
+            </InlineDropdownRow>
 
-            <InputSection style={{ marginTop: '1rem' }}>
+            {additionalLogos.map((logo, idx) => (
+              <LogoSlotRow key={idx} style={{ marginTop: '0.75rem' }}>
+                <SmallSelect
+                  value={logo.network}
+                  onChange={(e) => handleAdditionalLogoChange(idx, 'network', e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">-- Network --</option>
+                  {networks.map(n => (
+                    <option key={n.symbol} value={n.symbol}>{n.name}</option>
+                  ))}
+                </SmallSelect>
+                <SmallSelect
+                  value={logo.company}
+                  onChange={(e) => handleAdditionalLogoChange(idx, 'company', e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">-- Company --</option>
+                  {companies.map(c => (
+                    <option key={c.symbol} value={c.symbol}>{c.name}</option>
+                  ))}
+                </SmallSelect>
+                <RemoveLogoBtn onClick={() => handleRemoveLogo(idx)}>x</RemoveLogoBtn>
+              </LogoSlotRow>
+            ))}
+
+            {additionalLogos.length < 2 && (
+              <AddLogoButton onClick={handleAddLogo}>
+                + Add Another Logo ({additionalLogos.length + 1}/3)
+              </AddLogoButton>
+            )}
+
+            {isAdmin && (
+              <AdminSection>
+                <AdminTitle>Admin: Upload New Logo</AdminTitle>
+                <UploadRow>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={(e) => setUploadFile(e.target.files[0])}
+                    style={{ fontSize: '0.8rem', color: '#8b949e' }}
+                  />
+                </UploadRow>
+                <UploadRow>
+                  <SmallInput
+                    placeholder="SYM"
+                    value={uploadSymbol}
+                    onChange={(e) => setUploadSymbol(e.target.value)}
+                    width="70px"
+                  />
+                  <SmallInput
+                    placeholder="Name"
+                    value={uploadName}
+                    onChange={(e) => setUploadName(e.target.value)}
+                    width="120px"
+                  />
+                  <TypeToggle
+                    active={uploadType === 'network'}
+                    onClick={() => setUploadType('network')}
+                  >
+                    Network
+                  </TypeToggle>
+                  <TypeToggle
+                    active={uploadType === 'company'}
+                    onClick={() => setUploadType('company')}
+                  >
+                    Company
+                  </TypeToggle>
+                </UploadRow>
+                <UploadButton onClick={handleUploadLogo} disabled={uploading}>
+                  {uploading ? 'Uploading...' : 'Upload'}
+                </UploadButton>
+              </AdminSection>
+            )}
+
+            <InputSection style={{ marginTop: '1.5rem' }}>
               <label htmlFor="articleTitle">Article Title (optional)</label>
               <TextInput
                 type="text"
@@ -1001,6 +1455,144 @@ export default function CoverGenerator() {
               />
               <div className="hint">Add a keyword to influence the style</div>
             </InputSection>
+
+            <StyleSection>
+              <DropdownLabel>Choose a Style</DropdownLabel>
+              {categories.length > 0 && (
+                <CategoryFilters>
+                  <CategoryChip
+                    active={activeCategory === 'all'}
+                    onClick={() => setActiveCategory('all')}
+                  >
+                    All
+                  </CategoryChip>
+                  {categories.map(cat => (
+                    <CategoryChip
+                      key={cat.id}
+                      active={activeCategory === cat.id}
+                      onClick={() => setActiveCategory(cat.id)}
+                    >
+                      {cat.name}
+                    </CategoryChip>
+                  ))}
+                </CategoryFilters>
+              )}
+              {filteredStyles.length > 0 ? (
+                <StyleGrid>
+                  {filteredStyles.map(style => (
+                    <StyleThumb
+                      key={style.id}
+                      selected={selectedStyle === style.id}
+                      onClick={() => setSelectedStyle(selectedStyle === style.id ? null : style.id)}
+                      title={style.description}
+                    >
+                      <img
+                        src={style.supabaseUrl || style.sampleImageUrl}
+                        alt={style.name}
+                        onError={(e) => {
+                          if (e.target.src !== style.sampleImageUrl) {
+                            e.target.src = style.sampleImageUrl;
+                          }
+                        }}
+                      />
+                      <StyleLabel>{style.name}</StyleLabel>
+                    </StyleThumb>
+                  ))}
+                </StyleGrid>
+              ) : (
+                <NoStyleNote>No style selected - will use random composition</NoStyleNote>
+              )}
+
+              {selectedStyle && (
+                <>
+                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Scene Colors</div>
+                  <ColorRow>
+                    <ColorField>
+                      <label>BG</label>
+                      <ColorInput
+                        type="color"
+                        value={bgColor || '#0d1117'}
+                        onChange={(e) => setBgColor(e.target.value)}
+                      />
+                    </ColorField>
+                    <ColorField>
+                      <label>Elements</label>
+                      <ColorInput
+                        type="color"
+                        value={elementColor || '#dbff03'}
+                        onChange={(e) => setElementColor(e.target.value)}
+                      />
+                    </ColorField>
+                    <ColorField>
+                      <label>Accent</label>
+                      <ColorInput
+                        type="color"
+                        value={accentLightColor || '#8b5cf6'}
+                        onChange={(e) => setAccentLightColor(e.target.value)}
+                      />
+                    </ColorField>
+                  </ColorRow>
+                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Logo Overrides</div>
+                  <ColorRow>
+                    <ColorField>
+                      <label>Material</label>
+                      <SmallSelect
+                        value={logoMaterial}
+                        onChange={(e) => setLogoMaterial(e.target.value)}
+                        style={{ flex: 'none', width: '120px', fontSize: '0.75rem', padding: '0.3rem' }}
+                      >
+                        <option value="default">Default</option>
+                        <option value="frosted_glass">Frosted Glass</option>
+                        <option value="crystal_glass">Crystal Glass</option>
+                        <option value="mirror_chrome">Mirror Chrome</option>
+                        <option value="matte_ceramic">Matte Ceramic</option>
+                        <option value="liquid_mercury">Liquid Mercury</option>
+                        <option value="beveled_crystal">Beveled Crystal</option>
+                        <option value="edge_lit_glass">Edge-Lit Glass</option>
+                        <option value="platinum_chrome">Platinum Chrome</option>
+                        <option value="brushed_metal">Brushed Metal</option>
+                      </SmallSelect>
+                    </ColorField>
+                    <ColorField>
+                      <label>Logo Color</label>
+                      <ColorInput
+                        type="color"
+                        value={logoBaseColor || '#ffffff'}
+                        onChange={(e) => setLogoBaseColor(e.target.value)}
+                      />
+                    </ColorField>
+                    <ColorField>
+                      <label>Logo Glow</label>
+                      <ColorInput
+                        type="color"
+                        value={logoAccentLight || '#8b5cf6'}
+                        onChange={(e) => setLogoAccentLight(e.target.value)}
+                      />
+                    </ColorField>
+                  </ColorRow>
+                  {(bgColor || elementColor || accentLightColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight) && (
+                    <button
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #30363d',
+                        borderRadius: '6px',
+                        color: '#8b949e',
+                        padding: '0.3rem 0.6rem',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        marginTop: '0.5rem'
+                      }}
+                      onClick={() => {
+                        setBgColor(''); setElementColor(''); setAccentLightColor('');
+                        setLogoMaterial('default'); setLogoBaseColor(''); setLogoAccentLight('');
+                      }}
+                    >
+                      Reset All Colors
+                    </button>
+                  )}
+                </>
+              )}
+            </StyleSection>
 
             <InputSection>
               <label>Logo Text Mode</label>
@@ -1047,7 +1639,6 @@ export default function CoverGenerator() {
           </Card>
         </div>
 
-        {/* Right Panel: Results */}
         <ResultsSection>
           <Card>
             <CardTitle>Generated Cover</CardTitle>
@@ -1077,12 +1668,10 @@ export default function CoverGenerator() {
               </GenerationInfo>
             )}
 
-            {/* Rating Section - 1-10 Checkboxes */}
             {currentImage && !ratingSubmitted && (
               <RatingSection>
-                <RatingTitle>📊 Rate This Generation (1-10)</RatingTitle>
+                <RatingTitle>Rate This Generation (1-10)</RatingTitle>
                 
-                {/* Logo Quality */}
                 <RatingRow>
                   <RatingLabel>Logo Quality</RatingLabel>
                   <RatingOptions>
@@ -1099,7 +1688,6 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
-                {/* Logo Size */}
                 <RatingRow>
                   <RatingLabel>Logo Size (1 = very bad size, 10 = perfect size)</RatingLabel>
                   <RatingOptions>
@@ -1116,7 +1704,6 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
-                {/* Logo Style */}
                 <RatingRow>
                   <RatingLabel>Logo Style</RatingLabel>
                   <RatingOptions>
@@ -1133,7 +1720,6 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
-                {/* Background Quality */}
                 <RatingRow>
                   <RatingLabel>Background Quality</RatingLabel>
                   <RatingOptions>
@@ -1150,7 +1736,6 @@ export default function CoverGenerator() {
                   </RatingOptions>
                 </RatingRow>
                 
-                {/* Background Style */}
                 <RatingRow>
                   <RatingLabel>Background Style</RatingLabel>
                   <RatingOptions>
@@ -1168,7 +1753,7 @@ export default function CoverGenerator() {
                 </RatingRow>
                 
                 <FeedbackInput>
-                  <label>💬 Additional Feedback (optional):</label>
+                  <label>Additional Feedback (optional):</label>
                   <textarea
                     placeholder="Describe what you liked or didn't like... e.g., 'The logo should be bigger', 'Love the underwater theme', 'Too much glass everywhere', 'Try a space theme'..."
                     value={feedbackKeyword}
@@ -1197,7 +1782,6 @@ export default function CoverGenerator() {
             )}
           </Card>
 
-          {/* History */}
           <Card>
             <HistoryHeader>
               <CardTitle>
