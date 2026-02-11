@@ -546,6 +546,42 @@ const LoginHint = styled.div`
   }
 `;
 
+const LogoPreview = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  margin-bottom: 0.75rem;
+
+  img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #161b22;
+  }
+
+  .logo-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .logo-name {
+    color: #e6edf3;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .logo-symbol {
+    color: #00d4ff;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+`;
+
 const AddLogoButton = styled.button`
   display: flex;
   align-items: center;
@@ -775,6 +811,8 @@ const InlineDropdownRow = styled.div`
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  max-width: 100%;
+  overflow: hidden;
 `;
 
 const SmallSelect = styled.select`
@@ -786,6 +824,8 @@ const SmallSelect = styled.select`
   font-size: 0.85rem;
   cursor: pointer;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 
   &:focus {
     outline: none;
@@ -1319,6 +1359,26 @@ export default function CoverGenerator() {
           <Card>
             <CardTitle>Networks / Companies (up to 3)</CardTitle>
             
+            {networkInput && (
+              <LogoPreview>
+                <img
+                  src={`${API_BASE}/api/cover-generator/logo-preview/${networkInput.toUpperCase()}`}
+                  alt={networkInput}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                  onLoad={(e) => { e.target.style.display = 'block'; }}
+                />
+                <div className="logo-info">
+                  <div className="logo-name">
+                    {(() => {
+                      const found = networks.find(n => n.symbol === networkInput) || companies.find(c => c.symbol === networkInput);
+                      return found ? found.name : networkInput;
+                    })()}
+                  </div>
+                  <div className="logo-symbol">{networkInput.toUpperCase()}</div>
+                </div>
+              </LogoPreview>
+            )}
+
             <InputSection>
               <label htmlFor="networkInput">Type name or select below:</label>
               <TextInput
@@ -1355,31 +1415,56 @@ export default function CoverGenerator() {
               </SmallSelect>
             </InlineDropdownRow>
 
-            {additionalLogos.map((logo, idx) => (
-              <LogoSlotRow key={idx} style={{ marginTop: '0.75rem' }}>
-                <SmallSelect
-                  value={logo.network}
-                  onChange={(e) => handleAdditionalLogoChange(idx, 'network', e.target.value)}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">-- Network --</option>
-                  {networks.map(n => (
-                    <option key={n.symbol} value={n.symbol}>{n.name}</option>
-                  ))}
-                </SmallSelect>
-                <SmallSelect
-                  value={logo.company}
-                  onChange={(e) => handleAdditionalLogoChange(idx, 'company', e.target.value)}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">-- Company --</option>
-                  {companies.map(c => (
-                    <option key={c.symbol} value={c.symbol}>{c.name}</option>
-                  ))}
-                </SmallSelect>
-                <RemoveLogoBtn onClick={() => handleRemoveLogo(idx)}>x</RemoveLogoBtn>
-              </LogoSlotRow>
-            ))}
+            {additionalLogos.map((logo, idx) => {
+              const extraSymbol = (logo.network || logo.company).trim();
+              return (
+                <div key={idx} style={{ marginTop: '0.75rem' }}>
+                  {extraSymbol && (
+                    <LogoPreview style={{ padding: '0.5rem', marginBottom: '0.5rem' }}>
+                      <img
+                        src={`${API_BASE}/api/cover-generator/logo-preview/${extraSymbol.toUpperCase()}`}
+                        alt={extraSymbol}
+                        style={{ width: 32, height: 32 }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                        onLoad={(e) => { e.target.style.display = 'block'; }}
+                      />
+                      <div className="logo-info">
+                        <div className="logo-name" style={{ fontSize: '0.85rem' }}>
+                          {(() => {
+                            const found = networks.find(n => n.symbol === extraSymbol) || companies.find(c => c.symbol === extraSymbol);
+                            return found ? found.name : extraSymbol;
+                          })()}
+                        </div>
+                        <div className="logo-symbol" style={{ fontSize: '0.7rem' }}>{extraSymbol.toUpperCase()}</div>
+                      </div>
+                    </LogoPreview>
+                  )}
+                  <LogoSlotRow>
+                    <SmallSelect
+                      value={logo.network}
+                      onChange={(e) => handleAdditionalLogoChange(idx, 'network', e.target.value)}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="">-- Network --</option>
+                      {networks.map(n => (
+                        <option key={n.symbol} value={n.symbol}>{n.name}</option>
+                      ))}
+                    </SmallSelect>
+                    <SmallSelect
+                      value={logo.company}
+                      onChange={(e) => handleAdditionalLogoChange(idx, 'company', e.target.value)}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="">-- Company --</option>
+                      {companies.map(c => (
+                        <option key={c.symbol} value={c.symbol}>{c.name}</option>
+                      ))}
+                    </SmallSelect>
+                    <RemoveLogoBtn onClick={() => handleRemoveLogo(idx)}>x</RemoveLogoBtn>
+                  </LogoSlotRow>
+                </div>
+              );
+            })}
 
             {additionalLogos.length < 2 && (
               <AddLogoButton onClick={handleAddLogo}>
