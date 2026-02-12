@@ -934,6 +934,7 @@ export default function CoverGenerator() {
         { symbol: 'XRP', name: 'XRP (Ripple)' },
         { symbol: 'SOL', name: 'Solana' },
         { symbol: 'HBAR', name: 'Hedera Hashgraph' },
+        { symbol: 'HEDERA_FULL', name: 'Hedera (FULL)' },
         { symbol: 'ADA', name: 'Cardano' },
         { symbol: 'AVAX', name: 'Avalanche' },
         { symbol: 'DOT', name: 'Polkadot' },
