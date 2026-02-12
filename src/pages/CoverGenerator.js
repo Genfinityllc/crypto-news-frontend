@@ -887,7 +887,7 @@ export default function CoverGenerator() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  const adminEmails = ['valor@genfinite.com', 'valor@genfinityllc.com'];
+  const adminEmails = ['valor.kopeny@cc-ea.org'];
   const isAdmin = currentUser?.email && adminEmails.includes(currentUser.email.toLowerCase());
 
   useEffect(() => {
