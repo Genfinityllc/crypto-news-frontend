@@ -876,6 +876,7 @@ export default function CoverGenerator() {
   const [uploadSymbol, setUploadSymbol] = useState('');
   const [uploadName, setUploadName] = useState('');
   const [uploadType, setUploadType] = useState('company');
+  const [uploadVariant, setUploadVariant] = useState('mark');
   const [uploading, setUploading] = useState(false);
 
   const [logoQuality, setLogoQuality] = useState(null);
@@ -1208,7 +1209,8 @@ export default function CoverGenerator() {
     try {
       const formData = new FormData();
       formData.append('logo', uploadFile);
-      formData.append('symbol', uploadSymbol.toUpperCase().replace(/\s+/g, ''));
+      const baseSymbol = uploadSymbol.toUpperCase().replace(/\s+/g, '');
+      formData.append('symbol', uploadVariant === 'full' ? `${baseSymbol}_FULL` : baseSymbol);
       formData.append('name', uploadName);
       formData.append('type', uploadType);
 
@@ -1219,10 +1221,11 @@ export default function CoverGenerator() {
 
       const data = await response.json();
       if (data.success) {
-        toast.success(`Logo uploaded: ${uploadName}`);
+        toast.success(`Logo uploaded: ${uploadName} (${uploadVariant})`);
         setUploadFile(null);
         setUploadSymbol('');
         setUploadName('');
+        setUploadVariant('mark');
         loadNetworks();
       } else {
         throw new Error(data.error);
@@ -1514,6 +1517,23 @@ export default function CoverGenerator() {
                   >
                     Company
                   </TypeToggle>
+                </UploadRow>
+                <UploadRow>
+                  <TypeToggle
+                    active={uploadVariant === 'mark'}
+                    onClick={() => setUploadVariant('mark')}
+                  >
+                    Logo Mark
+                  </TypeToggle>
+                  <TypeToggle
+                    active={uploadVariant === 'full'}
+                    onClick={() => setUploadVariant('full')}
+                  >
+                    Full Logo (text)
+                  </TypeToggle>
+                  <span style={{ fontSize: '0.7rem', color: '#6e7681' }}>
+                    {uploadVariant === 'full' ? 'Wordmark with text' : 'Symbol/icon only'}
+                  </span>
                 </UploadRow>
                 <UploadButton onClick={handleUploadLogo} disabled={uploading}>
                   {uploading ? 'Uploading...' : 'Upload'}
