@@ -39,8 +39,8 @@ const MainGrid = styled.div`
 `;
 
 const Card = styled.div`
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: #111111;
+  border: 1px solid #222222;
   border-radius: 16px;
   padding: 1.5rem;
 `;
@@ -72,8 +72,8 @@ const InputSection = styled.div`
 const TextInput = styled.input`
   width: 100%;
   padding: 1rem;
-  background: #0d1117;
-  border: 2px solid ${props => props.hasValue ? '#00d4ff' : '#30363d'};
+  background: #0a0a0a;
+  border: 2px solid ${props => props.hasValue ? '#00d4ff' : '#1a1a1a'};
   border-radius: 12px;
   color: #e6edf3;
   font-size: 1.1rem;
@@ -106,8 +106,8 @@ const DropdownLabel = styled.label`
 const SelectDropdown = styled.select`
   width: 100%;
   padding: 0.75rem 1rem;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
   border-radius: 8px;
   color: #e6edf3;
   font-size: 1rem;
@@ -119,7 +119,7 @@ const SelectDropdown = styled.select`
   }
   
   option {
-    background: #0d1117;
+    background: #0a0a0a;
     color: #e6edf3;
   }
 `;
@@ -133,8 +133,8 @@ const ToggleRow = styled.div`
 const ToggleButton = styled.button`
   padding: 0.6rem 1rem;
   border-radius: 10px;
-  border: 1px solid ${props => props.selected ? '#00d4ff' : '#30363d'};
-  background: ${props => props.selected ? 'rgba(0, 212, 255, 0.15)' : '#0d1117'};
+  border: 1px solid ${props => props.selected ? '#00d4ff' : '#1a1a1a'};
+  background: ${props => props.selected ? 'rgba(0, 212, 255, 0.15)' : '#0a0a0a'};
   color: ${props => props.selected ? '#00d4ff' : '#e6edf3'};
   font-size: 0.9rem;
   cursor: pointer;
@@ -156,7 +156,7 @@ const Divider = styled.div`
     content: '';
     flex: 1;
     height: 1px;
-    background: #30363d;
+    background: #1a1a1a;
   }
   
   span {
@@ -168,7 +168,7 @@ const GenerateButton = styled.button`
   width: 100%;
   margin-top: 1.5rem;
   padding: 1.25rem 2rem;
-  background: ${props => props.loading ? '#30363d' : 'linear-gradient(135deg, #00d4ff, #8b5cf6)'};
+  background: ${props => props.loading ? '#1a1a1a' : 'linear-gradient(135deg, #00d4ff, #8b5cf6)'};
   border: none;
   border-radius: 12px;
   color: white;
@@ -212,10 +212,10 @@ const CurrentGeneration = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0d1117;
+  background: #0a0a0a;
   border-radius: 12px;
   overflow: hidden;
-  border: ${props => props.empty ? '2px dashed #30363d' : 'none'};
+  border: ${props => props.empty ? '2px dashed #1a1a1a' : 'none'};
   
   img {
     max-width: 100%;
@@ -241,7 +241,7 @@ const GenerationInfo = styled.div`
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: #0d1117;
+  background: #0a0a0a;
   border-radius: 12px;
   margin-top: 1rem;
   flex-wrap: wrap;
@@ -268,8 +268,8 @@ const ActionButtons = styled.div`
 
 const ActionButton = styled.button`
   padding: 0.5rem 1rem;
-  background: ${props => props.primary ? '#00d4ff' : '#161b22'};
-  border: 1px solid ${props => props.primary ? '#00d4ff' : '#30363d'};
+  background: ${props => props.primary ? '#00d4ff' : '#111111'};
+  border: 1px solid ${props => props.primary ? '#00d4ff' : '#1a1a1a'};
   border-radius: 8px;
   color: ${props => props.primary ? 'black' : '#e6edf3'};
   font-size: 0.85rem;
@@ -287,7 +287,7 @@ const ActionButton = styled.button`
 `;
 
 const RatingSection = styled.div`
-  background: #0d1117;
+  background: #0a0a0a;
   border-radius: 12px;
   padding: 1.25rem;
   margin-top: 1rem;
@@ -344,10 +344,10 @@ const NumberButton = styled.button`
         case 'bad':
           return `background: #da3633; border-color: #da3633; color: white;`;
         default:
-          return `background: #30363d; border-color: #30363d; color: #e6edf3;`;
+          return `background: #1a1a1a; border-color: #1a1a1a; color: #e6edf3;`;
       }
     }
-    return `background: transparent; border-color: #30363d; color: #8b949e;`;
+    return `background: transparent; border-color: #1a1a1a; color: #8b949e;`;
   }}
   
   &:hover {
@@ -411,8 +411,8 @@ const FeedbackInput = styled.div`
   textarea {
     width: 100%;
     padding: 0.75rem;
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: #111111;
+    border: 1px solid #1a1a1a;
     border-radius: 8px;
     color: #e6edf3;
     font-size: 0.9rem;
@@ -441,7 +441,7 @@ const SubmitRatingButton = styled.button`
   width: 100%;
   margin-top: 1rem;
   padding: 0.75rem;
-  background: ${props => props.disabled ? '#30363d' : '#238636'};
+  background: ${props => props.disabled ? '#1a1a1a' : '#238636'};
   border: none;
   border-radius: 8px;
   color: white;
@@ -551,8 +551,8 @@ const LogoPreview = styled.div`
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
   border-radius: 10px;
   margin-bottom: 0.75rem;
 
@@ -561,7 +561,7 @@ const LogoPreview = styled.div`
     height: 48px;
     object-fit: contain;
     border-radius: 8px;
-    background: #161b22;
+    background: #111111;
   }
 
   .logo-info {
@@ -588,7 +588,7 @@ const AddLogoButton = styled.button`
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   background: transparent;
-  border: 1px dashed #30363d;
+  border: 1px dashed #1a1a1a;
   border-radius: 8px;
   color: #8b949e;
   font-size: 0.85rem;
@@ -626,8 +626,8 @@ const RemoveLogoBtn = styled.button`
 const AdminSection = styled.div`
   margin-top: 1.5rem;
   padding: 1rem;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
   border-radius: 12px;
 `;
 
@@ -652,8 +652,8 @@ const UploadRow = styled.div`
 
 const SmallInput = styled.input`
   padding: 0.5rem 0.75rem;
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: #111111;
+  border: 1px solid #1a1a1a;
   border-radius: 6px;
   color: #e6edf3;
   font-size: 0.85rem;
@@ -691,7 +691,7 @@ const UploadButton = styled.button`
 const TypeToggle = styled.button`
   padding: 0.4rem 0.75rem;
   border-radius: 6px;
-  border: 1px solid ${props => props.active ? '#8b5cf6' : '#30363d'};
+  border: 1px solid ${props => props.active ? '#8b5cf6' : '#1a1a1a'};
   background: ${props => props.active ? 'rgba(139, 92, 246, 0.2)' : 'transparent'};
   color: ${props => props.active ? '#8b5cf6' : '#8b949e'};
   font-size: 0.8rem;
@@ -757,7 +757,7 @@ const CategoryFilters = styled.div`
 const CategoryChip = styled.button`
   padding: 0.3rem 0.6rem;
   border-radius: 12px;
-  border: 1px solid ${props => props.active ? '#00d4ff' : '#30363d'};
+  border: 1px solid ${props => props.active ? '#00d4ff' : '#1a1a1a'};
   background: ${props => props.active ? 'rgba(0, 212, 255, 0.1)' : 'transparent'};
   color: ${props => props.active ? '#00d4ff' : '#8b949e'};
   font-size: 0.75rem;
@@ -791,9 +791,9 @@ const ColorField = styled.div`
 const ColorInput = styled.input`
   width: 40px;
   height: 30px;
-  border: 1px solid #30363d;
+  border: 1px solid #1a1a1a;
   border-radius: 6px;
-  background: #0d1117;
+  background: #0a0a0a;
   cursor: pointer;
   padding: 2px;
   
@@ -817,8 +817,8 @@ const InlineDropdownRow = styled.div`
 
 const SmallSelect = styled.select`
   padding: 0.5rem;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
   border-radius: 8px;
   color: #e6edf3;
   font-size: 0.85rem;
@@ -833,7 +833,7 @@ const SmallSelect = styled.select`
   }
 
   option {
-    background: #0d1117;
+    background: #0a0a0a;
     color: #e6edf3;
   }
 `;
@@ -1620,7 +1620,7 @@ export default function CoverGenerator() {
                       <label>BG</label>
                       <ColorInput
                         type="color"
-                        value={bgColor || '#0d1117'}
+                        value={bgColor || '#0a0a0a'}
                         onChange={(e) => setBgColor(e.target.value)}
                       />
                     </ColorField>
@@ -1691,7 +1691,7 @@ export default function CoverGenerator() {
                     <button
                       style={{
                         background: 'transparent',
-                        border: '1px solid #30363d',
+                        border: '1px solid #1a1a1a',
                         borderRadius: '6px',
                         color: '#8b949e',
                         padding: '0.3rem 0.6rem',

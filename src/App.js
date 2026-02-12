@@ -30,7 +30,7 @@ const GlobalStyle = createGlobalStyle`
     font-family: Arial, Helvetica, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: #1a1a1a;
+    background: #000000;
     color: #f0f0f0;
     min-height: 100vh;
   }
