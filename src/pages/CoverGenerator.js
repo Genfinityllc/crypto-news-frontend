@@ -870,6 +870,8 @@ export default function CoverGenerator() {
   const [logoBaseColor, setLogoBaseColor] = useState('');
   const [logoAccentLight, setLogoAccentLight] = useState('');
 
+  const [customSubject, setCustomSubject] = useState('');
+
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadSymbol, setUploadSymbol] = useState('');
   const [uploadName, setUploadName] = useState('');
@@ -885,7 +887,8 @@ export default function CoverGenerator() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  const isAdmin = currentUser?.email === 'valor@genfinite.com' || currentUser?.email === 'valor@genfinityllc.com';
+  const adminEmails = ['valor@genfinite.com', 'valor@genfinityllc.com'];
+  const isAdmin = currentUser?.email && adminEmails.includes(currentUser.email.toLowerCase());
 
   useEffect(() => {
     loadNetworks();
@@ -1266,6 +1269,7 @@ export default function CoverGenerator() {
         logoMaterial: logoMaterial !== 'default' ? logoMaterial : undefined,
         logoBaseColor: logoBaseColor || undefined,
         logoAccentLight: logoAccentLight || undefined,
+        customSubject: customSubject.trim() || undefined,
       };
 
       if (extraNetworks.length > 0) {
@@ -1590,8 +1594,26 @@ export default function CoverGenerator() {
                 <NoStyleNote>No style selected - will use random composition</NoStyleNote>
               )}
 
-              {selectedStyle && (
+              {selectedStyle && (() => {
+                const activeStyle = styles.find(s => s.id === selectedStyle);
+                const subjectConfig = activeStyle?.customSubject;
+                return (
                 <>
+                  {subjectConfig?.enabled && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>3D Elements Override</div>
+                      <TextInput
+                        type="text"
+                        placeholder={subjectConfig.placeholder || 'e.g., rockets, skyscrapers...'}
+                        value={customSubject}
+                        onChange={(e) => setCustomSubject(e.target.value)}
+                        style={{ fontSize: '0.9rem', padding: '0.65rem' }}
+                      />
+                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>
+                        Default: {subjectConfig.defaultSubject} — type to replace with custom 3D elements
+                      </div>
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Scene Colors</div>
                   <ColorRow>
                     <ColorField>
@@ -1686,7 +1708,8 @@ export default function CoverGenerator() {
                     </button>
                   )}
                 </>
-              )}
+                );
+              })()}
             </StyleSection>
 
             <InputSection>
