@@ -1032,6 +1032,7 @@ export default function CoverGenerator() {
         { symbol: 'COINBASE', name: 'Coinbase' },
         { symbol: 'COINBASE_FULL', name: 'Coinbase (FULL)' },
         { symbol: 'HEDERA_FULL', name: 'Hedera (FULL)' },
+        { symbol: 'LOOPSCALE_FULL', name: 'Loopscale (FULL)' },
       ]);
     }
   };
