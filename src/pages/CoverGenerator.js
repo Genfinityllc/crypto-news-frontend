@@ -1030,6 +1030,7 @@ export default function CoverGenerator() {
         { symbol: 'RAZE', name: 'Raze' },
         { symbol: 'RIPPLE', name: 'Ripple' },
         { symbol: 'COINBASE', name: 'Coinbase' },
+        { symbol: 'COINBASE_FULL', name: 'Coinbase (FULL)' },
       ]);
     }
   };
