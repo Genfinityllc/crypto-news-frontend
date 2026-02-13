@@ -1033,6 +1033,7 @@ export default function CoverGenerator() {
         { symbol: 'COINBASE_FULL', name: 'Coinbase (FULL)' },
         { symbol: 'HEDERA_FULL', name: 'Hedera (FULL)' },
         { symbol: 'LOOPSCALE_FULL', name: 'Loopscale (FULL)' },
+        { symbol: 'DRIFT_FULL', name: 'Drift (FULL)' },
       ]);
     }
   };
