@@ -871,6 +871,8 @@ export default function CoverGenerator() {
   const [logoAccentLight, setLogoAccentLight] = useState('');
 
   const [customSubject, setCustomSubject] = useState('');
+  const [patternId, setPatternId] = useState('');
+  const [patternColor, setPatternColor] = useState('');
 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadSymbol, setUploadSymbol] = useState('');
@@ -1277,6 +1279,8 @@ export default function CoverGenerator() {
         logoBaseColor: logoBaseColor || undefined,
         logoAccentLight: logoAccentLight || undefined,
         customSubject: customSubject.trim() || undefined,
+        patternId: patternId || undefined,
+        patternColor: patternColor || undefined,
       };
 
       if (extraNetworks.length > 0) {
@@ -1638,6 +1642,45 @@ export default function CoverGenerator() {
                       </div>
                     </div>
                   )}
+                  {activeStyle?.patternOptions?.enabled && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Pattern Style</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {activeStyle.patternOptions.patterns.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setPatternId(p.id === (patternId || activeStyle.patternOptions.defaultPattern) ? '' : p.id)}
+                            style={{
+                              padding: '0.4rem 0.7rem',
+                              borderRadius: '8px',
+                              border: `1px solid ${(patternId || activeStyle.patternOptions.defaultPattern) === p.id ? '#00d4ff' : '#1a1a1a'}`,
+                              background: (patternId || activeStyle.patternOptions.defaultPattern) === p.id ? 'rgba(0, 212, 255, 0.15)' : '#0a0a0a',
+                              color: (patternId || activeStyle.patternOptions.defaultPattern) === p.id ? '#00d4ff' : '#e6edf3',
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#6e7681', marginTop: '0.25rem' }}>
+                        {(activeStyle.patternOptions.patterns.find(p => p.id === (patternId || activeStyle.patternOptions.defaultPattern)))?.description || ''}
+                      </div>
+                      {(patternId || activeStyle.patternOptions.defaultPattern) !== 'none' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.4rem' }}>
+                          <span style={{ fontSize: '0.78rem', color: '#8b949e' }}>Pattern Color</span>
+                          <ColorInput
+                            type="color"
+                            value={patternColor || activeStyle.patternOptions.defaultColor}
+                            onChange={(e) => setPatternColor(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Scene Colors</div>
                   <ColorRow>
                     <ColorField>
@@ -1711,7 +1754,7 @@ export default function CoverGenerator() {
                       />
                     </ColorField>
                   </ColorRow>
-                  {(bgColor || elementColor || accentLightColor || lightingColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight) && (
+                  {(bgColor || elementColor || accentLightColor || lightingColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight || patternId || patternColor) && (
                     <button
                       style={{
                         background: 'transparent',
@@ -1726,6 +1769,7 @@ export default function CoverGenerator() {
                       onClick={() => {
                         setBgColor(''); setElementColor(''); setAccentLightColor(''); setLightingColor('');
                         setLogoMaterial('default'); setLogoBaseColor(''); setLogoAccentLight('');
+                        setPatternId(''); setPatternColor('');
                       }}
                     >
                       Reset All Colors
