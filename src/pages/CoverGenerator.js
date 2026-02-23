@@ -873,6 +873,7 @@ export default function CoverGenerator() {
   const [customSubject, setCustomSubject] = useState('');
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
+  const [showWatermark, setShowWatermark] = useState(true);
 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadSymbol, setUploadSymbol] = useState('');
@@ -1245,9 +1246,10 @@ export default function CoverGenerator() {
 
   const handleGenerate = async () => {
     const networkToUse = networkInput.trim();
-    
-    if (!networkToUse) {
-      toast.warning('Please enter a network or company name');
+    const isBackgroundOnly = !networkToUse;
+
+    if (isBackgroundOnly && !selectedStyle) {
+      toast.warning('Please select a style for background-only generation');
       return;
     }
 
@@ -1266,7 +1268,7 @@ export default function CoverGenerator() {
         .filter(Boolean);
 
       const body = {
-        network: networkToUse.toUpperCase(),
+        network: isBackgroundOnly ? '' : networkToUse.toUpperCase(),
         title: articleTitle || undefined,
         customKeyword: customKeyword.trim() || undefined,
         logoTextMode,
@@ -1281,6 +1283,7 @@ export default function CoverGenerator() {
         customSubject: customSubject.trim() || undefined,
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
+        skipWatermark: !showWatermark || undefined,
       };
 
       if (extraNetworks.length > 0) {
@@ -1814,9 +1817,20 @@ export default function CoverGenerator() {
               <div className="hint">Choose whether to preserve the full logo text or only the symbol.</div>
             </InputSection>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', color: '#8b949e' }}>
+                <input
+                  type="checkbox"
+                  checked={showWatermark}
+                  onChange={(e) => setShowWatermark(e.target.checked)}
+                  style={{ accentColor: '#00d4ff' }}
+                />
+                Watermark
+              </label>
+            </div>
             <GenerateButton
               onClick={handleGenerate}
-              disabled={!networkInput.trim() || loading}
+              disabled={(!networkInput.trim() && !selectedStyle) || loading}
               loading={loading}
             >
               {loading ? (
@@ -1824,7 +1838,7 @@ export default function CoverGenerator() {
                   <Spinner /> Generating (~45s)...
                 </>
               ) : (
-                <>Generate Cover</>
+                <>{networkInput.trim() ? 'Generate Cover' : 'Generate Background'}</>
               )}
             </GenerateButton>
             
