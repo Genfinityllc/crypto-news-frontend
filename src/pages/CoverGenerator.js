@@ -845,6 +845,7 @@ export default function CoverGenerator() {
   const [networkInput, setNetworkInput] = useState('');
   const [selectedNetwork, setSelectedNetwork] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('');
+  const [logoSlots, setLogoSlots] = useState([]);
   const [articleTitle, setArticleTitle] = useState('');
   const [customKeyword, setCustomKeyword] = useState('');
   const [logoTextMode, setLogoTextMode] = useState('full');
@@ -854,7 +855,6 @@ export default function CoverGenerator() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
 
-  const [additionalLogos, setAdditionalLogos] = useState([]);
 
   const [styles, setStyles] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -1186,22 +1186,23 @@ export default function CoverGenerator() {
     }
   };
 
-  const handleAddLogo = () => {
-    if (additionalLogos.length < 7) {
-      setAdditionalLogos(prev => [...prev, { network: '', company: '' }]);
+  const handleAddLogoSlot = () => {
+    if (logoSlots.length < 7) {
+      setLogoSlots(prev => [...prev, { network: '', company: '', input: '' }]);
     }
   };
 
-  const handleRemoveLogo = (index) => {
-    setAdditionalLogos(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveLogoSlot = (index) => {
+    setLogoSlots(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleAdditionalLogoChange = (index, field, value) => {
-    setAdditionalLogos(prev => {
+  const handleLogoSlotChange = (index, field, value) => {
+    setLogoSlots(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === 'network') updated[index].company = '';
-      if (field === 'company') updated[index].network = '';
+      if (field === 'network') { updated[index].company = ''; updated[index].input = value; }
+      if (field === 'company') { updated[index].network = ''; updated[index].input = value; }
+      if (field === 'input') { updated[index].network = ''; updated[index].company = ''; }
       return updated;
     });
   };
@@ -1263,12 +1264,14 @@ export default function CoverGenerator() {
         authHeader = { 'Authorization': `Bearer ${freshToken}` };
       }
 
-      const extraNetworks = additionalLogos
-        .map(l => (l.network || l.company).trim().toUpperCase())
-        .filter(Boolean);
+      const allLogoSymbols = isBackgroundOnly ? [] : [
+        networkToUse.toUpperCase(),
+        ...logoSlots.map(l => (l.input || l.network || l.company).trim().toUpperCase()).filter(Boolean)
+      ];
 
       const body = {
-        network: isBackgroundOnly ? '' : networkToUse.toUpperCase(),
+        network: isBackgroundOnly ? '' : allLogoSymbols[0] || '',
+        additionalNetworks: allLogoSymbols.slice(1),
         title: articleTitle || undefined,
         customKeyword: customKeyword.trim() || undefined,
         logoTextMode,
@@ -1285,10 +1288,6 @@ export default function CoverGenerator() {
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
       };
-
-      if (extraNetworks.length > 0) {
-        body.additionalNetworks = extraNetworks;
-      }
 
       const response = await fetch(`${API_BASE}/api/cover-generator/generate`, {
         method: 'POST',
@@ -1396,11 +1395,14 @@ export default function CoverGenerator() {
                   </div>
                   <div className="logo-symbol">{networkInput.toUpperCase()}</div>
                 </div>
+                {logoSlots.length > 0 && (
+                  <RemoveLogoBtn onClick={() => { setNetworkInput(''); setSelectedNetwork(''); setSelectedCompany(''); }}>x</RemoveLogoBtn>
+                )}
               </LogoPreview>
             )}
 
             <InputSection>
-              <label htmlFor="networkInput">Type name or select below:</label>
+              <label htmlFor="networkInput">{logoSlots.length > 0 ? 'Logo 1:' : 'Type name or select below:'}</label>
               <TextInput
                 type="text"
                 id="networkInput"
@@ -1435,15 +1437,16 @@ export default function CoverGenerator() {
               </SmallSelect>
             </InlineDropdownRow>
 
-            {additionalLogos.map((logo, idx) => {
-              const extraSymbol = (logo.network || logo.company).trim();
+            {logoSlots.map((logo, idx) => {
+              const slotSymbol = (logo.input || logo.network || logo.company).trim();
               return (
                 <div key={idx} style={{ marginTop: '0.75rem' }}>
-                  {extraSymbol && (
+                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Logo {idx + 2}:</div>
+                  {slotSymbol && (
                     <LogoPreview style={{ padding: '0.5rem', marginBottom: '0.5rem' }}>
                       <img
-                        src={`${API_BASE}/api/cover-generator/logo-preview/${extraSymbol.toUpperCase()}`}
-                        alt={extraSymbol}
+                        src={`${API_BASE}/api/cover-generator/logo-preview/${slotSymbol.toUpperCase()}`}
+                        alt={slotSymbol}
                         style={{ width: 32, height: 32 }}
                         onError={(e) => { e.target.style.display = 'none'; }}
                         onLoad={(e) => { e.target.style.display = 'block'; }}
@@ -1451,18 +1454,18 @@ export default function CoverGenerator() {
                       <div className="logo-info">
                         <div className="logo-name" style={{ fontSize: '0.85rem' }}>
                           {(() => {
-                            const found = networks.find(n => n.symbol === extraSymbol) || companies.find(c => c.symbol === extraSymbol);
-                            return found ? found.name : extraSymbol;
+                            const found = networks.find(n => n.symbol === slotSymbol) || companies.find(c => c.symbol === slotSymbol);
+                            return found ? found.name : slotSymbol;
                           })()}
                         </div>
-                        <div className="logo-symbol" style={{ fontSize: '0.7rem' }}>{extraSymbol.toUpperCase()}</div>
+                        <div className="logo-symbol" style={{ fontSize: '0.7rem' }}>{slotSymbol.toUpperCase()}</div>
                       </div>
                     </LogoPreview>
                   )}
                   <LogoSlotRow>
                     <SmallSelect
                       value={logo.network}
-                      onChange={(e) => handleAdditionalLogoChange(idx, 'network', e.target.value)}
+                      onChange={(e) => handleLogoSlotChange(idx, 'network', e.target.value)}
                       style={{ flex: 1 }}
                     >
                       <option value="">-- Network --</option>
@@ -1472,7 +1475,7 @@ export default function CoverGenerator() {
                     </SmallSelect>
                     <SmallSelect
                       value={logo.company}
-                      onChange={(e) => handleAdditionalLogoChange(idx, 'company', e.target.value)}
+                      onChange={(e) => handleLogoSlotChange(idx, 'company', e.target.value)}
                       style={{ flex: 1 }}
                     >
                       <option value="">-- Company --</option>
@@ -1480,15 +1483,15 @@ export default function CoverGenerator() {
                         <option key={c.symbol} value={c.symbol}>{c.name}</option>
                       ))}
                     </SmallSelect>
-                    <RemoveLogoBtn onClick={() => handleRemoveLogo(idx)}>x</RemoveLogoBtn>
+                    <RemoveLogoBtn onClick={() => handleRemoveLogoSlot(idx)}>x</RemoveLogoBtn>
                   </LogoSlotRow>
                 </div>
               );
             })}
 
-            {additionalLogos.length < 7 && (
-              <AddLogoButton onClick={handleAddLogo}>
-                + Add Another Logo ({additionalLogos.length + 1}/8)
+            {(logoSlots.length + 1) < 8 && (
+              <AddLogoButton onClick={handleAddLogoSlot}>
+                + Add Another Logo ({logoSlots.length + 1}/8)
               </AddLogoButton>
             )}
 
