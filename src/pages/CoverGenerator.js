@@ -1619,7 +1619,7 @@ export default function CoverGenerator() {
                       title={style.description}
                     >
                       <img
-                        src={style.supabaseUrl || style.sampleImageUrl}
+                        src={style.sampleImageUrl}
                         alt={style.name}
                         onError={(e) => {
                           if (e.target.src !== style.sampleImageUrl) {
