@@ -1745,6 +1745,7 @@ export default function CoverGenerator() {
                         style={{ flex: 'none', width: '120px', fontSize: '0.75rem', padding: '0.3rem' }}
                       >
                         <option value="default">Default</option>
+                        <option value="og_color">OG Color</option>
                         <option value="frosted_glass">Frosted Glass</option>
                         <option value="crystal_glass">Crystal Glass</option>
                         <option value="mirror_chrome">Mirror Chrome</option>
@@ -1756,22 +1757,26 @@ export default function CoverGenerator() {
                         <option value="brushed_metal">Brushed Metal</option>
                       </SmallSelect>
                     </ColorField>
-                    <ColorField>
-                      <label>Logo Color</label>
-                      <ColorInput
-                        type="color"
-                        value={logoBaseColor || '#ffffff'}
-                        onChange={(e) => setLogoBaseColor(e.target.value)}
-                      />
-                    </ColorField>
-                    <ColorField>
-                      <label>Logo Glow</label>
-                      <ColorInput
-                        type="color"
-                        value={logoAccentLight || '#8b5cf6'}
-                        onChange={(e) => setLogoAccentLight(e.target.value)}
-                      />
-                    </ColorField>
+                    {logoMaterial !== 'og_color' && (
+                      <>
+                        <ColorField>
+                          <label>Logo Color</label>
+                          <ColorInput
+                            type="color"
+                            value={logoBaseColor || '#ffffff'}
+                            onChange={(e) => setLogoBaseColor(e.target.value)}
+                          />
+                        </ColorField>
+                        <ColorField>
+                          <label>Logo Glow</label>
+                          <ColorInput
+                            type="color"
+                            value={logoAccentLight || '#8b5cf6'}
+                            onChange={(e) => setLogoAccentLight(e.target.value)}
+                          />
+                        </ColorField>
+                      </>
+                    )}
                   </ColorRow>
                   {(bgColor || elementColor || accentLightColor || lightingColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight || patternId || patternColor) && (
                     <button
