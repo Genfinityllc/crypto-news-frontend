@@ -866,9 +866,7 @@ export default function CoverGenerator() {
   const [accentLightColor, setAccentLightColor] = useState('');
   const [lightingColor, setLightingColor] = useState('');
 
-  const [logoMaterial, setLogoMaterial] = useState('default');
-  const [logoBaseColor, setLogoBaseColor] = useState('');
-  const [logoAccentLight, setLogoAccentLight] = useState('');
+  const [primaryLogoOverrides, setPrimaryLogoOverrides] = useState({ material: 'default', baseColor: '', accentLight: '' });
 
   const [customSubject, setCustomSubject] = useState('');
   const [patternId, setPatternId] = useState('');
@@ -1188,7 +1186,7 @@ export default function CoverGenerator() {
 
   const handleAddLogoSlot = () => {
     if (logoSlots.length < 7) {
-      setLogoSlots(prev => [...prev, { network: '', company: '', input: '' }]);
+      setLogoSlots(prev => [...prev, { network: '', company: '', input: '', material: 'default', baseColor: '', accentLight: '' }]);
     }
   };
 
@@ -1199,10 +1197,14 @@ export default function CoverGenerator() {
   const handleLogoSlotChange = (index, field, value) => {
     setLogoSlots(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      if (field === 'network') { updated[index].company = ''; updated[index].input = value; }
-      if (field === 'company') { updated[index].network = ''; updated[index].input = value; }
-      if (field === 'input') { updated[index].network = ''; updated[index].company = ''; }
+      if (field === '_overrides') {
+        updated[index] = { ...updated[index], material: value.material, baseColor: value.baseColor, accentLight: value.accentLight };
+      } else {
+        updated[index] = { ...updated[index], [field]: value };
+        if (field === 'network') { updated[index].company = ''; updated[index].input = value; }
+        if (field === 'company') { updated[index].network = ''; updated[index].input = value; }
+        if (field === 'input') { updated[index].network = ''; updated[index].company = ''; }
+      }
       return updated;
     });
   };
@@ -1264,10 +1266,21 @@ export default function CoverGenerator() {
         authHeader = { 'Authorization': `Bearer ${freshToken}` };
       }
 
-      const allLogoSymbols = isBackgroundOnly ? [] : [
-        networkToUse.toUpperCase(),
-        ...logoSlots.map(l => (l.input || l.network || l.company).trim().toUpperCase()).filter(Boolean)
+      const allLogoEntries = isBackgroundOnly ? [] : [
+        { symbol: networkToUse.toUpperCase(), ...primaryLogoOverrides },
+        ...logoSlots
+          .filter(l => (l.input || l.network || l.company).trim())
+          .map(l => ({ symbol: (l.input || l.network || l.company).trim().toUpperCase(), material: l.material || 'default', baseColor: l.baseColor || '', accentLight: l.accentLight || '' }))
       ];
+      const allLogoSymbols = allLogoEntries.map(e => e.symbol);
+
+      const perLogoOverrides = allLogoEntries.map(e => ({
+        symbol: e.symbol,
+        logoMaterial: e.material !== 'default' ? e.material : undefined,
+        logoBaseColor: e.baseColor || undefined,
+        logoAccentLight: e.accentLight || undefined,
+      }));
+      const hasAnyOverride = perLogoOverrides.some(o => o.logoMaterial || o.logoBaseColor || o.logoAccentLight);
 
       const body = {
         network: isBackgroundOnly ? '' : allLogoSymbols[0] || '',
@@ -1280,9 +1293,7 @@ export default function CoverGenerator() {
         elementColor: elementColor || undefined,
         accentLightColor: accentLightColor || undefined,
         lightingColor: lightingColor || undefined,
-        logoMaterial: logoMaterial !== 'default' ? logoMaterial : undefined,
-        logoBaseColor: logoBaseColor || undefined,
-        logoAccentLight: logoAccentLight || undefined,
+        perLogoOverrides: hasAnyOverride ? perLogoOverrides : undefined,
         customSubject: customSubject.trim() || undefined,
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
@@ -1366,6 +1377,40 @@ export default function CoverGenerator() {
 
   const ratingScale = Array.from({ length: 10 }, (_, i) => i + 1);
 
+  const renderLogoOverrides = (overrides, onChange) => (
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+      <SmallSelect
+        value={overrides.material}
+        onChange={(e) => onChange({ ...overrides, material: e.target.value })}
+        style={{ flex: 'none', width: '110px', fontSize: '0.7rem', padding: '0.25rem' }}
+      >
+        <option value="default">Default</option>
+        <option value="og_color">OG Color</option>
+        <option value="frosted_glass">Frosted Glass</option>
+        <option value="crystal_glass">Crystal Glass</option>
+        <option value="mirror_chrome">Mirror Chrome</option>
+        <option value="matte_ceramic">Matte Ceramic</option>
+        <option value="liquid_mercury">Liquid Mercury</option>
+        <option value="beveled_crystal">Beveled Crystal</option>
+        <option value="edge_lit_glass">Edge-Lit Glass</option>
+        <option value="platinum_chrome">Platinum Chrome</option>
+        <option value="brushed_metal">Brushed Metal</option>
+      </SmallSelect>
+      {overrides.material !== 'og_color' && (
+        <>
+          <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
+            <label style={{ fontSize: '0.65rem', margin: 0 }}>Color</label>
+            <ColorInput type="color" value={overrides.baseColor || '#ffffff'} onChange={(e) => onChange({ ...overrides, baseColor: e.target.value })} style={{ width: 28, height: 22 }} />
+          </ColorField>
+          <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
+            <label style={{ fontSize: '0.65rem', margin: 0 }}>Glow</label>
+            <ColorInput type="color" value={overrides.accentLight || '#8b5cf6'} onChange={(e) => onChange({ ...overrides, accentLight: e.target.value })} style={{ width: 28, height: 22 }} />
+          </ColorField>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <PageContainer>
       <Header>
@@ -1436,6 +1481,7 @@ export default function CoverGenerator() {
                 ))}
               </SmallSelect>
             </InlineDropdownRow>
+            {networkInput && renderLogoOverrides(primaryLogoOverrides, setPrimaryLogoOverrides)}
 
             {logoSlots.map((logo, idx) => {
               const slotSymbol = (logo.input || logo.network || logo.company).trim();
@@ -1485,6 +1531,10 @@ export default function CoverGenerator() {
                     </SmallSelect>
                     <RemoveLogoBtn onClick={() => handleRemoveLogoSlot(idx)}>x</RemoveLogoBtn>
                   </LogoSlotRow>
+                  {slotSymbol && renderLogoOverrides(
+                    { material: logo.material || 'default', baseColor: logo.baseColor || '', accentLight: logo.accentLight || '' },
+                    (updated) => handleLogoSlotChange(idx, '_overrides', updated)
+                  )}
                 </div>
               );
             })}
@@ -1735,50 +1785,7 @@ export default function CoverGenerator() {
                       />
                     </ColorField>
                   </ColorRow>
-                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Logo Overrides</div>
-                  <ColorRow>
-                    <ColorField>
-                      <label>Material</label>
-                      <SmallSelect
-                        value={logoMaterial}
-                        onChange={(e) => setLogoMaterial(e.target.value)}
-                        style={{ flex: 'none', width: '120px', fontSize: '0.75rem', padding: '0.3rem' }}
-                      >
-                        <option value="default">Default</option>
-                        <option value="og_color">OG Color</option>
-                        <option value="frosted_glass">Frosted Glass</option>
-                        <option value="crystal_glass">Crystal Glass</option>
-                        <option value="mirror_chrome">Mirror Chrome</option>
-                        <option value="matte_ceramic">Matte Ceramic</option>
-                        <option value="liquid_mercury">Liquid Mercury</option>
-                        <option value="beveled_crystal">Beveled Crystal</option>
-                        <option value="edge_lit_glass">Edge-Lit Glass</option>
-                        <option value="platinum_chrome">Platinum Chrome</option>
-                        <option value="brushed_metal">Brushed Metal</option>
-                      </SmallSelect>
-                    </ColorField>
-                    {logoMaterial !== 'og_color' && (
-                      <>
-                        <ColorField>
-                          <label>Logo Color</label>
-                          <ColorInput
-                            type="color"
-                            value={logoBaseColor || '#ffffff'}
-                            onChange={(e) => setLogoBaseColor(e.target.value)}
-                          />
-                        </ColorField>
-                        <ColorField>
-                          <label>Logo Glow</label>
-                          <ColorInput
-                            type="color"
-                            value={logoAccentLight || '#8b5cf6'}
-                            onChange={(e) => setLogoAccentLight(e.target.value)}
-                          />
-                        </ColorField>
-                      </>
-                    )}
-                  </ColorRow>
-                  {(bgColor || elementColor || accentLightColor || lightingColor || logoMaterial !== 'default' || logoBaseColor || logoAccentLight || patternId || patternColor) && (
+                  {(bgColor || elementColor || accentLightColor || lightingColor || patternId || patternColor) && (
                     <button
                       style={{
                         background: 'transparent',
@@ -1792,11 +1799,10 @@ export default function CoverGenerator() {
                       }}
                       onClick={() => {
                         setBgColor(''); setElementColor(''); setAccentLightColor(''); setLightingColor('');
-                        setLogoMaterial('default'); setLogoBaseColor(''); setLogoAccentLight('');
                         setPatternId(''); setPatternColor('');
                       }}
                     >
-                      Reset All Colors
+                      Reset Scene Colors
                     </button>
                   )}
                 </>
