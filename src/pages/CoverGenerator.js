@@ -1602,7 +1602,20 @@ export default function CoverGenerator() {
                     <StyleThumb
                       key={style.id}
                       selected={selectedStyle === style.id}
-                      onClick={() => setSelectedStyle(selectedStyle === style.id ? null : style.id)}
+                      onClick={() => {
+                        if (selectedStyle === style.id) {
+                          setSelectedStyle(null);
+                          setBgColor(''); setElementColor(''); setAccentLightColor(''); setLightingColor('');
+                        } else {
+                          setSelectedStyle(style.id);
+                          if (style.defaultColors) {
+                            setBgColor(style.defaultColors.bgColor || '');
+                            setElementColor(style.defaultColors.elementColor || '');
+                            setAccentLightColor(style.defaultColors.accentLightColor || '');
+                            setLightingColor(style.defaultColors.lightingColor || '');
+                          }
+                        }
+                      }}
                       title={style.description}
                     >
                       <img
