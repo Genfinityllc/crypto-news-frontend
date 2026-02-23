@@ -1187,7 +1187,7 @@ export default function CoverGenerator() {
   };
 
   const handleAddLogo = () => {
-    if (additionalLogos.length < 2) {
+    if (additionalLogos.length < 7) {
       setAdditionalLogos(prev => [...prev, { network: '', company: '' }]);
     }
   };
@@ -1377,7 +1377,7 @@ export default function CoverGenerator() {
       <MainGrid>
         <div>
           <Card>
-            <CardTitle>Networks / Companies (up to 3)</CardTitle>
+            <CardTitle>Networks / Companies (up to 8)</CardTitle>
             
             {networkInput && (
               <LogoPreview>
@@ -1486,9 +1486,9 @@ export default function CoverGenerator() {
               );
             })}
 
-            {additionalLogos.length < 2 && (
+            {additionalLogos.length < 7 && (
               <AddLogoButton onClick={handleAddLogo}>
-                + Add Another Logo ({additionalLogos.length + 1}/3)
+                + Add Another Logo ({additionalLogos.length + 1}/8)
               </AddLogoButton>
             )}
 
