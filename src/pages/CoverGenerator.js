@@ -863,8 +863,11 @@ export default function CoverGenerator() {
 
   const [bgColor, setBgColor] = useState('');
   const [elementColor, setElementColor] = useState('');
+  const [elementColor2, setElementColor2] = useState('');
   const [accentLightColor, setAccentLightColor] = useState('');
+  const [accentLightColor2, setAccentLightColor2] = useState('');
   const [lightingColor, setLightingColor] = useState('');
+  const [lightingColor2, setLightingColor2] = useState('');
 
   const [primaryLogoOverrides, setPrimaryLogoOverrides] = useState({ material: 'default', baseColor: '', accentLight: '' });
 
@@ -1274,12 +1277,16 @@ export default function CoverGenerator() {
       ];
       const allLogoSymbols = allLogoEntries.map(e => e.symbol);
 
-      const perLogoOverrides = allLogoEntries.map(e => ({
-        symbol: e.symbol,
-        logoMaterial: e.material !== 'default' ? e.material : undefined,
-        logoBaseColor: e.baseColor || undefined,
-        logoAccentLight: e.accentLight || undefined,
-      }));
+      const perLogoOverrides = allLogoEntries.map(e => {
+        const hasNonDefaultMaterial = e.material && e.material !== 'default';
+        const isOg = e.material === 'og_color';
+        return {
+          symbol: e.symbol,
+          logoMaterial: hasNonDefaultMaterial ? e.material : undefined,
+          logoBaseColor: isOg ? undefined : (e.baseColor || (hasNonDefaultMaterial ? '#ffffff' : undefined)),
+          logoAccentLight: e.accentLight || (hasNonDefaultMaterial && !isOg ? '#8b5cf6' : undefined),
+        };
+      });
       const hasAnyOverride = perLogoOverrides.some(o => o.logoMaterial || o.logoBaseColor || o.logoAccentLight);
 
       const body = {
@@ -1291,8 +1298,11 @@ export default function CoverGenerator() {
         styleId: selectedStyle || undefined,
         bgColor: bgColor || undefined,
         elementColor: elementColor || undefined,
+        elementColor2: elementColor2 || undefined,
         accentLightColor: accentLightColor || undefined,
+        accentLightColor2: accentLightColor2 || undefined,
         lightingColor: lightingColor || undefined,
+        lightingColor2: lightingColor2 || undefined,
         perLogoOverrides: hasAnyOverride ? perLogoOverrides : undefined,
         customSubject: customSubject.trim() || undefined,
         patternId: patternId || undefined,
@@ -1313,11 +1323,29 @@ export default function CoverGenerator() {
         const network = data.network || networkToUse;
         
         setCurrentImage(imageUrl);
+        const currentSettings = {
+          styleId: selectedStyle || null,
+          bgColor: bgColor || '',
+          elementColor: elementColor || '',
+          elementColor2: elementColor2 || '',
+          accentLightColor: accentLightColor || '',
+          accentLightColor2: accentLightColor2 || '',
+          lightingColor: lightingColor || '',
+          lightingColor2: lightingColor2 || '',
+          logoTextMode,
+          customSubject: customSubject || '',
+          customKeyword: customKeyword || '',
+          patternId: patternId || '',
+          patternColor: patternColor || '',
+          primaryLogoOverrides: { ...primaryLogoOverrides },
+          showWatermark,
+        };
         setCurrentMeta({
           network: network,
           method: data.method,
           duration: data.duration,
-          prompt: data.promptUsed
+          prompt: data.promptUsed,
+          settings: currentSettings
         });
         
         let saved = false;
@@ -1336,7 +1364,24 @@ export default function CoverGenerator() {
           imageUrl: imageUrl,
           network: network,
           timestamp: new Date().toISOString(),
-          saved: saved
+          saved: saved,
+          settings: {
+            styleId: selectedStyle || null,
+            bgColor: bgColor || '',
+            elementColor: elementColor || '',
+            elementColor2: elementColor2 || '',
+            accentLightColor: accentLightColor || '',
+            accentLightColor2: accentLightColor2 || '',
+            lightingColor: lightingColor || '',
+            lightingColor2: lightingColor2 || '',
+            logoTextMode,
+            customSubject: customSubject || '',
+            customKeyword: customKeyword || '',
+            patternId: patternId || '',
+            patternColor: patternColor || '',
+            primaryLogoOverrides: { ...primaryLogoOverrides },
+            showWatermark,
+          }
         }, ...prev]);
         
       } else {
@@ -1367,8 +1412,32 @@ export default function CoverGenerator() {
     setCurrentMeta({
       network: item.network,
       method: item.saved ? 'saved' : 'history',
-      duration: '-'
+      duration: '-',
+      settings: item.settings || null
     });
+  };
+
+  const handleReuseStyle = (e, item) => {
+    e.stopPropagation();
+    if (!item.settings) return;
+    const s = item.settings;
+    if (s.styleId) setSelectedStyle(s.styleId);
+    setBgColor(s.bgColor || '');
+    setElementColor(s.elementColor || '');
+    setElementColor2(s.elementColor2 || '');
+    setAccentLightColor(s.accentLightColor || '');
+    setAccentLightColor2(s.accentLightColor2 || '');
+    setLightingColor(s.lightingColor || '');
+    setLightingColor2(s.lightingColor2 || '');
+    if (s.logoTextMode) setLogoTextMode(s.logoTextMode);
+    setCustomSubject(s.customSubject || '');
+    setCustomKeyword(s.customKeyword || '');
+    setPatternId(s.patternId || '');
+    setPatternColor(s.patternColor || '');
+    if (s.primaryLogoOverrides) setPrimaryLogoOverrides({ ...s.primaryLogoOverrides });
+    if (s.showWatermark !== undefined) setShowWatermark(s.showWatermark);
+    toast.success('Style settings loaded — change the logo and generate!');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const filteredStyles = activeCategory === 'all'
@@ -1397,16 +1466,16 @@ export default function CoverGenerator() {
         <option value="brushed_metal">Brushed Metal</option>
       </SmallSelect>
       {overrides.material !== 'og_color' && (
-        <>
-          <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
-            <label style={{ fontSize: '0.65rem', margin: 0 }}>Color</label>
-            <ColorInput type="color" value={overrides.baseColor || '#ffffff'} onChange={(e) => onChange({ ...overrides, baseColor: e.target.value })} style={{ width: 28, height: 22 }} />
-          </ColorField>
-          <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
-            <label style={{ fontSize: '0.65rem', margin: 0 }}>Glow</label>
-            <ColorInput type="color" value={overrides.accentLight || '#8b5cf6'} onChange={(e) => onChange({ ...overrides, accentLight: e.target.value })} style={{ width: 28, height: 22 }} />
-          </ColorField>
-        </>
+        <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
+          <label style={{ fontSize: '0.65rem', margin: 0 }}>Color</label>
+          <ColorInput type="color" value={overrides.baseColor || '#ffffff'} onChange={(e) => onChange({ ...overrides, baseColor: e.target.value })} style={{ width: 28, height: 22 }} />
+        </ColorField>
+      )}
+      {overrides.material !== 'default' && (
+        <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
+          <label style={{ fontSize: '0.65rem', margin: 0 }}>Glow</label>
+          <ColorInput type="color" value={overrides.accentLight || '#8b5cf6'} onChange={(e) => onChange({ ...overrides, accentLight: e.target.value })} style={{ width: 28, height: 22 }} />
+        </ColorField>
       )}
     </div>
   );
@@ -1750,7 +1819,7 @@ export default function CoverGenerator() {
                       )}
                     </div>
                   )}
-                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Scene Colors</div>
+                  <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.15rem' }}>Scene Colors <span style={{ fontSize: '0.65rem', color: '#6e7681' }}>(does not affect logo — use logo dropdown above)</span></div>
                   <ColorRow>
                     <ColorField>
                       <label>BG</label>
@@ -1759,33 +1828,79 @@ export default function CoverGenerator() {
                         value={bgColor || '#0a0a0a'}
                         onChange={(e) => setBgColor(e.target.value)}
                       />
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Background</span>
                     </ColorField>
                     <ColorField>
                       <label>Elements</label>
-                      <ColorInput
-                        type="color"
-                        value={elementColor || '#dbff03'}
-                        onChange={(e) => setElementColor(e.target.value)}
-                      />
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        <ColorInput
+                          type="color"
+                          value={elementColor || '#dbff03'}
+                          onChange={(e) => setElementColor(e.target.value)}
+                        />
+                        {elementColor2 ? (
+                          <div style={{ position: 'relative' }}>
+                            <ColorInput
+                              type="color"
+                              value={elementColor2}
+                              onChange={(e) => setElementColor2(e.target.value)}
+                            />
+                            <span onClick={() => setElementColor2('')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#333', borderRadius: '50%', width: '14px', height: '14px', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#aaa' }}>×</span>
+                          </div>
+                        ) : (
+                          <button onClick={() => setElementColor2('#1a1a2e')} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px dashed #444', background: 'transparent', color: '#666', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>3D objects</span>
                     </ColorField>
                     <ColorField>
                       <label>Accent</label>
-                      <ColorInput
-                        type="color"
-                        value={accentLightColor || '#8b5cf6'}
-                        onChange={(e) => setAccentLightColor(e.target.value)}
-                      />
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        <ColorInput
+                          type="color"
+                          value={accentLightColor || '#8b5cf6'}
+                          onChange={(e) => setAccentLightColor(e.target.value)}
+                        />
+                        {accentLightColor2 ? (
+                          <div style={{ position: 'relative' }}>
+                            <ColorInput
+                              type="color"
+                              value={accentLightColor2}
+                              onChange={(e) => setAccentLightColor2(e.target.value)}
+                            />
+                            <span onClick={() => setAccentLightColor2('')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#333', borderRadius: '50%', width: '14px', height: '14px', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#aaa' }}>×</span>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAccentLightColor2('#00d4ff')} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px dashed #444', background: 'transparent', color: '#666', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Rim/glow</span>
                     </ColorField>
                     <ColorField>
                       <label>Lighting</label>
-                      <ColorInput
-                        type="color"
-                        value={lightingColor || '#6e3cbc'}
-                        onChange={(e) => setLightingColor(e.target.value)}
-                      />
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        <ColorInput
+                          type="color"
+                          value={lightingColor || '#6e3cbc'}
+                          onChange={(e) => setLightingColor(e.target.value)}
+                        />
+                        {lightingColor2 ? (
+                          <div style={{ position: 'relative' }}>
+                            <ColorInput
+                              type="color"
+                              value={lightingColor2}
+                              onChange={(e) => setLightingColor2(e.target.value)}
+                            />
+                            <span onClick={() => setLightingColor2('')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#333', borderRadius: '50%', width: '14px', height: '14px', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#aaa' }}>×</span>
+                          </div>
+                        ) : (
+                          <button onClick={() => setLightingColor2('#ff6b35')} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px dashed #444', background: 'transparent', color: '#666', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Scene light</span>
                     </ColorField>
                   </ColorRow>
-                  {(bgColor || elementColor || accentLightColor || lightingColor || patternId || patternColor) && (
+                  {(bgColor || elementColor || elementColor2 || accentLightColor || accentLightColor2 || lightingColor || lightingColor2 || patternId || patternColor) && (
                     <button
                       style={{
                         background: 'transparent',
@@ -1798,7 +1913,7 @@ export default function CoverGenerator() {
                         marginTop: '0.5rem'
                       }}
                       onClick={() => {
-                        setBgColor(''); setElementColor(''); setAccentLightColor(''); setLightingColor('');
+                        setBgColor(''); setElementColor(''); setElementColor2(''); setAccentLightColor(''); setAccentLightColor2(''); setLightingColor(''); setLightingColor2('');
                         setPatternId(''); setPatternColor('');
                       }}
                     >
@@ -1890,6 +2005,9 @@ export default function CoverGenerator() {
                 </MetaInfo>
                 <ActionButtons>
                   <ActionButton onClick={handleDownload}>Download</ActionButton>
+                  {currentMeta.settings && (
+                    <ActionButton onClick={(e) => handleReuseStyle(e, { settings: currentMeta.settings })}>Reuse Style</ActionButton>
+                  )}
                   <ActionButton onClick={handleGenerate} disabled={loading}>Regenerate</ActionButton>
                 </ActionButtons>
               </GenerationInfo>
@@ -2037,8 +2155,29 @@ export default function CoverGenerator() {
                       }}
                     />
                     <HistoryOverlay>
-                      <NetworkTag>{item.network}</NetworkTag>
-                      {item.saved && <SavedBadge>Saved</SavedBadge>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+                        <NetworkTag>{item.network}</NetworkTag>
+                        {item.saved && <SavedBadge>Saved</SavedBadge>}
+                      </div>
+                      {item.settings && (
+                        <button
+                          onClick={(e) => handleReuseStyle(e, item)}
+                          style={{
+                            marginTop: '0.3rem',
+                            background: 'rgba(0, 212, 255, 0.15)',
+                            border: '1px solid rgba(0, 212, 255, 0.4)',
+                            borderRadius: '4px',
+                            color: '#00d4ff',
+                            fontSize: '0.65rem',
+                            padding: '0.2rem 0.5rem',
+                            cursor: 'pointer',
+                            width: '100%',
+                            textAlign: 'center',
+                          }}
+                        >
+                          Reuse This Style
+                        </button>
+                      )}
                     </HistoryOverlay>
                   </HistoryItem>
                 ))}
