@@ -702,6 +702,104 @@ const StyleSection = styled.div`
   margin-bottom: 1.5rem;
 `;
 
+// Phase 4: collapsible Reference Image + Prompt section
+const RefSection = styled.div`
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(0, 212, 255, 0.03);
+`;
+
+const RefHeader = styled.button`
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #00d4ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  text-align: left;
+  &:hover { background: rgba(0, 212, 255, 0.06); }
+`;
+
+const RefBody = styled.div`
+  padding: 0 1rem 1rem 1rem;
+  display: ${p => p.$open ? 'block' : 'none'};
+`;
+
+const RefModeRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem 0;
+`;
+
+const RefModeChip = styled.button`
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: ${p => p.$active ? 'rgba(0, 212, 255, 0.2)' : 'rgba(255,255,255,0.04)'};
+  color: ${p => p.$active ? '#00d4ff' : 'rgba(255,255,255,0.7)'};
+  border: 1px solid ${p => p.$active ? '#00d4ff' : 'rgba(255,255,255,0.08)'};
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  &:hover { border-color: #00d4ff; }
+`;
+
+const RefFileInput = styled.input`
+  display: block;
+  width: 100%;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+`;
+
+const RefThumb = styled.img`
+  max-width: 100%;
+  max-height: 140px;
+  border-radius: 6px;
+  margin: 0.25rem 0 0.5rem 0;
+  border: 1px solid rgba(255,255,255,0.08);
+`;
+
+const RefPromptTextarea = styled.textarea`
+  width: 100%;
+  min-height: 70px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: white;
+  font-size: 0.9rem;
+  resize: vertical;
+  font-family: inherit;
+  &:focus { border-color: #00d4ff; outline: none; }
+`;
+
+const RefHint = styled.div`
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.5);
+  margin-top: 0.4rem;
+  line-height: 1.4;
+`;
+
+const RefClearBtn = styled.button`
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.5rem;
+  text-decoration: underline;
+  &:hover { color: #ff6b6b; }
+`;
+
 const StyleGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
@@ -875,6 +973,14 @@ export default function CoverGenerator() {
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
+
+  // Phase 4: Reference image + custom prompt mode
+  const [refSectionOpen, setRefSectionOpen] = useState(false);
+  const [refFile, setRefFile] = useState(null);
+  const [refImageUrl, setRefImageUrl] = useState('');
+  const [refMode, setRefMode] = useState('style_reference'); // 'style_reference' | 'composition_restyle'
+  const [customPromptText, setCustomPromptText] = useState('');
+  const [refUploading, setRefUploading] = useState(false);
 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadSymbol, setUploadSymbol] = useState('');
@@ -1308,6 +1414,10 @@ export default function CoverGenerator() {
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
+        // Phase 4: reference image + custom prompt
+        referenceImageUrl: refImageUrl || undefined,
+        referenceMode: refImageUrl ? refMode : undefined,
+        customPrompt: customPromptText.trim() || undefined,
       };
 
       const response = await fetch(`${API_BASE}/api/cover-generator/generate`, {
@@ -1714,6 +1824,81 @@ export default function CoverGenerator() {
               />
               <div className="hint">Add a keyword to influence the style</div>
             </InputSection>
+
+            <RefSection>
+              <RefHeader type="button" onClick={() => setRefSectionOpen(o => !o)}>
+                <span>{refSectionOpen ? '▾' : '▸'} Reference Image + Prompt {refImageUrl ? '• ready' : '(optional)'}</span>
+                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                  {refImageUrl ? 'overrides style template' : ''}
+                </span>
+              </RefHeader>
+              <RefBody $open={refSectionOpen}>
+                <RefHint style={{ marginBottom: '0.5rem' }}>
+                  Upload a reference image and/or add a custom prompt. When a reference image is uploaded the named style template is bypassed but your color selectors still apply. The custom prompt is always appended to the final generation prompt (works with or without a reference image).
+                </RefHint>
+                <RefModeRow>
+                  <RefModeChip
+                    type="button"
+                    $active={refMode === 'style_reference'}
+                    onClick={() => setRefMode('style_reference')}
+                    title="Mimic the reference's aesthetic only — ignore its subject/composition"
+                  >Style Reference</RefModeChip>
+                  <RefModeChip
+                    type="button"
+                    $active={refMode === 'composition_restyle'}
+                    onClick={() => setRefMode('composition_restyle')}
+                    title="Keep the reference's layout/composition but restyle materials and lighting"
+                  >Composition Restyle</RefModeChip>
+                </RefModeRow>
+                <RefFileInput
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setRefFile(f);
+                    setRefUploading(true);
+                    try {
+                      const fd = new FormData();
+                      fd.append('reference', f);
+                      const r = await fetch(`${API_BASE}/api/cover-generator/upload-reference`, { method: 'POST', body: fd });
+                      const j = await r.json();
+                      if (j.success && j.referenceImageUrl) {
+                        setRefImageUrl(j.referenceImageUrl);
+                        toast.success(`Reference uploaded (${j.width}×${j.height}, ${j.sizeKb}KB)`);
+                      } else {
+                        toast.error(j.error || 'Reference upload failed');
+                        setRefFile(null);
+                      }
+                    } catch (err) {
+                      toast.error('Reference upload error: ' + err.message);
+                      setRefFile(null);
+                    } finally {
+                      setRefUploading(false);
+                    }
+                  }}
+                />
+                {refUploading && <RefHint>Uploading reference…</RefHint>}
+                {refImageUrl && (
+                  <>
+                    <RefThumb src={refImageUrl} alt="Reference" />
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <RefClearBtn type="button" onClick={() => { setRefFile(null); setRefImageUrl(''); }}>
+                        remove reference
+                      </RefClearBtn>
+                    </div>
+                  </>
+                )}
+                <RefPromptTextarea
+                  placeholder='Optional custom prompt e.g. "make the background pure black", "add subtle gold rim light", "remove all secondary objects"…'
+                  value={customPromptText}
+                  onChange={(e) => setCustomPromptText(e.target.value)}
+                />
+                <RefHint>
+                  This text is appended verbatim to the generation prompt and takes priority for any conflict. Works with or without a reference image.
+                </RefHint>
+              </RefBody>
+            </RefSection>
 
             <StyleSection>
               <DropdownLabel>Choose a Style</DropdownLabel>
