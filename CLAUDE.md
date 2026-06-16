@@ -13,7 +13,7 @@
 | **Live URL** | `https://crypto-news-frontend-ruddy.vercel.app` |
 | **Vercel team** | `team_kYZ8yndpCmXg5hf3sDSUQ6tZ` (NOT `valors-projects-e78ccc5f` — that's a stale dup) |
 | **Deploy method** | **Git auto-deploy** — `git push origin main` → Vercel rebuilds in ~2 min |
-| **Backend it talks to** | `https://crypto-news-curator-backend-production.up.railway.app` |
+| **Backend it talks to** | `https://crypto-news-curator-backend-production.up.railway.app` (also git-auto-deploys from its own `main`) |
 | **Cover generator UI** | `src/pages/CoverGenerator.js` |
 
 ## 🚨 Hard rule
