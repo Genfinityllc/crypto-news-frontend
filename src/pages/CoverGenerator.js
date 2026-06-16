@@ -1474,7 +1474,22 @@ export default function CoverGenerator() {
       {overrides.material !== 'default' && (
         <ColorField style={{ flexDirection: 'row', alignItems: 'center', gap: '0.2rem' }}>
           <label style={{ fontSize: '0.65rem', margin: 0 }}>Glow</label>
-          <ColorInput type="color" value={overrides.accentLight || '#8b5cf6'} onChange={(e) => onChange({ ...overrides, accentLight: e.target.value })} style={{ width: 28, height: 22 }} />
+          {overrides.accentLight === 'none' ? (
+            <button
+              type="button"
+              onClick={() => onChange({ ...overrides, accentLight: '' })}
+              title="Click to re-enable glow"
+              style={{ width: 28, height: 22, borderRadius: 3, border: '1px solid #555', background: 'repeating-linear-gradient(45deg,#222,#222 3px,#444 3px,#444 6px)', color: '#bbb', fontSize: '0.55rem', cursor: 'pointer', padding: 0 }}
+            >none</button>
+          ) : (
+            <ColorInput type="color" value={overrides.accentLight || '#8b5cf6'} onChange={(e) => onChange({ ...overrides, accentLight: e.target.value })} style={{ width: 28, height: 22 }} />
+          )}
+          <button
+            type="button"
+            onClick={() => onChange({ ...overrides, accentLight: overrides.accentLight === 'none' ? '' : 'none' })}
+            title={overrides.accentLight === 'none' ? 'Re-enable glow' : 'Disable glow (transparent)'}
+            style={{ width: 18, height: 22, borderRadius: 3, border: '1px solid #555', background: overrides.accentLight === 'none' ? '#3a3a3a' : 'transparent', color: '#bbb', fontSize: '0.6rem', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+          >∅</button>
         </ColorField>
       )}
     </div>
@@ -1856,12 +1871,27 @@ export default function CoverGenerator() {
                     <ColorField>
                       <label>Accent</label>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-                        <ColorInput
-                          type="color"
-                          value={accentLightColor || '#8b5cf6'}
-                          onChange={(e) => setAccentLightColor(e.target.value)}
-                        />
-                        {accentLightColor2 ? (
+                        {accentLightColor === 'none' ? (
+                          <button
+                            type="button"
+                            onClick={() => setAccentLightColor('')}
+                            title="Click to re-enable accent/glow"
+                            style={{ width: 32, height: 22, borderRadius: 3, border: '1px solid #555', background: 'repeating-linear-gradient(45deg,#222,#222 3px,#444 3px,#444 6px)', color: '#bbb', fontSize: '0.55rem', cursor: 'pointer', padding: 0 }}
+                          >none</button>
+                        ) : (
+                          <ColorInput
+                            type="color"
+                            value={accentLightColor || '#8b5cf6'}
+                            onChange={(e) => setAccentLightColor(e.target.value)}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setAccentLightColor(accentLightColor === 'none' ? '' : 'none')}
+                          title={accentLightColor === 'none' ? 'Re-enable accent/glow' : 'Disable accent/glow (transparent)'}
+                          style={{ width: 18, height: 22, borderRadius: 3, border: '1px solid #555', background: accentLightColor === 'none' ? '#3a3a3a' : 'transparent', color: '#bbb', fontSize: '0.6rem', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+                        >∅</button>
+                        {accentLightColor !== 'none' && (accentLightColor2 ? (
                           <div style={{ position: 'relative' }}>
                             <ColorInput
                               type="color"
@@ -1872,9 +1902,9 @@ export default function CoverGenerator() {
                           </div>
                         ) : (
                           <button onClick={() => setAccentLightColor2('#00d4ff')} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px dashed #444', background: 'transparent', color: '#666', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                        )}
+                        ))}
                       </div>
-                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Rim/glow</span>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Rim/glow · ∅ = off</span>
                     </ColorField>
                     <ColorField>
                       <label>Lighting</label>
