@@ -800,6 +800,69 @@ const RefClearBtn = styled.button`
   &:hover { color: #ff6b6b; }
 `;
 
+const RefDropZone = styled.label`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 90px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 2px dashed ${p => p.$dragActive ? '#00d4ff' : 'rgba(255,255,255,0.18)'};
+  border-radius: 8px;
+  background: ${p => p.$dragActive ? 'rgba(0,212,255,0.08)' : 'rgba(0,0,0,0.2)'};
+  cursor: pointer;
+  text-align: center;
+  color: rgba(255,255,255,0.65);
+  font-size: 0.85rem;
+  transition: all 0.15s ease;
+  &:hover { border-color: rgba(0,212,255,0.6); background: rgba(0,212,255,0.04); }
+`;
+
+const RefThumbGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.5rem 0;
+`;
+
+const RefThumbCell = styled.div`
+  position: relative;
+  aspect-ratio: 16/9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.3);
+  img { width: 100%; height: 100%; object-fit: cover; display: block; }
+`;
+
+const RefThumbRemove = styled.button`
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: white;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  &:hover { background: #ff6b6b; border-color: #ff6b6b; }
+`;
+
+const RefCountBadge = styled.span`
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.55);
+  margin-left: 0.4rem;
+`;
+
 const StyleGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
@@ -983,12 +1046,16 @@ export default function CoverGenerator() {
   const [showWatermark, setShowWatermark] = useState(true);
 
   // Phase 4: Reference image + custom prompt mode
+  // Phase 4-ext3: now supports up to 14 reference images (Wavespeed cap)
   const [refSectionOpen, setRefSectionOpen] = useState(false);
-  const [refFile, setRefFile] = useState(null);
-  const [refImageUrl, setRefImageUrl] = useState('');
+  const [refImageUrls, setRefImageUrls] = useState([]); // string[]
   const [refMode, setRefMode] = useState('style_reference'); // 'style_reference' | 'composition_restyle'
   const [customPromptText, setCustomPromptText] = useState('');
   const [refUploading, setRefUploading] = useState(false);
+  const [refDragActive, setRefDragActive] = useState(false);
+  const MAX_REF_IMAGES = 14;
+  // Legacy single-URL flag kept for callers below that still reference refImageUrl
+  const refImageUrl = refImageUrls[0] || '';
 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadSymbol, setUploadSymbol] = useState('');
@@ -1364,6 +1431,47 @@ export default function CoverGenerator() {
     }
   };
 
+  // Phase 4-ext3: upload one or more reference image files, append URLs to refImageUrls
+  const handleRefFilesUpload = async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    const remaining = MAX_REF_IMAGES - refImageUrls.length;
+    if (remaining <= 0) {
+      toast.error(`Maximum ${MAX_REF_IMAGES} reference images reached`);
+      return;
+    }
+    const files = Array.from(fileList).filter(f => /^image\//.test(f.type)).slice(0, remaining);
+    if (files.length === 0) {
+      toast.error('Please drop image files (PNG or JPEG)');
+      return;
+    }
+    if (fileList.length > remaining) {
+      toast(`Only adding ${remaining} of ${fileList.length} (cap is ${MAX_REF_IMAGES})`);
+    }
+    setRefUploading(true);
+    try {
+      const uploaded = [];
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append('reference', f);
+        const r = await fetch(`${API_BASE}/api/cover-generator/upload-reference`, { method: 'POST', body: fd });
+        const j = await r.json();
+        if (j.success && j.referenceImageUrl) {
+          uploaded.push(j.referenceImageUrl);
+        } else {
+          toast.error(j.error || `Upload failed for ${f.name}`);
+        }
+      }
+      if (uploaded.length > 0) {
+        setRefImageUrls(prev => [...prev, ...uploaded].slice(0, MAX_REF_IMAGES));
+        toast.success(`Uploaded ${uploaded.length} reference image${uploaded.length === 1 ? '' : 's'}`);
+      }
+    } catch (err) {
+      toast.error('Reference upload error: ' + err.message);
+    } finally {
+      setRefUploading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     const networkToUse = networkInput.trim();
     const isBackgroundOnly = !networkToUse;
@@ -1426,8 +1534,10 @@ export default function CoverGenerator() {
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
         // Phase 4: reference image + custom prompt
-        referenceImageUrl: refImageUrl || undefined,
-        referenceMode: refImageUrl ? refMode : undefined,
+        // Phase 4-ext3: send full array (up to 14) plus legacy single-URL for back-compat
+        referenceImageUrl: refImageUrls[0] || undefined,
+        referenceImageUrls: refImageUrls.length > 0 ? refImageUrls : undefined,
+        referenceMode: refImageUrls.length > 0 ? refMode : undefined,
         customPrompt: customPromptText.trim() || undefined,
       };
 
@@ -1838,64 +1948,86 @@ export default function CoverGenerator() {
 
             <RefSection>
               <RefHeader type="button" onClick={() => setRefSectionOpen(o => !o)}>
-                <span>{refSectionOpen ? '▾' : '▸'} Reference Image + Prompt {refImageUrl ? '• ready' : '(optional)'}</span>
+                <span>
+                  {refSectionOpen ? '▾' : '▸'} Reference Image + Prompt {refImageUrls.length > 0 ? `• ${refImageUrls.length} ready` : '(optional)'}
+                  <RefCountBadge>up to {MAX_REF_IMAGES}</RefCountBadge>
+                </span>
                 <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
-                  {refImageUrl ? 'overrides style template' : ''}
+                  {refImageUrls.length > 0 ? 'overrides style template' : ''}
                 </span>
               </RefHeader>
               <RefBody $open={refSectionOpen}>
                 <RefHint style={{ marginBottom: '0.5rem' }}>
-                  Upload a reference image and/or add a custom prompt. When a reference image is uploaded the named style template is bypassed but your color selectors still apply. The custom prompt is always appended to the final generation prompt (works with or without a reference image).
+                  Upload up to {MAX_REF_IMAGES} reference images (drag-and-drop or click) and/or add a custom prompt. When any reference image is uploaded the named style template is bypassed but your color selectors still apply. The custom prompt is always appended to the final generation prompt.
                 </RefHint>
                 <RefModeRow>
                   <RefModeChip
                     type="button"
                     $active={refMode === 'style_reference'}
                     onClick={() => setRefMode('style_reference')}
-                    title="Mimic the reference's aesthetic only — ignore its subject/composition"
+                    title="Mimic the references' aesthetic only — ignore their subjects/composition"
                   >Style Reference</RefModeChip>
                   <RefModeChip
                     type="button"
                     $active={refMode === 'composition_restyle'}
                     onClick={() => setRefMode('composition_restyle')}
-                    title="Keep the reference's layout/composition but restyle materials and lighting"
+                    title="Keep the references' layout/composition but restyle materials and lighting"
                   >Composition Restyle</RefModeChip>
                 </RefModeRow>
+
+                <RefDropZone
+                  htmlFor="ref-multi-file-input"
+                  $dragActive={refDragActive}
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setRefDragActive(true); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setRefDragActive(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setRefDragActive(false); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setRefDragActive(false);
+                    if (e.dataTransfer?.files?.length) {
+                      handleRefFilesUpload(e.dataTransfer.files);
+                    }
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>
+                    {refDragActive ? 'Drop images to upload' : 'Drag & drop images here'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                    or click to browse (PNG / JPEG, multi-select OK) — {refImageUrls.length}/{MAX_REF_IMAGES} used
+                  </div>
+                </RefDropZone>
                 <RefFileInput
+                  id="ref-multi-file-input"
                   type="file"
                   accept="image/png,image/jpeg"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    setRefFile(f);
-                    setRefUploading(true);
-                    try {
-                      const fd = new FormData();
-                      fd.append('reference', f);
-                      const r = await fetch(`${API_BASE}/api/cover-generator/upload-reference`, { method: 'POST', body: fd });
-                      const j = await r.json();
-                      if (j.success && j.referenceImageUrl) {
-                        setRefImageUrl(j.referenceImageUrl);
-                        toast.success(`Reference uploaded (${j.width}×${j.height}, ${j.sizeKb}KB)`);
-                      } else {
-                        toast.error(j.error || 'Reference upload failed');
-                        setRefFile(null);
-                      }
-                    } catch (err) {
-                      toast.error('Reference upload error: ' + err.message);
-                      setRefFile(null);
-                    } finally {
-                      setRefUploading(false);
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    if (e.target.files?.length) {
+                      handleRefFilesUpload(e.target.files);
+                      e.target.value = '';
                     }
                   }}
                 />
-                {refUploading && <RefHint>Uploading reference…</RefHint>}
-                {refImageUrl && (
+                {refUploading && <RefHint>Uploading reference image(s)…</RefHint>}
+                {refImageUrls.length > 0 && (
                   <>
-                    <RefThumb src={refImageUrl} alt="Reference" />
+                    <RefThumbGrid>
+                      {refImageUrls.map((url, idx) => (
+                        <RefThumbCell key={`${url}-${idx}`}>
+                          <img src={url} alt={`Reference ${idx + 1}`} />
+                          <RefThumbRemove
+                            type="button"
+                            title="Remove this reference"
+                            onClick={() => setRefImageUrls(prev => prev.filter((_, i) => i !== idx))}
+                          >×</RefThumbRemove>
+                        </RefThumbCell>
+                      ))}
+                    </RefThumbGrid>
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <RefClearBtn type="button" onClick={() => { setRefFile(null); setRefImageUrl(''); }}>
-                        remove reference
+                      <RefClearBtn type="button" onClick={() => setRefImageUrls([])}>
+                        remove all references
                       </RefClearBtn>
                     </div>
                   </>
@@ -1906,7 +2038,7 @@ export default function CoverGenerator() {
                   onChange={(e) => setCustomPromptText(e.target.value)}
                 />
                 <RefHint>
-                  This text is appended verbatim to the generation prompt and takes priority for any conflict. Works with or without a reference image.
+                  This text is appended verbatim to the generation prompt and takes priority for any conflict. Works with or without reference images.
                 </RefHint>
               </RefBody>
             </RefSection>
