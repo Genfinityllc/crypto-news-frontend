@@ -2185,7 +2185,7 @@ export default function CoverGenerator() {
             </div>
             <GenerateButton
               onClick={handleGenerate}
-              disabled={(!networkInput.trim() && !selectedStyle) || loading}
+              disabled={(!networkInput.trim() && !selectedStyle && !(refImageUrl && customPromptText.trim())) || loading}
               loading={loading}
             >
               {loading ? (
