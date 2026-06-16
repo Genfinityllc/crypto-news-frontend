@@ -1360,8 +1360,11 @@ export default function CoverGenerator() {
     const networkToUse = networkInput.trim();
     const isBackgroundOnly = !networkToUse;
 
-    if (isBackgroundOnly && !selectedStyle) {
-      toast.warning('Please select a style for background-only generation');
+    // Phase 4-ext: PURE REF MODE — allow generation with just ref image + custom prompt
+    // (no logo, no style). Otherwise background-only requires a style.
+    const hasPureRefMode = !!refImageUrl && customPromptText.trim().length > 0;
+    if (isBackgroundOnly && !selectedStyle && !hasPureRefMode) {
+      toast.warning('Please select a style, or upload a reference image and enter a prompt');
       return;
     }
 
