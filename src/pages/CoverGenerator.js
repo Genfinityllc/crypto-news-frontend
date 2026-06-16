@@ -803,6 +803,7 @@ const RefClearBtn = styled.button`
 const StyleGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  grid-auto-rows: minmax(80px, auto);
   gap: 0.5rem;
   max-height: 300px;
   overflow-y: auto;
@@ -816,7 +817,12 @@ const StyleThumb = styled.div`
   cursor: pointer;
   border: 2px solid ${props => props.selected ? '#00d4ff' : 'transparent'};
   transition: all 0.2s;
-  aspect-ratio: 1;
+  width: 100%;
+  min-width: 0;
+  /* Safari-safe square via padding-bottom hack (aspect-ratio inside CSS grid
+     auto-rows misbehaves in Safari, causing thumbs to collapse + overlap) */
+  height: 0;
+  padding-bottom: 100%;
 
   &:hover {
     border-color: #00d4ff;
@@ -824,6 +830,8 @@ const StyleThumb = styled.div`
   }
 
   img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
