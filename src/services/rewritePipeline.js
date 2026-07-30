@@ -42,3 +42,30 @@ export async function listRewriteJobs(limit = 40) {
   if (!resp.ok || !data || !data.success) return [];
   return data.jobs || [];
 }
+
+/**
+ * Generate (or re-render) the cover for a completed rewrite. Uses the verified
+ * headline/entities, and persists the cover onto the job.
+ * @param {string} jobId
+ * @param {{styleId?:string, useSubject?:boolean, xFormat?:'png'|'jpeg'}} [opts]
+ */
+export async function generateJobCover(jobId, opts = {}) {
+  const resp = await fetch(`${PIPELINE_API_BASE}/api/rewrite-pipeline/${jobId}/cover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts)
+  });
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok || !data || !data.success) {
+    throw new Error((data && data.error) || `Cover generation failed (${resp.status})`);
+  }
+  return data.cover;
+}
+
+/** Fetch the curated style catalog (for the re-render picker). */
+export async function fetchStyleCatalog() {
+  const resp = await fetch(`${PIPELINE_API_BASE}/api/style-catalog`);
+  const data = await resp.json().catch(() => null);
+  const list = Array.isArray(data) ? data : (data && (data.styles || data.data || data.catalog)) || [];
+  return list.map((s) => ({ id: s.id || s.styleId || s.slug, name: s.name || s.title || s.id })).filter((s) => s.id);
+}

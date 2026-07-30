@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { listRewriteJobs, getRewriteStatus } from '../services/rewritePipeline';
+import { listRewriteJobs, getRewriteStatus, generateJobCover, fetchStyleCatalog } from '../services/rewritePipeline';
 
 // Simple, dependency-free presentation. Dark theme to match the app.
 const c = {
@@ -55,8 +55,37 @@ export default function ArticleStudio() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [cover, setCover] = useState(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [styleOptions, setStyleOptions] = useState([]);
+  const [pickStyle, setPickStyle] = useState('');
+  const [useSubject, setUseSubject] = useState(true);
   const query = useQuery();
   const pollRef = useRef(null);
+
+  // Load the style catalog once for the cover style picker.
+  useEffect(() => {
+    fetchStyleCatalog().then(setStyleOptions).catch(() => {});
+  }, []);
+
+  const handleGenerateCover = async () => {
+    if (!selectedId) return;
+    setCoverBusy(true);
+    try {
+      const cv = await generateJobCover(selectedId, { styleId: pickStyle || undefined, useSubject, xFormat: 'png' });
+      setCover(cv);
+      toast.success('Cover generated');
+    } catch (e) {
+      toast.error(`Cover failed: ${e.message}`);
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  // Show the selected job's persisted cover (if it already has one).
+  useEffect(() => {
+    setCover(detail && detail.result && detail.result.cover ? detail.result.cover : null);
+  }, [detail]);
 
   const refreshList = useCallback(async () => {
     const items = await listRewriteJobs(40);
@@ -167,6 +196,38 @@ export default function ArticleStudio() {
                   Overall {result.overallScore} · Factual {audit.factual_accuracy.score} · SEO {audit.seo.score} · Readability {audit.readability.score}{result.fallback ? ' · standard rewrite' : ''}
                 </div>
               )}
+
+              {/* Cover */}
+              <div style={{ background: c.panel, border: `1px solid ${c.border}`, borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem' }}>Cover</h3>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: c.sub }}>
+                      <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} /> 3D element
+                    </label>
+                    <select value={pickStyle} onChange={(e) => setPickStyle(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+                      <option value="">Rotate style</option>
+                      {styleOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <button onClick={handleGenerateCover} disabled={coverBusy} style={{ background: c.accent, color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8rem', padding: '6px 14px', cursor: coverBusy ? 'default' : 'pointer' }}>
+                      {coverBusy ? 'Generating (about 1 min)...' : (cover ? 'Re-render' : 'Generate Cover')}
+                    </button>
+                  </div>
+                </div>
+                {cover && cover.imageUrl ? (
+                  <div>
+                    <img src={cover.imageUrl} alt="cover" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, fontSize: '0.78rem', color: c.sub, flexWrap: 'wrap' }}>
+                      <span>logo: {cover.symbolUsed || 'none'}</span>
+                      <span>style: {cover.styleUsed || 'random'}</span>
+                      <span>element: {cover.subjectUsed || 'default'}</span>
+                      {cover.xReadyUrl && <a href={cover.xReadyUrl} target="_blank" rel="noopener noreferrer" style={{ color: c.accent }}>Download X-ready (under 1MB)</a>}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: c.sub, fontSize: '0.85rem' }}>No cover yet. Generate one from the fact-checked article.</div>
+                )}
+              </div>
 
               {/* Article (markdown, WordPress-ready) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
