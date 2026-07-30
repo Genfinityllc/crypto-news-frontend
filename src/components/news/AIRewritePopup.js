@@ -405,6 +405,7 @@ const AIRewritePopup = ({
   const [xReadyImage, setXReadyImage] = useState(null); // under-1MB 1800x900 copy for x.com
   const [styleOptions, setStyleOptions] = useState([]); // curated styles for the re-render picker
   const [selectedStyleId, setSelectedStyleId] = useState(''); // style chosen for re-render
+  const [useSubject, setUseSubject] = useState(true); // add an article-related 3D element to the cover
   const [imagePrompt, setImagePrompt] = useState('');
   const [intelligentPrompt, setIntelligentPrompt] = useState('');
   const [useLoRA, setUseLoRA] = useState(true);
@@ -457,7 +458,8 @@ const AIRewritePopup = ({
         title: currentTitle,
         content: article.content || article.description || article.summary || '',
         network: article.network,
-        xFormat: 'png'
+        xFormat: 'png',
+        useSubject
       });
 
       console.log('🔍 Cover generator response:', {
@@ -713,7 +715,8 @@ const AIRewritePopup = ({
         content: article?.content || article?.description || article?.summary || '',
         network: article?.network,
         styleId: selectedStyleId,
-        xFormat: 'png'
+        xFormat: 'png',
+        useSubject
       });
       if (response && response.success && response.imageUrl) {
         setGeneratedImage(response.imageUrl);
@@ -954,7 +957,13 @@ const AIRewritePopup = ({
                 }}>
                   ✅ <strong>Cover generated:</strong> Real logo from your library, 1800x900 • Download gives the under-1MB copy for X
                 </div>
-                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#8b949e' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} />
+                    Add an article-related 3D element (e.g. vault, chart, gears)
+                  </label>
+                </div>
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.8rem', color: '#8b949e' }}>Prefer a specific style?</span>
                   <select
                     value={selectedStyleId}
