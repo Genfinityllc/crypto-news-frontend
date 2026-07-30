@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { generateLoRAImage, generateLoRAImageFromData, getLoRAStatus } from '../../services/api';
-import { generateImageDirectly } from '../../services/directHFSpaces';
+import { generateCoverForArticle, fetchStyleCatalog } from '../../services/coverForArticle';
 import { toast } from 'react-toastify';
 
 const Overlay = styled.div`
@@ -402,6 +402,9 @@ const AIRewritePopup = ({
   const [showImageGenerator, setShowImageGenerator] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatedImage, setGeneratedImage] = useState(null);
+  const [xReadyImage, setXReadyImage] = useState(null); // under-1MB 1800x900 copy for x.com
+  const [styleOptions, setStyleOptions] = useState([]); // curated styles for the re-render picker
+  const [selectedStyleId, setSelectedStyleId] = useState(''); // style chosen for re-render
   const [imagePrompt, setImagePrompt] = useState('');
   const [intelligentPrompt, setIntelligentPrompt] = useState('');
   const [useLoRA, setUseLoRA] = useState(true);
@@ -445,38 +448,35 @@ const AIRewritePopup = ({
         throw new Error('Article title is required for LoRA generation');
       }
       
-      console.log('✅ Article validation passed, calling generateImageDirectly with updated title...');
-      
-      // Create updated article object with current editable title
-      const articleWithUpdatedTitle = {
-        ...article,
-        title: currentTitle
-      };
-      
-      // Use the direct HF Spaces service for Universal LoRA generation
-      const response = await generateImageDirectly(articleWithUpdatedTitle);
-      
-      console.log('🔍 HF Spaces response:', {
-        success: response?.success,
-        coverUrl: response?.coverUrl,
-        generationMethod: response?.generationMethod,
-        clientId: response?.clientId,
-        style: response?.style,
-        hasMetadata: !!response?.metadata,
-        fullResponse: response
+      console.log('✅ Article validation passed, calling the live cover generator...');
+
+      // Call the live cover generator via the /for-article wrapper. It detects
+      // the network/company for the real logo and rotates through the curated
+      // styles for variety, and returns an under-1MB 1800x900 PNG X-ready copy.
+      const response = await generateCoverForArticle({
+        title: currentTitle,
+        content: article.content || article.description || article.summary || '',
+        network: article.network,
+        xFormat: 'png'
       });
-      
-      if (response && response.success) {
-        console.log('🔍 ULTRA DEBUG: Setting generatedImage with URL:', response.coverUrl);
-        setGeneratedImage(response.coverUrl);
-        console.log('🔍 ULTRA DEBUG: generatedImage state should be set to:', response.coverUrl);
-        // DON'T replace the original article image - just show in popup for download
-        showPopupNotification('🎨 Universal LoRA cover auto-generated!', 'success');
-        console.log('✅ Generation method:', response.generationMethod);
-        console.log('🎯 Client/Style:', response.clientId, response.style);
+
+      console.log('🔍 Cover generator response:', {
+        success: response?.success,
+        imageUrl: response?.imageUrl,
+        xReadyUrl: response?.xReadyUrl,
+        symbolUsed: response?.symbolUsed,
+        mode: response?.mode
+      });
+
+      if (response && response.success && response.imageUrl) {
+        // Display the full-quality cover; keep the under-1MB copy for download/X.
+        setGeneratedImage(response.imageUrl);
+        setXReadyImage(response.xReadyUrl || null);
+        showPopupNotification('🎨 Cover generated with your logo library!', 'success');
+        console.log('✅ Mode:', response.mode, '| Symbol:', response.symbolUsed || 'background-only');
       } else {
         console.error('❌ Response indicates failure:', response);
-        throw new Error(`HF Spaces response failed: ${response?.error || 'Unknown error'}`);
+        throw new Error(`Cover generation failed: ${response?.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('❌ DETAILED Universal LoRA generation error:', {
@@ -649,8 +649,10 @@ const AIRewritePopup = ({
   };
 
   const handleDownloadImage = async () => {
-    if (!generatedImage) return;
-    
+    // Prefer the under-1MB X-ready copy so the download is ready to post to x.com.
+    const downloadUrl = xReadyImage || generatedImage;
+    if (!downloadUrl) return;
+
     setDownloadingImage(true);
     try {
       // Create a safe filename from the title
@@ -658,11 +660,12 @@ const AIRewritePopup = ({
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .replace(/\s+/g, '_')
         .substring(0, 50);
-      
-      const filename = `${safeTitle}_cover.png`;
-      
+
+      const ext = downloadUrl.toLowerCase().includes('.jpg') || downloadUrl.toLowerCase().includes('.jpeg') ? 'jpg' : 'png';
+      const filename = `${safeTitle}_cover.${ext}`;
+
       // Fetch the image and create download
-      const response = await fetch(generatedImage);
+      const response = await fetch(downloadUrl);
       const blob = await response.blob();
       
       // Create download link
@@ -689,8 +692,42 @@ const AIRewritePopup = ({
   };
 
   const handleGenerateImage = async () => {
-    // Use the Universal LoRA generation instead of backend API
     await handleGenerateUniversalLoRA();
+  };
+
+  // Load the curated style list once when the popup opens (for the re-render picker).
+  React.useEffect(() => {
+    if (isOpen && styleOptions.length === 0) {
+      fetchStyleCatalog().then(setStyleOptions).catch(() => {});
+    }
+  }, [isOpen, styleOptions.length]);
+
+  // Re-render the cover in a specific style the user picked.
+  const handleRerenderWithStyle = async () => {
+    if (!selectedStyleId) return;
+    setGeneratingImage(true);
+    try {
+      const currentTitle = editableTitle || article?.title;
+      const response = await generateCoverForArticle({
+        title: currentTitle,
+        content: article?.content || article?.description || article?.summary || '',
+        network: article?.network,
+        styleId: selectedStyleId,
+        xFormat: 'png'
+      });
+      if (response && response.success && response.imageUrl) {
+        setGeneratedImage(response.imageUrl);
+        setXReadyImage(response.xReadyUrl || null);
+        const styleName = (styleOptions.find(s => s.id === selectedStyleId) || {}).name || selectedStyleId;
+        showPopupNotification(`🎨 Re-rendered in "${styleName}" style!`, 'success');
+      } else {
+        throw new Error(response?.error || 'Re-render failed');
+      }
+    } catch (error) {
+      showPopupNotification(`Re-render failed: ${error.message}`, 'error');
+    } finally {
+      setGeneratingImage(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -885,7 +922,7 @@ const AIRewritePopup = ({
             {generatedImage && (
               <div style={{ marginTop: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <h5 style={{ color: '#0066cc', margin: 0 }}>🎨 Universal LoRA Generated:</h5>
+                  <h5 style={{ color: '#0066cc', margin: 0 }}>🎨 Cover:</h5>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <ActionButton
                       variant="primary"
@@ -915,7 +952,28 @@ const AIRewritePopup = ({
                   fontSize: '0.8rem',
                   color: '#22c55e'
                 }}>
-                  ✅ <strong>Universal LoRA Generated:</strong> Professional crypto cover with trained styling • Right-click to save
+                  ✅ <strong>Cover generated:</strong> Real logo from your library, 1800x900 • Download gives the under-1MB copy for X
+                </div>
+                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#8b949e' }}>Prefer a specific style?</span>
+                  <select
+                    value={selectedStyleId}
+                    onChange={(e) => setSelectedStyleId(e.target.value)}
+                    style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', background: '#0d1117', color: '#c9d1d9', border: '1px solid #30363d' }}
+                  >
+                    <option value="">Choose a style...</option>
+                    {styleOptions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <ActionButton
+                    variant="primary"
+                    onClick={handleRerenderWithStyle}
+                    disabled={generatingImage || !selectedStyleId}
+                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  >
+                    {generatingImage ? '🎨 Rendering...' : '🎨 Re-render in this style'}
+                  </ActionButton>
                 </div>
               </div>
             )}
