@@ -275,12 +275,20 @@ export default function Navigation() {
                 All News
           </NavLink>
           
-          <NavLink 
-            to="/clients" 
+          <NavLink
+            to="/clients"
             isActive={location.pathname.startsWith('/clients')}
             onClick={closeMobileMenu}
           >
                 Client News
+          </NavLink>
+
+          <NavLink
+            to="/article-studio"
+            isActive={location.pathname === '/article-studio'}
+            onClick={closeMobileMenu}
+          >
+                Article Studio
           </NavLink>
           
           <NavLink 

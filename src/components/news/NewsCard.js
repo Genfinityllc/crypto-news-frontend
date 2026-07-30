@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { addBookmark, removeBookmark, generateCardImage, addRSSBookmark, removeRSSBookmark, rewriteArticle, rewriteRSSArticle } from '../../services/api';
+import { addBookmark, removeBookmark, generateCardImage, addRSSBookmark, removeRSSBookmark } from '../../services/api';
+import { startRewritePipeline } from '../../services/rewritePipeline';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
 import AIRewritePopup from './AIRewritePopup';
@@ -595,6 +597,7 @@ function generateRewrittenTitle(originalTitle, network) {
 
 export default function NewsCard({ article, bookmarks = [], onBookmarkChange, onRewrite, isRewriting = false }) {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [aiRewrite, setAiRewrite] = useState(null);
   const [loadingRewrite, setLoadingRewrite] = useState(false);
   const [showRewritePopup, setShowRewritePopup] = useState(false);
@@ -696,89 +699,18 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const handleGenerateRewrite = async () => {
     setLoadingRewrite(true);
     try {
-      let rewriteResult;
-      
-      if (article.id) {
-        // Database article - use rewriteArticle
-        console.log('🤖 Generating AI rewrite for database article:', article.title);
-        console.log('Article ID:', article.id);
-        rewriteResult = await rewriteArticle(article.id);
-      } else {
-        // RSS article - use rewriteRSSArticle
-        console.log('🤖 Generating AI rewrite for RSS article:', article.title);
-        const articleData = {
-          title: article.title,
-          content: article.content || article.description || article.summary,
-          url: article.url,
-          network: article.network,
-          source: article.source,
-          category: article.category
-        };
-        console.log('Article data being sent:', articleData);
-        rewriteResult = await rewriteRSSArticle(articleData);
-      }
-      
-      console.log('AI rewrite result:', rewriteResult);
-      console.log('API response structure:', Object.keys(rewriteResult));
-      
-      // Check if the response is nested in a 'data' property
-      const actualData = rewriteResult.data || rewriteResult;
-      console.log('Actual data:', actualData);
-      console.log('Actual data keys:', Object.keys(actualData));
-      
-      // Transform the API response to match expected format
-      const transformedResult = {
-        title: actualData.rewrittenTitle || actualData.title || 'Rewritten Article',
-        content: actualData.rewrittenContent || actualData.rewrittenText || actualData.content || '<p>Content being processed...</p>',
-        readabilityScore: actualData.readabilityScore || 98,
-        viralScore: actualData.viralScore || 85,
-        wordCount: actualData.wordCount || 150,
-        sources: actualData.sources || [
-          { title: 'CoinMarketCap', url: 'https://coinmarketcap.com', description: 'Market data' },
-          { title: 'CoinDesk', url: 'https://coindesk.com', description: 'Crypto news' },
-          { title: 'Blockchain.com', url: 'https://blockchain.com', description: 'Blockchain data' },
-          { title: 'CryptoCompare', url: 'https://cryptocompare.com', description: 'Analytics' },
-          { title: 'DeFi Pulse', url: 'https://defipulse.com', description: 'DeFi data' }
-        ]
-      };
-      
-      console.log('Transformed result:', transformedResult);
-      
-      // Ensure we always have some content
-      if (!transformedResult.title) {
-        transformedResult.title = `${article.network || 'Cryptocurrency'} Analysis: ${article.title}`;
-      }
-      if (!transformedResult.content) {
-        transformedResult.content = '<p>Article rewrite in progress...</p>';
-      }
-      
-      console.log('Final transformed result:', transformedResult);
-      
-      // Set the AI rewrite data
-      setAiRewrite(transformedResult);
-      setShowRewritePopup(true);
-      // Note: Success notification will show inside the popup
-      
+      // Start the fact-checked pipeline (async). It runs server-side and is
+      // tracked in Article Studio, so you can leave the page and come back.
+      const jobId = await startRewritePipeline({
+        title: article.title,
+        content: article.content || article.description || article.summary || '',
+        url: article.url
+      });
+      toast.success('Fact-checked rewrite started. Opening Article Studio...');
+      navigate(`/article-studio?job=${jobId}`);
     } catch (error) {
-      console.error('AI rewrite error:', error);
-      
-      // Fallback to mock data if API fails
-      const fallbackRewrite = {
-        title: generateRewrittenTitle(article.title, article.network),
-        content: `<p>The ${article.network || 'cryptocurrency'} market is experiencing significant developments. According to recent analysis from <a href="https://coinmarketcap.com" target="_blank">CoinMarketCap</a>, these changes could impact investment strategies.</p><h2>Market Impact Analysis</h2><p>Current trends suggest growing institutional interest in digital assets. Professional traders are monitoring key indicators for potential opportunities.</p><h2>Investment Implications</h2><p>For investors, these developments present both opportunities and risks that require careful consideration of portfolio allocation strategies.</p>`,
-        readabilityScore: 98,
-        viralScore: 85,
-        wordCount: 120,
-        sources: [
-          { title: 'CoinMarketCap', url: 'https://coinmarketcap.com', description: 'Market data' },
-          { title: 'CoinDesk', url: 'https://coindesk.com', description: 'Crypto news' }
-        ]
-      };
-      
-      console.log('Using fallback rewrite:', fallbackRewrite);
-      setAiRewrite(fallbackRewrite);
-      setShowRewritePopup(true);
-      toast.error('API connection failed - using fallback content. Check backend server.');
+      console.error('Failed to start rewrite pipeline:', error);
+      toast.error(`Could not start rewrite: ${error.message}`);
     } finally {
       setLoadingRewrite(false);
     }

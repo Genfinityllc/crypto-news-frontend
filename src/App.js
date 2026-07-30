@@ -18,6 +18,7 @@ import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ProfileManager from './components/auth/ProfileManager';
 import Bookmarks from './pages/Bookmarks';
+import ArticleStudio from './pages/ArticleStudio';
 
 const GlobalStyle = createGlobalStyle`
   * {
@@ -142,13 +143,21 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/bookmarks" 
+              <Route
+                path="/bookmarks"
                 element={
                   <ProtectedRoute>
                     <Bookmarks />
                   </ProtectedRoute>
-                } 
+                }
+              />
+              <Route
+                path="/article-studio"
+                element={
+                  <ProtectedRoute>
+                    <ArticleStudio />
+                  </ProtectedRoute>
+                }
               />
               
                 {/* Redirect unknown routes to landing page */}
