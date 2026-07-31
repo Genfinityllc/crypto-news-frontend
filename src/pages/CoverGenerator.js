@@ -1042,6 +1042,7 @@ export default function CoverGenerator() {
 
   const [customSubject, setCustomSubject] = useState('');
   const [collageBuildings, setCollageBuildings] = useState([]); // up to 4 buildings for the Editorial Collage
+  const [buildingsOpen, setBuildingsOpen] = useState(false); // buildings checkbox dropdown open/closed
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
@@ -2111,57 +2112,99 @@ export default function CoverGenerator() {
                 const subjectConfig = activeStyle?.customSubject;
                 return (
                 <>
-                  {subjectConfig?.enabled && (
+                  {subjectConfig?.enabled && activeStyle?.category !== 'flat' && (
                     <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>{activeStyle?.category === 'flat' ? 'Collage subjects' : '3D Elements Override'}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>3D Elements Override</div>
                       <TextInput
                         type="text"
-                        list={activeStyle?.category === 'flat' ? 'collage-subject-suggestions' : undefined}
                         placeholder={subjectConfig.placeholder || 'e.g., rockets, skyscrapers...'}
                         value={customSubject}
                         onChange={(e) => setCustomSubject(e.target.value)}
                         style={{ fontSize: '0.9rem', padding: '0.65rem' }}
                       />
-                      {activeStyle?.category === 'flat' && (
-                        <datalist id="collage-subject-suggestions">
-                          {['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'].map((b) => <option key={b} value={b} />)}
-                        </datalist>
-                      )}
                       <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>
-                        {activeStyle?.category === 'flat'
-                          ? 'Pick a suggested building or type any subjects (comma-separated). The article topic is always included.'
-                          : `Default: ${subjectConfig.defaultSubject} — type to replace with custom 3D elements`}
+                        Default: {subjectConfig.defaultSubject} — type to replace with custom 3D elements
                       </div>
                     </div>
                   )}
-                  {activeStyle?.category === 'flat' && (
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Government buildings (optional, up to 4)</div>
-                      <select
-                        value=""
-                        onChange={(e) => { const b = e.target.value; if (b && collageBuildings.length < 4 && !collageBuildings.includes(b)) setCollageBuildings([...collageBuildings, b]); }}
-                        style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem' }}
-                      >
-                        <option value="">Add a building...</option>
-                        {['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'].filter((b) => !collageBuildings.includes(b)).map((b) => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                      {collageBuildings.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
-                          {collageBuildings.map((b) => (
-                            <span key={b} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid #00d4ff', borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem' }}>
-                              {b}
-                              <button type="button" onClick={() => setCollageBuildings(collageBuildings.filter((x) => x !== b))} style={{ background: 'transparent', border: 'none', color: '#00d4ff', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: 0 }}>×</button>
-                            </span>
-                          ))}
+                  {activeStyle?.category === 'flat' && (() => {
+                    const GOV_BUILDINGS = ['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'];
+                    const SUBJECT_SUGGESTIONS = ['Gavel', 'Money printing press', 'Handshake', 'Businessperson', 'Monkey', 'Bank vault', 'Airplane', 'Stacks of cash', 'Bull', 'Bear', 'Rocket', 'Globe', 'Scales of justice', 'Briefcase', 'Stock chart', 'Gold bars', 'Whale', 'Padlock'];
+                    const toggleBuilding = (b) => setCollageBuildings((prev) => prev.includes(b) ? prev.filter((x) => x !== b) : (prev.length < 4 ? [...prev, b] : prev));
+                    const addSubject = (s) => {
+                      if (!s) return;
+                      const cur = customSubject.split(',').map((x) => x.trim()).filter(Boolean);
+                      if (!cur.some((x) => x.toLowerCase() === s.toLowerCase())) setCustomSubject([...cur, s].join(', '));
+                    };
+                    return (
+                      <>
+                        {/* 1. Government buildings: dropdown with checkboxes, pick up to 4 */}
+                        <div style={{ marginTop: '0.75rem', position: 'relative' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Government buildings (optional, up to 4)</div>
+                          <button
+                            type="button"
+                            onClick={() => setBuildingsOpen((v) => !v)}
+                            style={{ width: '100%', textAlign: 'left', padding: '0.6rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          >
+                            <span>{collageBuildings.length ? `${collageBuildings.length} of 4 selected` : 'Select buildings...'}</span>
+                            <span>{buildingsOpen ? '▲' : '▼'}</span>
+                          </button>
+                          {buildingsOpen && (
+                            <div style={{ marginTop: 4, maxHeight: 240, overflowY: 'auto', border: '1px solid #30363d', borderRadius: 8, background: '#0a0a0a', padding: 6 }}>
+                              {GOV_BUILDINGS.map((b) => {
+                                const on = collageBuildings.includes(b);
+                                const disabled = !on && collageBuildings.length >= 4;
+                                return (
+                                  <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: '0.82rem', color: disabled ? '#555' : '#e6edf3', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                                    <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggleBuilding(b)} />
+                                    {b}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {collageBuildings.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
+                              {collageBuildings.map((b) => (
+                                <span key={b} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid #00d4ff', borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem' }}>
+                                  {b}
+                                  <button type="button" onClick={() => toggleBuilding(b)} style={{ background: 'transparent', border: 'none', color: '#00d4ff', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: 0 }}>×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>Pick up to 4; they are added to the collage subjects.</div>
-                    </div>
-                  )}
+                        {/* 2. Subject suggestions dropdown (adds into the text field below) */}
+                        <div style={{ marginTop: '0.75rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Subject suggestions</div>
+                          <select
+                            value=""
+                            onChange={(e) => addSubject(e.target.value)}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem' }}
+                          >
+                            <option value="">Add a suggested subject...</option>
+                            {SUBJECT_SUGGESTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        {/* 3. Free-text subjects field */}
+                        <div style={{ marginTop: '0.75rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Other subjects (type any, comma-separated)</div>
+                          <TextInput
+                            type="text"
+                            placeholder="e.g., gavel, printing press, a specific person"
+                            value={customSubject}
+                            onChange={(e) => setCustomSubject(e.target.value)}
+                            style={{ fontSize: '0.9rem', padding: '0.65rem' }}
+                          />
+                          <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>The article topic is always included automatically.</div>
+                        </div>
+                      </>
+                    );
+                  })()}
                   {activeStyle?.category === 'flat' && (
                     <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Color palette (2 colors, rest black &amp; white)</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Colors — background + 2 accents (everything else black &amp; white)</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
                         {[['#ff2d9b', '#c6ff00'], ['#ffd400', '#ff3b30'], ['#00e5ff', '#ff2d9b'], ['#00e676', '#2979ff'], ['#2979ff', '#ff4fa3'], ['#ff7a00', '#00e5ff']].map(([c1, c2]) => (
                           <button
                             key={c1 + c2}
@@ -2172,7 +2215,15 @@ export default function CoverGenerator() {
                           />
                         ))}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>Pick a preset, or set Elements + Accent in Scene Colors for custom. Background stays black.</div>
+                      <div style={{ display: 'flex', gap: '1rem' }}>
+                        {[{ label: 'Background', val: bgColor || '#000000', set: setBgColor }, { label: 'Accent 1', val: elementColor || '#ff2d9b', set: setElementColor }, { label: 'Accent 2', val: accentLightColor || '#c6ff00', set: setAccentLightColor }].map((c) => (
+                          <label key={c.label} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#8b949e' }}>
+                            {c.label}
+                            <input type="color" value={c.val} onChange={(e) => c.set(e.target.value)} style={{ width: 52, height: 30, background: 'transparent', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', padding: 0 }} />
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.4rem' }}>Pick a preset above, or set the three colors directly. Default background is black.</div>
                     </div>
                   )}
                   {activeStyle?.patternOptions?.enabled && (
