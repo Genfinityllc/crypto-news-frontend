@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { listRewriteJobs, getRewriteStatus, generateJobCover, fetchStyleCatalog } from '../services/rewritePipeline';
+import { listRewriteJobs, getRewriteStatus, generateJobCover, fetchStyleCatalog, startManualCover } from '../services/rewritePipeline';
 
 // Simple, dependency-free presentation. Dark theme to match the app.
 const c = {
@@ -70,6 +70,10 @@ export default function ArticleStudio() {
   const [useSubject, setUseSubject] = useState(true);
   const [subjectText, setSubjectText] = useState(''); // typed 3D element (glass) or collage subjects (flat)
   const [showStyles, setShowStyles] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualContent, setManualContent] = useState('');
+  const [manualBusy, setManualBusy] = useState(false);
   const query = useQuery();
   const pollRef = useRef(null);
 
@@ -94,6 +98,26 @@ export default function ArticleStudio() {
       toast.error(`Cover failed: ${e.message}`);
     } finally {
       setCoverBusy(false);
+    }
+  };
+
+  const handleManualSubmit = async () => {
+    const t = manualTitle.trim();
+    const b = manualContent.trim();
+    if (!t || !b) { toast.error('Add a title and article text'); return; }
+    setManualBusy(true);
+    try {
+      const jobId = await startManualCover({ title: t, content: b });
+      toast.success('Cover job started');
+      setManualTitle('');
+      setManualContent('');
+      setShowManual(false);
+      await refreshList();
+      setSelectedId(jobId);
+    } catch (e) {
+      toast.error(`Could not start: ${e.message}`);
+    } finally {
+      setManualBusy(false);
     }
   };
 
@@ -156,6 +180,45 @@ export default function ArticleStudio() {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1.5rem 1rem', color: c.text }}>
       <h1 style={{ fontSize: '1.6rem', marginBottom: '0.25rem' }}>Article Studio</h1>
       <p style={{ color: c.sub, marginTop: 0 }}>Fact-checked rewrites. Start one from any news card; they process here and persist, so you can leave and come back.</p>
+
+      {/* Paste your own article: run the cover process (concept + factual text clippings) on your own text, no rewrite. */}
+      <div style={{ background: c.panel, border: `1px solid ${c.border}`, borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowManual((v) => !v)}>
+          <div>
+            <span style={{ fontSize: '0.95rem', fontWeight: 600 }}>Paste your own article</span>
+            <span style={{ color: c.sub, fontSize: '0.8rem', marginLeft: 8 }}>Generate a cover for your own title + text (no rewrite)</span>
+          </div>
+          <span style={{ color: c.accent, fontSize: '0.85rem' }}>{showManual ? '▲' : '▼'}</span>
+        </div>
+        {showManual && (
+          <div style={{ marginTop: '0.85rem' }}>
+            <input
+              type="text"
+              value={manualTitle}
+              onChange={(e) => setManualTitle(e.target.value)}
+              placeholder="Article title"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 7, background: c.bg, color: c.text, border: `1px solid ${c.border}`, fontSize: '0.9rem', marginBottom: 8 }}
+            />
+            <textarea
+              value={manualContent}
+              onChange={(e) => setManualContent(e.target.value)}
+              placeholder="Paste the full article text here. The cover concept and its factual text clippings are pulled from this."
+              rows={7}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 7, background: c.bg, color: c.text, border: `1px solid ${c.border}`, fontSize: '0.88rem', lineHeight: 1.5, resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
+              <span style={{ color: c.sub, fontSize: '0.75rem' }}>Uses the same concept + truthful-text-clipping cover as a rewrite. Only real facts from your text are used.</span>
+              <button
+                onClick={handleManualSubmit}
+                disabled={manualBusy || !manualTitle.trim() || !manualContent.trim()}
+                style={{ background: manualBusy ? c.border : c.accent, color: '#fff', border: 'none', borderRadius: 7, padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, cursor: manualBusy ? 'default' : 'pointer', opacity: (!manualTitle.trim() || !manualContent.trim()) ? 0.6 : 1 }}
+              >
+                {manualBusy ? 'Starting...' : 'Generate cover'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Job list */}

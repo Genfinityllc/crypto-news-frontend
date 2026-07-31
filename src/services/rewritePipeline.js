@@ -25,6 +25,24 @@ export async function startRewritePipeline({ title, content, url }) {
   return data.jobId;
 }
 
+/**
+ * Start a MANUAL cover job: the user pastes their own title + article (not a
+ * rewrite) and we run the same concept + truthful-text-clipping cover process on
+ * it. Returns the jobId; it shows up in Article Studio like any other job.
+ */
+export async function startManualCover({ title, content }) {
+  const resp = await fetch(`${PIPELINE_API_BASE}/api/rewrite-pipeline/manual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content })
+  });
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok || !data || !data.success) {
+    throw new Error((data && data.error) || `Failed to start cover (${resp.status})`);
+  }
+  return data.jobId;
+}
+
 /** Get a single job's full status (includes the result when completed). */
 export async function getRewriteStatus(jobId) {
   const resp = await fetch(`${PIPELINE_API_BASE}/api/rewrite-pipeline/status/${jobId}`);

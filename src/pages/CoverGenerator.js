@@ -1675,9 +1675,12 @@ export default function CoverGenerator() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Hide internal styles (e.g. the text-enabled news collage, which is only used
+  // by Article Studio) from the Cover Generator picker.
+  const pickerStyles = styles.filter(s => !s.internal);
   const filteredStyles = activeCategory === 'all'
-    ? styles
-    : styles.filter(s => s.category === activeCategory);
+    ? pickerStyles
+    : pickerStyles.filter(s => s.category === activeCategory);
 
   const ratingScale = Array.from({ length: 10 }, (_, i) => i + 1);
 
@@ -2265,6 +2268,9 @@ export default function CoverGenerator() {
                       )}
                     </div>
                   )}
+                  {/* Scene Colors: hidden for the flat collage, which has its own
+                      background + 2-accent pickers, so the two do not conflict. */}
+                  {activeStyle?.category !== 'flat' && (<>
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.15rem' }}>Scene Colors <span style={{ fontSize: '0.65rem', color: '#6e7681' }}>(does not affect logo — use logo dropdown above)</span></div>
                   <ColorRow>
                     <ColorField>
@@ -2381,6 +2387,7 @@ export default function CoverGenerator() {
                       Reset Scene Colors
                     </button>
                   )}
+                  </>)}
                 </>
                 );
               })()}
