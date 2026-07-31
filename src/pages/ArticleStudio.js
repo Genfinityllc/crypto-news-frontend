@@ -66,7 +66,7 @@ export default function ArticleStudio() {
   const [cover, setCover] = useState(null);
   const [coverBusy, setCoverBusy] = useState(false);
   const [styleOptions, setStyleOptions] = useState([]);
-  const [pickStyle, setPickStyle] = useState('');
+  const [pickStyle, setPickStyle] = useState('32b_editorial_collage_news'); // default to Editorial Collage (with text)
   const [useSubject, setUseSubject] = useState(true);
   const [subjectText, setSubjectText] = useState(''); // typed 3D element (glass) or collage subjects (flat)
   const [showStyles, setShowStyles] = useState(false);
@@ -82,18 +82,37 @@ export default function ArticleStudio() {
     fetchStyleCatalog().then(setStyleOptions).catch(() => {});
   }, []);
 
+  // Poll a job until its cover re-render finishes. Because coverStatus is
+  // persisted on the job, this survives leaving and returning to the page.
+  const pollCoverUntilDone = async (jobId) => {
+    for (let i = 0; i < 80; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      let st = null;
+      try { st = await getRewriteStatus(jobId); } catch (e) { continue; }
+      const r = st && st.result;
+      if (r && (r.coverStatus === 'done' || r.coverStatus === 'failed')) return { st, r };
+    }
+    return null;
+  };
+
   const handleGenerateCover = async () => {
     if (!selectedId) return;
     setCoverBusy(true);
     try {
-      const cv = await generateJobCover(selectedId, {
+      await generateJobCover(selectedId, {
         styleId: pickStyle || undefined,
         useSubject,
         subject: subjectText.trim() || undefined,
         xFormat: 'png'
       });
-      setCover(cv);
-      toast.success('Cover generated');
+      const done = await pollCoverUntilDone(selectedId);
+      if (done) {
+        setDetail(done.st); // refresh so the new cover + any SEO backfill show
+        if (done.r.coverStatus === 'failed') toast.error(`Cover failed: ${done.r.coverError || 'error'}`);
+        else { setCover(done.r.cover); toast.success('Cover generated'); }
+      } else {
+        toast.info('Cover is taking a while; it will appear here when it finishes.');
+      }
     } catch (e) {
       toast.error(`Cover failed: ${e.message}`);
     } finally {
@@ -160,8 +179,13 @@ export default function ArticleStudio() {
       try {
         setLoadingDetail(true);
         const st = await getRewriteStatus(selectedId);
-        if (!stop) setDetail(st);
-        if (!stop && st.status === 'running') setTimeout(load, 4000);
+        if (!stop) {
+          setDetail(st);
+          // Reflect an in-progress cover re-render (survives navigation).
+          const coverRunning = st.result && st.result.coverStatus === 'running';
+          setCoverBusy(coverRunning);
+          if ((st.status === 'running' || coverRunning)) setTimeout(load, 4000);
+        }
       } catch (e) {
         if (!stop) setDetail({ status: 'failed', error: e.message });
       } finally {

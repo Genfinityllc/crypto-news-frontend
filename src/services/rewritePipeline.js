@@ -77,7 +77,8 @@ export async function generateJobCover(jobId, opts = {}) {
   if (!resp.ok || !data || !data.success) {
     throw new Error((data && data.error) || `Cover generation failed (${resp.status})`);
   }
-  return data.cover;
+  // Async now: returns { success, started }. Poll getRewriteStatus for the cover.
+  return data;
 }
 
 /** Fetch the curated style catalog (id, name, and sample image) for the picker. */
