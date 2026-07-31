@@ -1544,6 +1544,13 @@ export default function CoverGenerator() {
       return;
     }
 
+    // Editorial Collage requires an article title: it drives the concept and
+    // composition, which is what makes this style tell a story.
+    if (selectedStyle === '32_editorial_collage' && !articleTitle.trim()) {
+      toast.warning('Editorial Collage needs an article title — it drives the concept and composition.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     
