@@ -60,6 +60,7 @@ export default function ArticleStudio() {
   const [styleOptions, setStyleOptions] = useState([]);
   const [pickStyle, setPickStyle] = useState('');
   const [useSubject, setUseSubject] = useState(true);
+  const [subjectText, setSubjectText] = useState(''); // optional user-typed 3D element (glass styles)
   const [showStyles, setShowStyles] = useState(false);
   const query = useQuery();
   const pollRef = useRef(null);
@@ -73,7 +74,7 @@ export default function ArticleStudio() {
     if (!selectedId) return;
     setCoverBusy(true);
     try {
-      const cv = await generateJobCover(selectedId, { styleId: pickStyle || undefined, useSubject, xFormat: 'png' });
+      const cv = await generateJobCover(selectedId, { styleId: pickStyle || undefined, useSubject, subject: subjectText.trim() || undefined, xFormat: 'png' });
       setCover(cv);
       toast.success('Cover generated');
     } catch (e) {
@@ -208,6 +209,16 @@ export default function ArticleStudio() {
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: c.sub }}>
                       <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} /> 3D element
                     </label>
+                    {useSubject && (
+                      <input
+                        type="text"
+                        value={subjectText}
+                        onChange={(e) => setSubjectText(e.target.value)}
+                        placeholder="e.g. golden bull (optional)"
+                        title="Type a 3D element to use. Applies to the glass styles; the flat Editorial Collage style ignores it."
+                        style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, width: 170 }}
+                      />
+                    )}
                     <button type="button" onClick={() => setShowStyles((v) => !v)} style={{ padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, cursor: 'pointer' }}>
                       Style: {pickStyle ? ((styleOptions.find((s) => s.id === pickStyle) || {}).name || pickStyle) : 'Rotate'} ▾
                     </button>
