@@ -188,7 +188,9 @@ export default function ArticleStudio() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <h2 style={{ margin: 0, fontSize: '1.25rem', flex: 1 }}>{article.headline}</h2>
                 {result.requiresHumanReview && (
-                  <span style={{ background: 'rgba(245,158,11,0.15)', color: c.warn, border: `1px solid ${c.warn}`, borderRadius: 6, padding: '3px 8px', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>Needs human review</span>
+                  <span title={(result.reviewReasons || []).join('; ')} style={{ background: 'rgba(245,158,11,0.15)', color: c.warn, border: `1px solid ${c.warn}`, borderRadius: 6, padding: '3px 8px', fontSize: '0.72rem', maxWidth: 340 }}>
+                    Review: {(result.reviewReasons || []).join('; ') || 'flagged'}
+                  </span>
                 )}
               </div>
               {audit && (
