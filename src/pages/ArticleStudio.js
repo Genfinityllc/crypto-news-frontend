@@ -9,6 +9,14 @@ const c = {
   sub: '#8b949e', accent: '#3b82f6', good: '#22c55e', warn: '#f59e0b', bad: '#ef4444'
 };
 
+const COLLAGE_STYLE_ID = '32_editorial_collage';
+const BUILDINGS = [
+  'White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund',
+  'U.S. Department of Commerce', 'United States Treasury', 'US Senate',
+  'Washington DC', 'Internal Revenue Service', 'The United States Capitol',
+  'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'
+];
+
 function statusColor(status) {
   if (status === 'completed') return c.good;
   if (status === 'failed') return c.bad;
@@ -60,7 +68,7 @@ export default function ArticleStudio() {
   const [styleOptions, setStyleOptions] = useState([]);
   const [pickStyle, setPickStyle] = useState('');
   const [useSubject, setUseSubject] = useState(true);
-  const [subjectText, setSubjectText] = useState(''); // optional user-typed 3D element (glass styles)
+  const [subjectText, setSubjectText] = useState(''); // typed 3D element (glass) or collage subjects (flat)
   const [showStyles, setShowStyles] = useState(false);
   const query = useQuery();
   const pollRef = useRef(null);
@@ -74,7 +82,12 @@ export default function ArticleStudio() {
     if (!selectedId) return;
     setCoverBusy(true);
     try {
-      const cv = await generateJobCover(selectedId, { styleId: pickStyle || undefined, useSubject, subject: subjectText.trim() || undefined, xFormat: 'png' });
+      const cv = await generateJobCover(selectedId, {
+        styleId: pickStyle || undefined,
+        useSubject,
+        subject: subjectText.trim() || undefined,
+        xFormat: 'png'
+      });
       setCover(cv);
       toast.success('Cover generated');
     } catch (e) {
@@ -206,18 +219,37 @@ export default function ArticleStudio() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                   <h3 style={{ margin: 0, fontSize: '1rem' }}>Cover</h3>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: c.sub }}>
-                      <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} /> 3D element
-                    </label>
-                    {useSubject && (
-                      <input
-                        type="text"
-                        value={subjectText}
-                        onChange={(e) => setSubjectText(e.target.value)}
-                        placeholder="e.g. golden bull (optional)"
-                        title="Type a 3D element to use. Applies to the glass styles; the flat Editorial Collage style ignores it."
-                        style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, width: 170 }}
-                      />
+                    {pickStyle === COLLAGE_STYLE_ID ? (
+                      <>
+                        <input
+                          list="collage-subjects"
+                          type="text"
+                          value={subjectText}
+                          onChange={(e) => setSubjectText(e.target.value)}
+                          placeholder="Subjects: pick or type (e.g. gavel, cash)"
+                          title="Pick a suggested building or type any subjects, comma-separated. The article topic is always included."
+                          style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, width: 240 }}
+                        />
+                        <datalist id="collage-subjects">
+                          {BUILDINGS.map((b) => <option key={b} value={b} />)}
+                        </datalist>
+                      </>
+                    ) : (
+                      <>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: c.sub }}>
+                          <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} /> 3D element
+                        </label>
+                        {useSubject && (
+                          <input
+                            type="text"
+                            value={subjectText}
+                            onChange={(e) => setSubjectText(e.target.value)}
+                            placeholder="e.g. golden bull (optional)"
+                            title="Type a 3D element for the glass styles."
+                            style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, width: 170 }}
+                          />
+                        )}
+                      </>
                     )}
                     <button type="button" onClick={() => setShowStyles((v) => !v)} style={{ padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, cursor: 'pointer' }}>
                       Style: {pickStyle ? ((styleOptions.find((s) => s.id === pickStyle) || {}).name || pickStyle) : 'Rotate'} ▾
