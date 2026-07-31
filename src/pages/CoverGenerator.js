@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
@@ -1044,6 +1044,8 @@ export default function CoverGenerator() {
   const [collageBuildings, setCollageBuildings] = useState([]); // up to 4 buildings for the Editorial Collage
   const [buildingsOpen, setBuildingsOpen] = useState(false); // buildings checkbox dropdown open/closed
   const [centeredLogo, setCenteredLogo] = useState(false); // collage: logo as big centered hero
+  const [resuming, setResuming] = useState(false); // background resume of a prior job (does NOT block Generate)
+  const resumeCancelRef = useRef(false); // set true to abandon a resumed poll when a new generation starts
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
@@ -1477,10 +1479,13 @@ export default function CoverGenerator() {
 
   // Poll an async cover job until it completes or fails. Returns the generate
   // result (same shape the old synchronous call returned), or throws.
-  const pollCoverJob = async (jobId) => {
-    // Up to ~5 minutes of polling (generation is well under that).
-    for (let i = 0; i < 100; i++) {
+  const pollCoverJob = async (jobId, shouldStop) => {
+    // Up to ~4 minutes of polling (generation is well under that). shouldStop lets
+    // a resumed poll be abandoned the moment the user starts a new generation.
+    for (let i = 0; i < 80; i++) {
+      if (shouldStop && shouldStop()) throw new Error('cancelled');
       await new Promise((r) => setTimeout(r, 3000));
+      if (shouldStop && shouldStop()) throw new Error('cancelled');
       let j = null;
       try {
         const resp = await fetch(`${API_BASE}/api/cover-generator/job/${jobId}`);
@@ -1497,7 +1502,8 @@ export default function CoverGenerator() {
   };
 
   // Restore the last cover and resume any in-flight generation after a refresh
-  // or navigation, so a generation is never lost.
+  // or navigation. This runs in the BACKGROUND (its own `resuming` state) and
+  // never sets `loading`, so a stuck or slow resume can never disable Generate.
   useEffect(() => {
     try {
       const last = JSON.parse(localStorage.getItem('cg_last_result') || 'null');
@@ -1509,13 +1515,14 @@ export default function CoverGenerator() {
     let pending = null;
     try { pending = localStorage.getItem('cg_pending_job'); } catch (e) {}
     if (!pending) return;
-    setLoading(true);
-    toast.info('Resuming your last cover generation...');
+    resumeCancelRef.current = false;
+    setResuming(true);
+    toast.info('Checking on your last cover generation...');
     (async () => {
       try {
-        const data = await pollCoverJob(pending);
+        const data = await pollCoverJob(pending, () => resumeCancelRef.current);
         try { localStorage.removeItem('cg_pending_job'); } catch (e) {}
-        if (data && data.success && data.imageUrl) {
+        if (!resumeCancelRef.current && data && data.success && data.imageUrl) {
           setCurrentImage(data.imageUrl);
           setCurrentMeta({ network: data.network, method: data.method, duration: data.duration });
           try { localStorage.setItem('cg_last_result', JSON.stringify({ imageUrl: data.imageUrl, network: data.network, method: data.method, duration: data.duration })); } catch (e) {}
@@ -1524,9 +1531,10 @@ export default function CoverGenerator() {
         }
       } catch (e) {
         try { localStorage.removeItem('cg_pending_job'); } catch (er) {}
-        toast.error(`Generation failed: ${e.message}`);
+        // Silent on cancel; only surface real failures.
+        if (!/cancelled/i.test(e.message)) toast.info('Your previous generation did not finish. You can generate again.');
       } finally {
-        setLoading(false);
+        setResuming(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1551,9 +1559,12 @@ export default function CoverGenerator() {
       return;
     }
 
+    // Abandon any background resume so it cannot clobber this new generation.
+    resumeCancelRef.current = true;
+    setResuming(false);
     setLoading(true);
     setError(null);
-    
+
     try {
       let authHeader = {};
       if (currentUser) {
