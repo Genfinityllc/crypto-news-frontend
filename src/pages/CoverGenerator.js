@@ -2180,9 +2180,13 @@ export default function CoverGenerator() {
               {selectedStyle && (() => {
                 const activeStyle = styles.find(s => s.id === selectedStyle);
                 const subjectConfig = activeStyle?.customSubject;
+                // Collage-only controls (buildings, subjects, 2-accent colors,
+                // and hiding Scene Colors) apply ONLY to the Editorial Collage
+                // style, never to any other style.
+                const isCollageStyle = selectedStyle === '32_editorial_collage';
                 return (
                 <>
-                  {subjectConfig?.enabled && activeStyle?.category !== 'flat' && (
+                  {subjectConfig?.enabled && !isCollageStyle && (
                     <div style={{ marginTop: '0.75rem' }}>
                       <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>3D Elements Override</div>
                       <TextInput
@@ -2197,7 +2201,7 @@ export default function CoverGenerator() {
                       </div>
                     </div>
                   )}
-                  {activeStyle?.category === 'flat' && (() => {
+                  {isCollageStyle && (() => {
                     const GOV_BUILDINGS = ['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'];
                     const SUBJECT_SUGGESTIONS = ['Gavel', 'Money printing press', 'Handshake', 'Businessperson', 'Monkey', 'Bank vault', 'Airplane', 'Stacks of cash', 'Bull', 'Bear', 'Rocket', 'Globe', 'Scales of justice', 'Briefcase', 'Stock chart', 'Gold bars', 'Whale', 'Padlock'];
                     const toggleBuilding = (b) => setCollageBuildings((prev) => prev.includes(b) ? prev.filter((x) => x !== b) : (prev.length < 4 ? [...prev, b] : prev));
@@ -2271,7 +2275,7 @@ export default function CoverGenerator() {
                       </>
                     );
                   })()}
-                  {activeStyle?.category === 'flat' && (
+                  {isCollageStyle && (
                     <div style={{ marginTop: '0.75rem' }}>
                       <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Colors — background + 2 accents (everything else black &amp; white)</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
@@ -2337,7 +2341,7 @@ export default function CoverGenerator() {
                   )}
                   {/* Scene Colors: hidden for the flat collage, which has its own
                       background + 2-accent pickers, so the two do not conflict. */}
-                  {activeStyle?.category !== 'flat' && (<>
+                  {!isCollageStyle && (<>
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.15rem' }}>Scene Colors <span style={{ fontSize: '0.65rem', color: '#6e7681' }}>(does not affect logo — use logo dropdown above)</span></div>
                   <ColorRow>
                     <ColorField>
