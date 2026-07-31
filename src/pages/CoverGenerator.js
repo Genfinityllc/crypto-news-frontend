@@ -1043,6 +1043,7 @@ export default function CoverGenerator() {
   const [customSubject, setCustomSubject] = useState('');
   const [collageBuildings, setCollageBuildings] = useState([]); // up to 4 buildings for the Editorial Collage
   const [buildingsOpen, setBuildingsOpen] = useState(false); // buildings checkbox dropdown open/closed
+  const [centeredLogo, setCenteredLogo] = useState(false); // collage: logo as big centered hero
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
@@ -1588,9 +1589,14 @@ export default function CoverGenerator() {
         lightingColor: lightingColor || undefined,
         lightingColor2: lightingColor2 || undefined,
         perLogoOverrides: hasAnyOverride ? perLogoOverrides : undefined,
-        customSubject: (selectedStyle === '32_editorial_collage'
-          ? [collageBuildings.join(', '), customSubject.trim()].filter(Boolean).join(', ')
-          : customSubject.trim()) || undefined,
+        customSubject: (() => {
+          if (selectedStyle === '32_editorial_collage') {
+            const subj = [collageBuildings.join(', '), customSubject.trim()].filter(Boolean).join(', ');
+            // Prepend the centered-logo sentinel the backend strips + acts on.
+            return (centeredLogo ? `CENTERED_LOGO|${subj}` : subj) || undefined;
+          }
+          return customSubject.trim() || undefined;
+        })(),
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
@@ -2200,6 +2206,14 @@ export default function CoverGenerator() {
                         Default: {subjectConfig.defaultSubject} — type to replace with custom 3D elements
                       </div>
                     </div>
+                  )}
+                  {isCollageStyle && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: '0.75rem', fontSize: '0.82rem', color: '#e6edf3', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={centeredLogo} onChange={(e) => setCenteredLogo(e.target.checked)} style={{ marginTop: 3 }} />
+                      <span>Logo as main centered subject
+                        <span style={{ display: 'block', fontSize: '0.7rem', color: '#6e7681' }}>Makes the logo large and centered like the other styles, instead of the off-center collage layout.</span>
+                      </span>
+                    </label>
                   )}
                   {isCollageStyle && (() => {
                     const GOV_BUILDINGS = ['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'];
