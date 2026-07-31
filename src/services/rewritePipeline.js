@@ -62,10 +62,16 @@ export async function generateJobCover(jobId, opts = {}) {
   return data.cover;
 }
 
-/** Fetch the curated style catalog (for the re-render picker). */
+/** Fetch the curated style catalog (id, name, and sample image) for the picker. */
 export async function fetchStyleCatalog() {
   const resp = await fetch(`${PIPELINE_API_BASE}/api/style-catalog`);
   const data = await resp.json().catch(() => null);
   const list = Array.isArray(data) ? data : (data && (data.styles || data.data || data.catalog)) || [];
-  return list.map((s) => ({ id: s.id || s.styleId || s.slug, name: s.name || s.title || s.id })).filter((s) => s.id);
+  return list
+    .map((s) => ({
+      id: s.id || s.styleId || s.slug,
+      name: s.name || s.title || s.id,
+      image: s.sampleImageUrl || s.previewUrl || s.thumbnail || s.image || null
+    }))
+    .filter((s) => s.id);
 }

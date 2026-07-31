@@ -60,6 +60,7 @@ export default function ArticleStudio() {
   const [styleOptions, setStyleOptions] = useState([]);
   const [pickStyle, setPickStyle] = useState('');
   const [useSubject, setUseSubject] = useState(true);
+  const [showStyles, setShowStyles] = useState(false);
   const query = useQuery();
   const pollRef = useRef(null);
 
@@ -207,15 +208,27 @@ export default function ArticleStudio() {
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: c.sub }}>
                       <input type="checkbox" checked={useSubject} onChange={(e) => setUseSubject(e.target.checked)} /> 3D element
                     </label>
-                    <select value={pickStyle} onChange={(e) => setPickStyle(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-                      <option value="">Rotate style</option>
-                      {styleOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                    <button type="button" onClick={() => setShowStyles((v) => !v)} style={{ padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, cursor: 'pointer' }}>
+                      Style: {pickStyle ? ((styleOptions.find((s) => s.id === pickStyle) || {}).name || pickStyle) : 'Rotate'} ▾
+                    </button>
                     <button onClick={handleGenerateCover} disabled={coverBusy} style={{ background: c.accent, color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8rem', padding: '6px 14px', cursor: coverBusy ? 'default' : 'pointer' }}>
                       {coverBusy ? 'Generating (about 1 min)...' : (cover ? 'Re-render' : 'Generate Cover')}
                     </button>
                   </div>
                 </div>
+                {showStyles && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8, marginBottom: 12, maxHeight: 280, overflowY: 'auto', padding: 6, border: `1px solid ${c.border}`, borderRadius: 8 }}>
+                    <div onClick={() => { setPickStyle(''); setShowStyles(false); }} style={{ cursor: 'pointer', border: `2px solid ${pickStyle === '' ? c.accent : c.border}`, borderRadius: 6, minHeight: 78, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: '0.72rem', color: c.text, background: c.bg, padding: 4 }}>Rotate (random)</div>
+                    {styleOptions.map((s) => (
+                      <div key={s.id} onClick={() => { setPickStyle(s.id); setShowStyles(false); }} title={s.name} style={{ cursor: 'pointer', border: `2px solid ${pickStyle === s.id ? c.accent : 'transparent'}`, borderRadius: 6, overflow: 'hidden', background: c.bg }}>
+                        {s.image
+                          ? <img src={s.image} alt={s.name} loading="lazy" style={{ width: '100%', height: 58, objectFit: 'cover', display: 'block' }} />
+                          : <div style={{ height: 58 }} />}
+                        <div style={{ fontSize: '0.64rem', color: c.sub, padding: '3px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {cover && cover.imageUrl ? (
                   <div>
                     <img src={cover.imageUrl} alt="cover" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
