@@ -1474,6 +1474,63 @@ export default function CoverGenerator() {
     }
   };
 
+  // Poll an async cover job until it completes or fails. Returns the generate
+  // result (same shape the old synchronous call returned), or throws.
+  const pollCoverJob = async (jobId) => {
+    // Up to ~5 minutes of polling (generation is well under that).
+    for (let i = 0; i < 100; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      let j = null;
+      try {
+        const resp = await fetch(`${API_BASE}/api/cover-generator/job/${jobId}`);
+        j = await resp.json();
+      } catch (e) { continue; } // transient network error, keep polling
+      if (!j || j.success === false) {
+        if (j && /not found/i.test(j.error || '')) throw new Error('Generation was lost (server restarted). Please try again.');
+        continue;
+      }
+      if (j.status === 'completed') return j.result;
+      if (j.status === 'failed') throw new Error(j.error || 'Generation failed');
+    }
+    throw new Error('Generation timed out');
+  };
+
+  // Restore the last cover and resume any in-flight generation after a refresh
+  // or navigation, so a generation is never lost.
+  useEffect(() => {
+    try {
+      const last = JSON.parse(localStorage.getItem('cg_last_result') || 'null');
+      if (last && last.imageUrl) {
+        setCurrentImage(last.imageUrl);
+        setCurrentMeta({ network: last.network, method: last.method || 'restored', duration: last.duration || '-' });
+      }
+    } catch (e) {}
+    let pending = null;
+    try { pending = localStorage.getItem('cg_pending_job'); } catch (e) {}
+    if (!pending) return;
+    setLoading(true);
+    toast.info('Resuming your last cover generation...');
+    (async () => {
+      try {
+        const data = await pollCoverJob(pending);
+        try { localStorage.removeItem('cg_pending_job'); } catch (e) {}
+        if (data && data.success && data.imageUrl) {
+          setCurrentImage(data.imageUrl);
+          setCurrentMeta({ network: data.network, method: data.method, duration: data.duration });
+          try { localStorage.setItem('cg_last_result', JSON.stringify({ imageUrl: data.imageUrl, network: data.network, method: data.method, duration: data.duration })); } catch (e) {}
+          if (currentUser) { await saveCover(data.imageUrl, data.network, articleTitle).catch(() => {}); }
+          toast.success('Your cover finished.');
+        }
+      } catch (e) {
+        try { localStorage.removeItem('cg_pending_job'); } catch (er) {}
+        toast.error(`Generation failed: ${e.message}`);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleGenerate = async () => {
     const networkToUse = networkInput.trim();
     const isBackgroundOnly = !networkToUse;
@@ -1545,17 +1602,26 @@ export default function CoverGenerator() {
         customPrompt: customPromptText.trim() || undefined,
       };
 
-      const response = await fetch(`${API_BASE}/api/cover-generator/generate`, {
+      // Start an async job so the generation survives a refresh or navigation,
+      // then poll it to completion. The generator path itself is unchanged.
+      const startResp = await fetch(`${API_BASE}/api/cover-generator/generate-async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify(body)
       });
+      const startData = await startResp.json();
+      if (!startData || !startData.success || !startData.jobId) {
+        throw new Error((startData && startData.error) || 'Could not start generation');
+      }
+      try { localStorage.setItem('cg_pending_job', startData.jobId); } catch (e) {}
 
-      const data = await response.json();
+      const data = await pollCoverJob(startData.jobId);
+      try { localStorage.removeItem('cg_pending_job'); } catch (e) {}
 
-      if (data.success) {
+      if (data && data.success) {
         const imageUrl = data.imageUrl;
         const network = data.network || networkToUse;
+        try { localStorage.setItem('cg_last_result', JSON.stringify({ imageUrl, network, method: data.method, duration: data.duration })); } catch (e) {}
         
         setCurrentImage(imageUrl);
         const currentSettings = {
@@ -1623,6 +1689,7 @@ export default function CoverGenerator() {
         throw new Error(data.error || 'Generation failed');
       }
     } catch (err) {
+      try { localStorage.removeItem('cg_pending_job'); } catch (e) {}
       toast.error(`Generation failed: ${err.message}`);
       setError(err.message);
     } finally {
