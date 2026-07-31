@@ -2110,17 +2110,42 @@ export default function CoverGenerator() {
                 <>
                   {subjectConfig?.enabled && (
                     <div style={{ marginTop: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>3D Elements Override</div>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>{activeStyle?.category === 'flat' ? 'Collage subjects' : '3D Elements Override'}</div>
                       <TextInput
                         type="text"
+                        list={activeStyle?.category === 'flat' ? 'collage-subject-suggestions' : undefined}
                         placeholder={subjectConfig.placeholder || 'e.g., rockets, skyscrapers...'}
                         value={customSubject}
                         onChange={(e) => setCustomSubject(e.target.value)}
                         style={{ fontSize: '0.9rem', padding: '0.65rem' }}
                       />
+                      {activeStyle?.category === 'flat' && (
+                        <datalist id="collage-subject-suggestions">
+                          {['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'].map((b) => <option key={b} value={b} />)}
+                        </datalist>
+                      )}
                       <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>
-                        Default: {subjectConfig.defaultSubject} — type to replace with custom 3D elements
+                        {activeStyle?.category === 'flat'
+                          ? 'Pick a suggested building or type any subjects (comma-separated). The article topic is always included.'
+                          : `Default: ${subjectConfig.defaultSubject} — type to replace with custom 3D elements`}
                       </div>
+                    </div>
+                  )}
+                  {activeStyle?.category === 'flat' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Color palette (2 colors, rest black &amp; white)</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {[['#ff2d9b', '#c6ff00'], ['#ffd400', '#ff3b30'], ['#00e5ff', '#ff2d9b'], ['#00e676', '#2979ff'], ['#2979ff', '#ff4fa3'], ['#ff7a00', '#00e5ff']].map(([c1, c2]) => (
+                          <button
+                            key={c1 + c2}
+                            type="button"
+                            title={`${c1} + ${c2}`}
+                            onClick={() => { setElementColor(c1); setAccentLightColor(c2); setBgColor('#000000'); }}
+                            style={{ width: 46, height: 26, borderRadius: 6, cursor: 'pointer', border: `2px solid ${(elementColor === c1 && accentLightColor === c2) ? '#00d4ff' : '#30363d'}`, background: `linear-gradient(90deg, ${c1} 0 50%, ${c2} 50% 100%)` }}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>Pick a preset, or set Elements + Accent in Scene Colors for custom. Background stays black.</div>
                     </div>
                   )}
                   {activeStyle?.patternOptions?.enabled && (
