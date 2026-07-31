@@ -1041,6 +1041,7 @@ export default function CoverGenerator() {
   const [primaryLogoOverrides, setPrimaryLogoOverrides] = useState({ material: 'default', baseColor: '', accentLight: '' });
 
   const [customSubject, setCustomSubject] = useState('');
+  const [collageBuildings, setCollageBuildings] = useState([]); // up to 4 buildings for the Editorial Collage
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
@@ -1529,7 +1530,9 @@ export default function CoverGenerator() {
         lightingColor: lightingColor || undefined,
         lightingColor2: lightingColor2 || undefined,
         perLogoOverrides: hasAnyOverride ? perLogoOverrides : undefined,
-        customSubject: customSubject.trim() || undefined,
+        customSubject: (selectedStyle === '32_editorial_collage'
+          ? [collageBuildings.join(', '), customSubject.trim()].filter(Boolean).join(', ')
+          : customSubject.trim()) || undefined,
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
@@ -2129,6 +2132,30 @@ export default function CoverGenerator() {
                           ? 'Pick a suggested building or type any subjects (comma-separated). The article topic is always included.'
                           : `Default: ${subjectConfig.defaultSubject} — type to replace with custom 3D elements`}
                       </div>
+                    </div>
+                  )}
+                  {activeStyle?.category === 'flat' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Government buildings (optional, up to 4)</div>
+                      <select
+                        value=""
+                        onChange={(e) => { const b = e.target.value; if (b && collageBuildings.length < 4 && !collageBuildings.includes(b)) setCollageBuildings([...collageBuildings, b]); }}
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem' }}
+                      >
+                        <option value="">Add a building...</option>
+                        {['White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund', 'U.S. Department of Commerce', 'United States Treasury', 'US Senate', 'Washington DC', 'Internal Revenue Service', 'The United States Capitol', 'The Pentagon', 'Supreme Court Building', 'New York Stock Exchange', 'NYSE trading floor'].filter((b) => !collageBuildings.includes(b)).map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                      {collageBuildings.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem' }}>
+                          {collageBuildings.map((b) => (
+                            <span key={b} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid #00d4ff', borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem' }}>
+                              {b}
+                              <button type="button" onClick={() => setCollageBuildings(collageBuildings.filter((x) => x !== b))} style={{ background: 'transparent', border: 'none', color: '#00d4ff', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: 0 }}>×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>Pick up to 4; they are added to the collage subjects.</div>
                     </div>
                   )}
                   {activeStyle?.category === 'flat' && (
