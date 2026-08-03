@@ -30,11 +30,11 @@ export async function startRewritePipeline({ title, content, url }) {
  * rewrite) and we run the same concept + truthful-text-clipping cover process on
  * it. Returns the jobId; it shows up in Article Studio like any other job.
  */
-export async function startManualCover({ title, content }) {
+export async function startManualCover({ title, content, withTitle, withSubtext }) {
   const resp = await fetch(`${PIPELINE_API_BASE}/api/rewrite-pipeline/manual`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content })
+    body: JSON.stringify({ title, content, withTitle, withSubtext })
   });
   const data = await resp.json().catch(() => null);
   if (!resp.ok || !data || !data.success) {

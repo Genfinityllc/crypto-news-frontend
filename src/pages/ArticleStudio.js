@@ -75,6 +75,8 @@ export default function ArticleStudio() {
   const [manualTitle, setManualTitle] = useState('');
   const [manualContent, setManualContent] = useState('');
   const [manualBusy, setManualBusy] = useState(false);
+  const [withTitle, setWithTitle] = useState(true); // cover: render a headline
+  const [withSubtext, setWithSubtext] = useState(false); // cover: render supporting labels
   const query = useQuery();
   const pollRef = useRef(null);
 
@@ -104,6 +106,8 @@ export default function ArticleStudio() {
         styleId: pickStyle || undefined,
         useSubject,
         subject: subjectText.trim() || undefined,
+        withTitle,
+        withSubtext,
         xFormat: 'png'
       });
       const done = await pollCoverUntilDone(selectedId);
@@ -127,7 +131,7 @@ export default function ArticleStudio() {
     if (!t || !b) { toast.error('Add a title and article text'); return; }
     setManualBusy(true);
     try {
-      const jobId = await startManualCover({ title: t, content: b });
+      const jobId = await startManualCover({ title: t, content: b, withTitle, withSubtext });
       toast.success('Cover job started');
       setManualTitle('');
       setManualContent('');
@@ -231,6 +235,15 @@ export default function ArticleStudio() {
               rows={7}
               style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 7, background: c.bg, color: c.text, border: `1px solid ${c.border}`, fontSize: '0.88rem', lineHeight: 1.5, resize: 'vertical' }}
             />
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: c.text, cursor: 'pointer' }}>
+                <input type="checkbox" checked={withTitle} onChange={(e) => setWithTitle(e.target.checked)} /> With title
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: c.text, cursor: 'pointer' }}>
+                <input type="checkbox" checked={withSubtext} onChange={(e) => setWithSubtext(e.target.checked)} /> With subtext
+              </label>
+              <span style={{ color: c.sub, fontSize: '0.72rem' }}>Uncheck both for a purely visual cover.</span>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
               <span style={{ color: c.sub, fontSize: '0.75rem' }}>Uses the same concept + truthful-text-clipping cover as a rewrite. Only real facts from your text are used.</span>
               <button
@@ -339,6 +352,12 @@ export default function ArticleStudio() {
                         )}
                       </>
                     )}
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: c.text, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={withTitle} onChange={(e) => setWithTitle(e.target.checked)} /> Title
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: c.text, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={withSubtext} onChange={(e) => setWithSubtext(e.target.checked)} /> Subtext
+                    </label>
                     <button type="button" onClick={() => setShowStyles((v) => !v)} style={{ padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', background: c.bg, color: c.text, border: `1px solid ${c.border}`, cursor: 'pointer' }}>
                       Style: {pickStyle ? ((styleOptions.find((s) => s.id === pickStyle) || {}).name || pickStyle) : 'Rotate'} ▾
                     </button>
