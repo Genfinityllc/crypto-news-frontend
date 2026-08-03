@@ -9,7 +9,8 @@ const c = {
   sub: '#8b949e', accent: '#3b82f6', good: '#22c55e', warn: '#f59e0b', bad: '#ef4444'
 };
 
-const COLLAGE_STYLE_ID = '32_editorial_collage';
+const COLLAGE_STYLE_IDS = ['32_editorial_collage', '32b_editorial_collage_news'];
+const isCollagePick = (id) => COLLAGE_STYLE_IDS.includes(id);
 const BUILDINGS = [
   'White House', 'Federal Reserve', 'CFTC', 'International Monetary Fund',
   'U.S. Department of Commerce', 'United States Treasury', 'US Senate',
@@ -67,7 +68,7 @@ export default function ArticleStudio() {
   const [coverBusy, setCoverBusy] = useState(false);
   const [styleOptions, setStyleOptions] = useState([]);
   const [pickStyle, setPickStyle] = useState('32b_editorial_collage_news'); // default to Editorial Collage (with text)
-  const [useSubject, setUseSubject] = useState(true);
+  const [useSubject, setUseSubject] = useState(false); // 3D glass element: off by default (irrelevant to the collage)
   const [subjectText, setSubjectText] = useState(''); // typed 3D element (glass) or collage subjects (flat)
   const [showStyles, setShowStyles] = useState(false);
   const [showManual, setShowManual] = useState(false);
@@ -306,7 +307,7 @@ export default function ArticleStudio() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                   <h3 style={{ margin: 0, fontSize: '1rem' }}>Cover</h3>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {pickStyle === COLLAGE_STYLE_ID ? (
+                    {isCollagePick(pickStyle) ? (
                       <>
                         <input
                           list="collage-subjects"
