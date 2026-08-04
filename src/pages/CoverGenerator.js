@@ -1649,7 +1649,7 @@ export default function CoverGenerator() {
             if (!bgSeal) return '';
             const seal = sealOptions.find((s) => s.slug === bgSeal);
             const sealText = seal ? seal.description : `the official ${bgSeal} seal`;
-            return `BACKGROUND SEAL: place ${sealText} in the FAR BACKGROUND as a faint, low-opacity, desaturated embossed watermark behind everything, subtle and partially obscured. Reproduce the seal's real central emblem, ring text, and layout faithfully, but keep it well behind the logo and scene elements. It must NOT be a focal element, a main subject, or brightly coloured — only a faded institutional seal set into the backdrop.`;
+            return `BACKGROUND SEAL: set ${sealText} into the FAR BACKGROUND as a single-colour WHITE embossed watermark. Render it in ONE flat uniform white (or the palest possible off-white tint) at low opacity, like a seal debossed/embossed into the backdrop. IGNORE the seal's normal colours entirely — use the description ONLY for its central emblem shapes, layout, and ring lettering, never its hues. Keep it faint, partially obscured, and well behind the logo and every scene element, so it never competes with the cover's selected colours and never becomes a focal subject.`;
           })(),
           customPromptText.trim()
         ].filter(Boolean).join(' ') || undefined,
