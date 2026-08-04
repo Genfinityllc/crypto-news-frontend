@@ -1058,6 +1058,7 @@ export default function CoverGenerator() {
   const [customPromptText, setCustomPromptText] = useState('');
   const [bgSeal, setBgSeal] = useState(''); // slug of optional faded government seal in the background (any style)
   const [sealOptions, setSealOptions] = useState([]); // registry from /api/cover-generator/seals
+  const [grainBg, setGrainBg] = useState(false); // optional grainy-gradient background treatment (any style)
   const [flatLogo, setFlatLogo] = useState(false); // render the logo flat (not 3D)
   const [flatLogoColor, setFlatLogoColor] = useState('original'); // 'original' brand colors or 'white'
   const [refUploading, setRefUploading] = useState(false);
@@ -1645,6 +1646,9 @@ export default function CoverGenerator() {
           flatLogo
             ? `FLAT LOGO OVERRIDE: render the ${allLogoSymbols[0] || 'cryptocurrency'} logo as a COMPLETELY FLAT 2D graphic — NOT 3D, NO glass, NO chrome, NO bevel, NO glossy reflections, NO extrusion, NO depth or shadow on the logo itself — a clean crisp flat mark, ${flatLogoColor === 'white' ? 'in solid WHITE' : 'in its original brand colours'}, sitting flat in the scene. Override any 3D or material treatment described for the logo.`
             : '',
+          grainBg
+            ? `BACKGROUND TREATMENT — GRAINY GRADIENT: render the background as soft, out-of-focus blurred gradient blobs of the accent colours blooming on deep black and transitioning with a smooth gradient falloff into pure black, covered in a heavy fine analog FILM GRAIN / photographic noise with a soft grain falloff into the dark areas (organic grainy-gradient aesthetic, absolutely no banding). Keep the logo and any foreground subject crisp and in focus in front of this grainy gradient backdrop.`
+            : '',
           (() => {
             if (!bgSeal) return '';
             const seal = sealOptions.find((s) => s.slug === bgSeal);
@@ -2091,6 +2095,14 @@ export default function CoverGenerator() {
                     : ' Approximated (logo not public domain, so no stored reference).';
                 })()}
               </div>
+            </InputSection>
+
+            <InputSection>
+              <label>Background treatment</label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#e6edf3', cursor: 'pointer' }}>
+                <input type="checkbox" checked={grainBg} onChange={(e) => setGrainBg(e.target.checked)} /> Grainy gradient background
+              </label>
+              <div className="hint">Adds soft blooming colour blobs with heavy analog film grain falling off into black. Works on any style; keeps the logo crisp in front.</div>
             </InputSection>
 
             <InputSection>
