@@ -1057,6 +1057,8 @@ export default function CoverGenerator() {
   const [refMode, setRefMode] = useState('style_reference'); // 'style_reference' | 'composition_restyle'
   const [customPromptText, setCustomPromptText] = useState('');
   const [bgSeal, setBgSeal] = useState(''); // optional faded government seal in the background (any style)
+  const [flatLogo, setFlatLogo] = useState(false); // render the logo flat (not 3D)
+  const [flatLogoColor, setFlatLogoColor] = useState('original'); // 'original' brand colors or 'white'
   const [refUploading, setRefUploading] = useState(false);
   const [refDragActive, setRefDragActive] = useState(false);
   const MAX_REF_IMAGES = 14;
@@ -1625,6 +1627,9 @@ export default function CoverGenerator() {
         referenceImageUrls: refImageUrls.length > 0 ? refImageUrls : undefined,
         referenceMode: refImageUrls.length > 0 ? refMode : undefined,
         customPrompt: [
+          flatLogo
+            ? `FLAT LOGO OVERRIDE: render the ${allLogoSymbols[0] || 'cryptocurrency'} logo as a COMPLETELY FLAT 2D graphic — NOT 3D, NO glass, NO chrome, NO bevel, NO glossy reflections, NO extrusion, NO depth or shadow on the logo itself — a clean crisp flat mark, ${flatLogoColor === 'white' ? 'in solid WHITE' : 'in its original brand colours'}, sitting flat in the scene. Override any 3D or material treatment described for the logo.`
+            : '',
           bgSeal
             ? `BACKGROUND SEAL: place the official ${bgSeal} seal in the FAR BACKGROUND as a faint, low-opacity, desaturated embossed watermark behind everything, subtle and partially obscured. It must NOT be a focal element, a main subject, or brightly coloured — only a faded institutional seal in the backdrop, well behind the logo and any scene elements.`
             : '',
@@ -2051,6 +2056,24 @@ export default function CoverGenerator() {
                 ))}
               </select>
               <div className="hint">Faded institutional seal watermark behind the scene. Works on any style; stays subtle, never the main subject.</div>
+            </InputSection>
+
+            <InputSection>
+              <label>Logo rendering</label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#e6edf3', cursor: 'pointer' }}>
+                <input type="checkbox" checked={flatLogo} onChange={(e) => setFlatLogo(e.target.checked)} /> Flat logo (not 3D)
+              </label>
+              {flatLogo && (
+                <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.82rem', color: '#8b949e', cursor: 'pointer' }}>
+                    <input type="radio" name="flatLogoColor" checked={flatLogoColor === 'original'} onChange={() => setFlatLogoColor('original')} /> Original colors
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.82rem', color: '#8b949e', cursor: 'pointer' }}>
+                    <input type="radio" name="flatLogoColor" checked={flatLogoColor === 'white'} onChange={() => setFlatLogoColor('white')} /> White
+                  </label>
+                </div>
+              )}
+              <div className="hint">Renders the logo as a flat 2D mark instead of 3D. Leave unchecked to keep the style's 3D logo.</div>
             </InputSection>
 
             <InputSection>
