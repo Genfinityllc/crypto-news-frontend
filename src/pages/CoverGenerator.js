@@ -1056,7 +1056,8 @@ export default function CoverGenerator() {
   const [refImageUrls, setRefImageUrls] = useState([]); // string[]
   const [refMode, setRefMode] = useState('style_reference'); // 'style_reference' | 'composition_restyle'
   const [customPromptText, setCustomPromptText] = useState('');
-  const [bgSeal, setBgSeal] = useState(''); // optional faded government seal in the background (any style)
+  const [bgSeal, setBgSeal] = useState(''); // slug of optional faded government seal in the background (any style)
+  const [sealOptions, setSealOptions] = useState([]); // registry from /api/cover-generator/seals
   const [flatLogo, setFlatLogo] = useState(false); // render the logo flat (not 3D)
   const [flatLogoColor, setFlatLogoColor] = useState('original'); // 'original' brand colors or 'white'
   const [refUploading, setRefUploading] = useState(false);
@@ -1087,6 +1088,7 @@ export default function CoverGenerator() {
   useEffect(() => {
     loadNetworks();
     loadStyles();
+    loadSeals();
   }, []);
 
   useEffect(() => {
@@ -1241,6 +1243,19 @@ export default function CoverGenerator() {
       }
     } catch (err) {
       console.error('Failed to load styles:', err);
+    }
+  };
+
+  // Government/regulatory seal registry for the "seal in background" dropdown.
+  // Grounded entries map to a real seal image stored in our own Supabase; the
+  // description (read off the real seal) drives an accurate faded watermark.
+  const loadSeals = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/cover-generator/seals`);
+      const data = await response.json();
+      if (data.success && Array.isArray(data.seals)) setSealOptions(data.seals);
+    } catch (err) {
+      console.error('Failed to load seals:', err);
     }
   };
 
@@ -1630,9 +1645,12 @@ export default function CoverGenerator() {
           flatLogo
             ? `FLAT LOGO OVERRIDE: render the ${allLogoSymbols[0] || 'cryptocurrency'} logo as a COMPLETELY FLAT 2D graphic — NOT 3D, NO glass, NO chrome, NO bevel, NO glossy reflections, NO extrusion, NO depth or shadow on the logo itself — a clean crisp flat mark, ${flatLogoColor === 'white' ? 'in solid WHITE' : 'in its original brand colours'}, sitting flat in the scene. Override any 3D or material treatment described for the logo.`
             : '',
-          bgSeal
-            ? `BACKGROUND SEAL: place the official ${bgSeal} seal in the FAR BACKGROUND as a faint, low-opacity, desaturated embossed watermark behind everything, subtle and partially obscured. It must NOT be a focal element, a main subject, or brightly coloured — only a faded institutional seal in the backdrop, well behind the logo and any scene elements.`
-            : '',
+          (() => {
+            if (!bgSeal) return '';
+            const seal = sealOptions.find((s) => s.slug === bgSeal);
+            const sealText = seal ? seal.description : `the official ${bgSeal} seal`;
+            return `BACKGROUND SEAL: place ${sealText} in the FAR BACKGROUND as a faint, low-opacity, desaturated embossed watermark behind everything, subtle and partially obscured. Reproduce the seal's real central emblem, ring text, and layout faithfully, but keep it well behind the logo and scene elements. It must NOT be a focal element, a main subject, or brightly coloured — only a faded institutional seal set into the backdrop.`;
+          })(),
           customPromptText.trim()
         ].filter(Boolean).join(' ') || undefined,
       };
@@ -2051,11 +2069,28 @@ export default function CoverGenerator() {
                 style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.9rem' }}
               >
                 <option value="">None</option>
-                {['White House', 'Federal Reserve', 'CFTC', 'SEC', 'FDIC', 'OCC', 'International Monetary Fund', 'U.S. Department of Commerce', 'U.S. Department of the Treasury', 'U.S. Senate', 'Internal Revenue Service', 'U.S. Supreme Court', 'New York Stock Exchange', 'New York State Department of Financial Services'].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
+                {['U.S. Federal', 'U.S. State', 'International'].map((region) => {
+                  const group = sealOptions.filter((s) => s.region === region);
+                  if (group.length === 0) return null;
+                  return (
+                    <optgroup key={region} label={region}>
+                      {group.map((s) => (
+                        <option key={s.slug} value={s.slug}>{s.name}{s.grounded ? '' : ' (approx.)'}</option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
-              <div className="hint">Faded institutional seal watermark behind the scene. Works on any style; stays subtle, never the main subject.</div>
+              <div className="hint">
+                Faded institutional seal watermark behind the scene. Works on any style; stays subtle, never the main subject.
+                {(() => {
+                  const seal = sealOptions.find((s) => s.slug === bgSeal);
+                  if (!seal) return null;
+                  return seal.grounded
+                    ? ' Using the real stored seal reference.'
+                    : ' Approximated (logo not public domain, so no stored reference).';
+                })()}
+              </div>
             </InputSection>
 
             <InputSection>
