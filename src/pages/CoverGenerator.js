@@ -1056,6 +1056,7 @@ export default function CoverGenerator() {
   const [refImageUrls, setRefImageUrls] = useState([]); // string[]
   const [refMode, setRefMode] = useState('style_reference'); // 'style_reference' | 'composition_restyle'
   const [customPromptText, setCustomPromptText] = useState('');
+  const [bgSeal, setBgSeal] = useState(''); // optional faded government seal in the background (any style)
   const [refUploading, setRefUploading] = useState(false);
   const [refDragActive, setRefDragActive] = useState(false);
   const MAX_REF_IMAGES = 14;
@@ -1623,7 +1624,12 @@ export default function CoverGenerator() {
         referenceImageUrl: refImageUrls[0] || undefined,
         referenceImageUrls: refImageUrls.length > 0 ? refImageUrls : undefined,
         referenceMode: refImageUrls.length > 0 ? refMode : undefined,
-        customPrompt: customPromptText.trim() || undefined,
+        customPrompt: [
+          bgSeal
+            ? `BACKGROUND SEAL: place the official ${bgSeal} seal in the FAR BACKGROUND as a faint, low-opacity, desaturated embossed watermark behind everything, subtle and partially obscured. It must NOT be a focal element, a main subject, or brightly coloured — only a faded institutional seal in the backdrop, well behind the logo and any scene elements.`
+            : '',
+          customPromptText.trim()
+        ].filter(Boolean).join(' ') || undefined,
       };
 
       // Start an async job so the generation survives a refresh or navigation,
@@ -2029,6 +2035,22 @@ export default function CoverGenerator() {
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
               />
               <div className="hint">Adds context for more relevant imagery</div>
+            </InputSection>
+
+            <InputSection>
+              <label htmlFor="bgSeal">Government seal in background (optional)</label>
+              <select
+                id="bgSeal"
+                value={bgSeal}
+                onChange={(e) => setBgSeal(e.target.value)}
+                style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.9rem' }}
+              >
+                <option value="">None</option>
+                {['White House', 'Federal Reserve', 'CFTC', 'SEC', 'FDIC', 'OCC', 'International Monetary Fund', 'U.S. Department of Commerce', 'U.S. Department of the Treasury', 'U.S. Senate', 'Internal Revenue Service', 'U.S. Supreme Court', 'New York Stock Exchange', 'New York State Department of Financial Services'].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <div className="hint">Faded institutional seal watermark behind the scene. Works on any style; stays subtle, never the main subject.</div>
             </InputSection>
 
             <InputSection>
