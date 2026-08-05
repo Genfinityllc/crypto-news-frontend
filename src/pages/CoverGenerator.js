@@ -1626,6 +1626,12 @@ export default function CoverGenerator() {
         lightingColor: lightingColor || undefined,
         lightingColor2: lightingColor2 || undefined,
         perLogoOverrides: hasAnyOverride ? perLogoOverrides : undefined,
+        // Real seal image (grounded seals only) — layered as a faded background
+        // watermark by the backend without disturbing the chosen style.
+        sealImageUrl: (() => {
+          const seal = sealOptions.find((s) => s.slug === bgSeal);
+          return (seal && seal.grounded && seal.imageUrl) ? seal.imageUrl : undefined;
+        })(),
         customSubject: (() => {
           if (selectedStyle === '32_editorial_collage') {
             const subj = [collageBuildings.join(', '), customSubject.trim()].filter(Boolean).join(', ');
@@ -1652,6 +1658,10 @@ export default function CoverGenerator() {
           (() => {
             if (!bgSeal) return '';
             const seal = sealOptions.find((s) => s.slug === bgSeal);
+            // Grounded seals are sent as a REAL image (sealImageUrl below) and the
+            // backend reproduces them faithfully — no text description needed.
+            // Only approximated (non-grounded) entries fall back to a description.
+            if (seal && seal.grounded && seal.imageUrl) return '';
             const sealText = seal ? seal.description : `the official ${bgSeal} seal`;
             return `BACKGROUND SEAL: set ${sealText} into the FAR BACKGROUND as a single-colour WHITE embossed watermark. Render it in ONE flat uniform white (or the palest possible off-white tint) at low opacity, like a seal debossed/embossed into the backdrop. IGNORE the seal's normal colours entirely — use the description ONLY for its central emblem shapes, layout, and ring lettering, never its hues. Keep it faint, partially obscured, and well behind the logo and every scene element, so it never competes with the cover's selected colours and never becomes a focal subject.`;
           })(),
