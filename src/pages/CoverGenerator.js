@@ -2300,6 +2300,14 @@ export default function CoverGenerator() {
                 // and hiding Scene Colors) apply ONLY to the Editorial Collage
                 // style, never to any other style.
                 const isCollageStyle = selectedStyle === '32_editorial_collage';
+                // Style-aware Scene Colors labels so users know what each picker
+                // controls (e.g. Ink vs Canvas for the engraving/ink styles).
+                const COLOR_LABELS = {
+                  '54_banknote_engraving': { bg: ['Canvas', 'Paper colour'], el: ['Ink', 'Ink / line colour'], acc: ['Accent', 'Border accent'] },
+                  '58_sumi_e': { bg: ['Canvas', 'Rice-paper colour'], el: ['Ink', 'Ink colour'], acc: ['Accent', 'Seal colour'] },
+                  '57_circuit_etch': { bg: ['Board', 'Board colour'], el: ['Traces', 'Etch colour'], acc: ['Glow', 'Trace glow'] },
+                };
+                const dl = COLOR_LABELS[selectedStyle] || { bg: ['BG', 'Background'], el: ['Elements', '3D objects'], acc: ['Accent', ''] };
                 return (
                 <>
                   {subjectConfig?.enabled && !isCollageStyle && (
@@ -2469,16 +2477,16 @@ export default function CoverGenerator() {
                   <div style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: '0.75rem', marginBottom: '0.15rem' }}>Scene Colors <span style={{ fontSize: '0.65rem', color: '#6e7681' }}>(does not affect logo — use logo dropdown above)</span></div>
                   <ColorRow>
                     <ColorField>
-                      <label>BG</label>
+                      <label>{dl.bg[0]}</label>
                       <ColorInput
                         type="color"
                         value={bgColor || '#0a0a0a'}
                         onChange={(e) => setBgColor(e.target.value)}
                       />
-                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>Background</span>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>{dl.bg[1]}</span>
                     </ColorField>
                     <ColorField>
-                      <label>Elements</label>
+                      <label>{dl.el[0]}</label>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                         <ColorInput
                           type="color"
@@ -2498,10 +2506,10 @@ export default function CoverGenerator() {
                           <button onClick={() => setElementColor2('#1a1a2e')} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px dashed #444', background: 'transparent', color: '#666', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                         )}
                       </div>
-                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>3D objects</span>
+                      <span style={{ fontSize: '0.55rem', color: '#6e7681' }}>{dl.el[1]}</span>
                     </ColorField>
                     <ColorField>
-                      <label>Accent</label>
+                      <label>{dl.acc[0]}</label>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                         {accentLightColor === 'none' ? (
                           <button
