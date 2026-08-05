@@ -1599,12 +1599,18 @@ export default function CoverGenerator() {
       ];
       const allLogoSymbols = allLogoEntries.map(e => e.symbol);
 
+      // Styles whose flat colour-blocking would otherwise tint the logo: default
+      // the logo to OG Color (original brand colours) unless the user picked a
+      // material. The user can still override via the per-logo material dropdown.
+      const OG_DEFAULT_STYLES = new Set(['41_iso_blocks']);
       const perLogoOverrides = allLogoEntries.map(e => {
-        const hasNonDefaultMaterial = e.material && e.material !== 'default';
-        const isOg = e.material === 'og_color';
+        let material = e.material || 'default';
+        if (material === 'default' && OG_DEFAULT_STYLES.has(selectedStyle)) material = 'og_color';
+        const hasNonDefaultMaterial = material && material !== 'default';
+        const isOg = material === 'og_color';
         return {
           symbol: e.symbol,
-          logoMaterial: hasNonDefaultMaterial ? e.material : undefined,
+          logoMaterial: hasNonDefaultMaterial ? material : undefined,
           logoBaseColor: isOg ? undefined : (e.baseColor || (hasNonDefaultMaterial ? '#ffffff' : undefined)),
           logoAccentLight: e.accentLight || (hasNonDefaultMaterial && !isOg ? '#8b5cf6' : undefined),
         };
