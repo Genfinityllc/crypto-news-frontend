@@ -1059,6 +1059,8 @@ export default function CoverGenerator() {
   const [bgSeal, setBgSeal] = useState(''); // slug of optional faded government seal in the background (any style)
   const [sealOptions, setSealOptions] = useState([]); // registry from /api/cover-generator/seals
   const [grainBg, setGrainBg] = useState(false); // optional grainy-gradient background treatment (any style)
+  const [peopleOptions, setPeopleOptions] = useState([]); // collage People registry from /api/cover-generator/people
+  const [selectedPeople, setSelectedPeople] = useState([]); // slugs of people chosen as collage subjects
   const [flatLogo, setFlatLogo] = useState(false); // render the logo flat (not 3D)
   const [flatLogoColor, setFlatLogoColor] = useState('original'); // 'original' brand colors or 'white'
   const [refUploading, setRefUploading] = useState(false);
@@ -1090,6 +1092,7 @@ export default function CoverGenerator() {
     loadNetworks();
     loadStyles();
     loadSeals();
+    loadPeople();
   }, []);
 
   useEffect(() => {
@@ -1257,6 +1260,18 @@ export default function CoverGenerator() {
       if (data.success && Array.isArray(data.seals)) setSealOptions(data.seals);
     } catch (err) {
       console.error('Failed to load seals:', err);
+    }
+  };
+
+  // Public-figure registry for the collage People subject group. Each has a real
+  // stored reference portrait fed in as a guarded reference image for likeness.
+  const loadPeople = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/cover-generator/people`);
+      const data = await response.json();
+      if (data.success && Array.isArray(data.people)) setPeopleOptions(data.people);
+    } catch (err) {
+      console.error('Failed to load people:', err);
     }
   };
 
@@ -1638,6 +1653,10 @@ export default function CoverGenerator() {
           const seal = sealOptions.find((s) => s.slug === bgSeal);
           return (seal && seal.grounded && seal.imageUrl) ? seal.imageUrl : undefined;
         })(),
+        // Collage People: real reference portraits for accurate likeness.
+        subjectImageUrls: (selectedStyle === '32_editorial_collage' && selectedPeople.length > 0)
+          ? selectedPeople.map((slug) => { const p = peopleOptions.find((x) => x.slug === slug); return p && p.imageUrl; }).filter(Boolean)
+          : undefined,
         customSubject: (() => {
           if (selectedStyle === '32_editorial_collage') {
             const subj = [collageBuildings.join(', '), customSubject.trim()].filter(Boolean).join(', ');
@@ -2407,6 +2426,48 @@ export default function CoverGenerator() {
                             <option value="">Add a suggested subject...</option>
                             {SUBJECT_SUGGESTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
+                        </div>
+                        {/* 2b. People — real public figures with stored likeness references */}
+                        <div style={{ marginTop: '0.75rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>People (real likeness from stored reference)</div>
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const slug = e.target.value;
+                              if (!slug) return;
+                              const person = peopleOptions.find((p) => p.slug === slug);
+                              if (!person) return;
+                              addSubject(person.name);
+                              setSelectedPeople((prev) => prev.includes(slug) ? prev : [...prev, slug]);
+                            }}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem' }}
+                          >
+                            <option value="">Add a person...</option>
+                            {peopleOptions.map((p) => (
+                              <option key={p.slug} value={p.slug}>{p.name}{p.org ? ` — ${p.org}` : ''}</option>
+                            ))}
+                          </select>
+                          {selectedPeople.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                              {selectedPeople.map((slug) => {
+                                const p = peopleOptions.find((x) => x.slug === slug);
+                                if (!p) return null;
+                                return (
+                                  <span key={slug} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1f6feb22', border: '1px solid #1f6feb55', borderRadius: 20, padding: '2px 8px', fontSize: '0.75rem', color: '#e6edf3' }}>
+                                    {p.name}
+                                    <span
+                                      onClick={() => {
+                                        setSelectedPeople((prev) => prev.filter((s) => s !== slug));
+                                        setCustomSubject((prev) => prev.split(',').map((x) => x.trim()).filter((x) => x && x.toLowerCase() !== p.name.toLowerCase()).join(', '));
+                                      }}
+                                      style={{ cursor: 'pointer', color: '#8b949e' }}
+                                    >×</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.25rem' }}>Uses a real stored photo so the collage renders an accurate likeness.</div>
                         </div>
                         {/* 3. Free-text subjects field */}
                         <div style={{ marginTop: '0.75rem' }}>
