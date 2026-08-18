@@ -307,12 +307,22 @@ export default function Navigation() {
                 Bookmarks
               </NavLink>
               
-              <NavLink 
-                to="/profile" 
+              <NavLink
+                to="/profile"
                 isActive={location.pathname === '/profile'}
                 onClick={closeMobileMenu}
               >
                 Profile
+              </NavLink>
+
+              <NavLink
+                as="a"
+                href="https://genfinity-widgets.web.app/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={closeMobileMenu}
+              >
+                Widgets
               </NavLink>
             </>
           )}
