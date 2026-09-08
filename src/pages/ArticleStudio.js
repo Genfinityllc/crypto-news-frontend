@@ -77,6 +77,12 @@ export default function ArticleStudio() {
   const [manualBusy, setManualBusy] = useState(false);
   const [withTitle, setWithTitle] = useState(true); // cover: render a headline
   const [withSubtext, setWithSubtext] = useState(false); // cover: render supporting labels
+  // Cover palette steering: default to a tasteful pair (not neon). When "Auto"
+  // is on, colours are left unset and the backend rotates a random pairing.
+  const [autoPalette, setAutoPalette] = useState(false);
+  const [coverBg, setCoverBg] = useState('#000000');
+  const [coverAccent1, setCoverAccent1] = useState('#2f81f7');
+  const [coverAccent2, setCoverAccent2] = useState('#f0883e');
   const query = useQuery();
   const pollRef = useRef(null);
 
@@ -108,6 +114,9 @@ export default function ArticleStudio() {
         subject: subjectText.trim() || undefined,
         withTitle,
         withSubtext,
+        // Steer the palette unless "Auto" is on (then the backend rotates one).
+        paletteColors: autoPalette ? undefined : [coverAccent1, coverAccent2],
+        bgColor: autoPalette ? undefined : coverBg,
         xFormat: 'png'
       });
       const done = await pollCoverUntilDone(selectedId);
@@ -364,6 +373,25 @@ export default function ArticleStudio() {
                     <button onClick={handleGenerateCover} disabled={coverBusy} style={{ background: c.accent, color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8rem', padding: '6px 14px', cursor: coverBusy ? 'default' : 'pointer' }}>
                       {coverBusy ? 'Generating (about 1 min)...' : (cover ? 'Re-render' : 'Generate Cover')}
                     </button>
+                  </div>
+                  {/* Cover colour steering — pick the two accent colours + background
+                      so covers aren't stuck on a random (sometimes neon) palette. */}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                    <span style={{ fontSize: '0.75rem', color: c.sub }}>Cover colors:</span>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: c.text, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={autoPalette} onChange={(e) => setAutoPalette(e.target.checked)} /> Auto (rotate)
+                    </label>
+                    {!autoPalette && [
+                      { label: 'Background', val: coverBg, set: setCoverBg },
+                      { label: 'Accent 1', val: coverAccent1, set: setCoverAccent1 },
+                      { label: 'Accent 2', val: coverAccent2, set: setCoverAccent2 },
+                    ].map((f) => (
+                      <label key={f.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: c.sub }}>
+                        {f.label}
+                        <input type="color" value={f.val} onChange={(e) => f.set(e.target.value)} style={{ width: 28, height: 22, padding: 0, border: `1px solid ${c.border}`, borderRadius: 4, background: 'transparent', cursor: 'pointer' }} />
+                      </label>
+                    ))}
+                    <span style={{ fontSize: '0.68rem', color: c.sub }}>{autoPalette ? 'A random palette is used each render.' : 'These colours drive the cover; everything else stays black & white.'}</span>
                   </div>
                 </div>
                 {showStyles && (
