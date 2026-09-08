@@ -1042,6 +1042,7 @@ export default function CoverGenerator() {
 
   const [customSubject, setCustomSubject] = useState('');
   const [collageBuildings, setCollageBuildings] = useState([]); // up to 4 buildings for the Editorial Collage
+  const [collageArticle, setCollageArticle] = useState(''); // optional full article pasted for the collage (grounds the concept like Article Studio)
   const [buildingsOpen, setBuildingsOpen] = useState(false); // buildings checkbox dropdown open/closed
   const [centeredLogo, setCenteredLogo] = useState(false); // collage: logo as big centered hero
   const [resuming, setResuming] = useState(false); // background resume of a prior job (does NOT block Generate)
@@ -1636,6 +1637,9 @@ export default function CoverGenerator() {
         network: isBackgroundOnly ? '' : allLogoSymbols[0] || '',
         additionalNetworks: allLogoSymbols.slice(1),
         title: articleTitle || undefined,
+        // Full article pasted for the collage: grounds the art-director concept
+        // in real content (like Article Studio) instead of a bare title.
+        article: (selectedStyle === '32_editorial_collage' && collageArticle.trim()) ? collageArticle.trim() : undefined,
         customKeyword: customKeyword.trim() || undefined,
         logoTextMode,
         styleId: selectedStyle || undefined,
@@ -2086,6 +2090,9 @@ export default function CoverGenerator() {
               </AdminSection>
             )}
 
+            {/* Article Title moves BELOW the thumbnail for the Editorial Collage
+                (rendered inside the collage options), so hide this top one there. */}
+            {selectedStyle !== '32_editorial_collage' && (
             <InputSection style={{ marginTop: '1.5rem' }}>
               <label htmlFor="articleTitle">Article Title (optional)</label>
               <TextInput
@@ -2098,6 +2105,7 @@ export default function CoverGenerator() {
               />
               <div className="hint">Adds context for more relevant imagery</div>
             </InputSection>
+            )}
 
             <InputSection>
               <label htmlFor="bgSeal">Government seal in background (optional)</label>
@@ -2345,6 +2353,37 @@ export default function CoverGenerator() {
                 const dl = COLOR_LABELS[selectedStyle] || { bg: ['BG', 'Background'], el: ['Elements', '3D objects'], acc: ['Accent', ''] };
                 return (
                 <>
+                  {/* Editorial Collage: Title + full-article paste live here, right
+                      under the thumbnail, so the user never scrolls back up. */}
+                  {isCollageStyle && (
+                    <>
+                      <InputSection style={{ marginTop: '0.75rem' }}>
+                        <label htmlFor="collageTitle">Article Title</label>
+                        <TextInput
+                          type="text"
+                          id="collageTitle"
+                          placeholder="e.g., Hedera Council Approves Network Upgrade"
+                          value={articleTitle}
+                          onChange={(e) => setArticleTitle(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
+                        />
+                        <div className="hint">Drives the cover concept. Paste the full article below for much better, on-topic imagery.</div>
+                      </InputSection>
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Paste full article (optional, recommended)</div>
+                        <textarea
+                          value={collageArticle}
+                          onChange={(e) => setCollageArticle(e.target.value)}
+                          placeholder="Paste the entire article here. The art director reads it (like Article Studio) and pulls real, on-topic imagery and details into the collage — far better than a title alone."
+                          rows={6}
+                          style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: '#0a0a0a', color: '#e6edf3', border: '1px solid #30363d', fontSize: '0.85rem', fontFamily: 'inherit', resize: 'vertical' }}
+                        />
+                        {collageArticle.trim() && (
+                          <div style={{ fontSize: '0.7rem', color: '#3fb950', marginTop: '0.25rem' }}>✓ Article will ground the concept ({collageArticle.trim().length.toLocaleString()} chars)</div>
+                        )}
+                      </div>
+                    </>
+                  )}
                   {subjectConfig?.enabled && !isCollageStyle && (
                     <div style={{ marginTop: '0.75rem' }}>
                       <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>3D Elements Override</div>
