@@ -2358,7 +2358,10 @@ export default function CoverGenerator() {
                   {isCollageStyle && (
                     <>
                       <InputSection style={{ marginTop: '0.75rem' }}>
-                        <label htmlFor="collageTitle">Article Title</label>
+                        <label htmlFor="collageTitle" style={{ fontWeight: 600 }}>
+                          Article Title <span style={{ color: '#f85149' }} aria-hidden="true">*</span>
+                          <span style={{ fontSize: '0.7rem', color: '#f85149', fontWeight: 500, marginLeft: 6 }}>required</span>
+                        </label>
                         <TextInput
                           type="text"
                           id="collageTitle"
@@ -2366,11 +2369,13 @@ export default function CoverGenerator() {
                           value={articleTitle}
                           onChange={(e) => setArticleTitle(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && !loading && handleGenerate()}
+                          style={{ border: `1px solid ${articleTitle.trim() ? '#30363d' : '#f8514966'}` }}
                         />
                         <div className="hint">Drives the cover concept. Paste the full article below for much better, on-topic imagery.</div>
                       </InputSection>
                       <div style={{ marginTop: '0.75rem' }}>
                         <div style={{ fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.25rem' }}>Paste full article (optional, recommended)</div>
+                        <div style={{ fontSize: '0.72rem', color: '#3fb950', marginBottom: '0.35rem' }}>Imagery will be based on the article contents.</div>
                         <textarea
                           value={collageArticle}
                           onChange={(e) => setCollageArticle(e.target.value)}
