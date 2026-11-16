@@ -899,6 +899,7 @@ export default function CoverStudio({
 
   // ---------- AI backdrop ----------
   const visibleStyles = useMemo(() => (styles || []).filter((s) => !s.internal), [styles]);
+  const pickedStyle = visibleStyles.find((s) => s.id === aiStyle) || null;
 
   const rememberBackdrop = (url) => {
     setRecentBackdrops((prev) => {
@@ -1144,10 +1145,35 @@ export default function CoverStudio({
                   Generate a backdrop from any existing style with no logo in it, composed with clear space for your logo and headline.
                 </Hint>
                 <FieldLabel>Style</FieldLabel>
+                {pickedStyle && (
+                  <StylePreview>
+                    <Thumb $ratio={56.25}>
+                      <img src={pickedStyle.sampleImageUrl} alt="" />
+                    </Thumb>
+                    <b>{pickedStyle.name}</b>
+                    {pickedStyle.description && <small>{pickedStyle.description}</small>}
+                    <small>The sample shows this style with a logo. Your backdrop is generated without one.</small>
+                  </StylePreview>
+                )}
                 <StyleGrid>
                   {visibleStyles.map((s) => (
-                    <StyleTile key={s.id} $on={aiStyle === s.id} onClick={() => setAiStyle(s.id)} title={s.description}>
-                      <img src={s.sampleImageUrl} alt="" loading="lazy" />
+                    <StyleTile
+                      key={s.id}
+                      role="button"
+                      tabIndex={0}
+                      $on={aiStyle === s.id}
+                      onClick={() => setAiStyle(s.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setAiStyle(s.id);
+                        }
+                      }}
+                      title={s.description}
+                    >
+                      <Thumb $ratio={56.25}>
+                        <img src={s.sampleImageUrl} alt="" loading="lazy" />
+                      </Thumb>
                       <span>{s.name}</span>
                     </StyleTile>
                   ))}
@@ -1179,7 +1205,9 @@ export default function CoverStudio({
                     <RecentGrid>
                       {recentBackdrops.map((u) => (
                         <RecentTile key={u} onClick={() => applyImageUrl(u, 'AI backdrop')}>
-                          <img src={u} alt="" loading="lazy" />
+                          <Thumb $ratio={50}>
+                            <img src={u} alt="" loading="lazy" />
+                          </Thumb>
                         </RecentTile>
                       ))}
                     </RecentGrid>
@@ -1200,7 +1228,9 @@ export default function CoverStudio({
                     <RecentGrid>
                       {recentBackdrops.map((u) => (
                         <RecentTile key={u} onClick={() => applyImageUrl(u, 'AI backdrop')}>
-                          <img src={u} alt="" loading="lazy" />
+                          <Thumb $ratio={50}>
+                            <img src={u} alt="" loading="lazy" />
+                          </Thumb>
                         </RecentTile>
                       ))}
                     </RecentGrid>
@@ -1662,6 +1692,7 @@ const SegBtn = styled.button`
 const TemplateGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-auto-rows: max-content;
   gap: 0.55rem;
 `;
 
@@ -1691,59 +1722,100 @@ const TemplateTile = styled.button`
   }
 `;
 
-const StyleGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.45rem;
-  max-height: 290px;
-  overflow-y: auto;
-  padding-right: 2px;
-`;
-
-const StyleTile = styled.button`
-  background: #0a0a0a;
-  border: 2px solid ${(p) => (p.$on ? '#00d4ff' : '#222222')};
-  border-radius: 8px;
-  padding: 0;
+// Fixed-ratio image box. Uses the padding-bottom technique on purpose:
+// Safari collapses aspect-ratio images inside scrolling grid rows.
+const Thumb = styled.div`
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: ${(p) => p.$ratio || 50}%;
   overflow: hidden;
-  cursor: pointer;
+  background: #050505;
 
   img {
-    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    height: 100%;
     object-fit: cover;
+    display: block;
   }
+`;
+
+const StylePreview = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: #0a0a0a;
+  border: 1px solid #00d4ff;
+  border-radius: 10px;
+  overflow: hidden;
+  padding-bottom: 0.6rem;
+
+  b {
+    color: #e6edf3;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.7rem 0;
+  }
+  small {
+    color: #8b949e;
+    font-size: 0.74rem;
+    line-height: 1.4;
+    padding: 0 0.7rem;
+  }
+`;
+
+const StyleGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 0.55rem;
+  height: 430px;
+  overflow-y: auto;
+  padding-right: 4px;
+`;
+
+const StyleTile = styled.div`
+  background: #0a0a0a;
+  border: 2px solid ${(p) => (p.$on ? '#00d4ff' : '#222222')};
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  min-width: 0;
+
   span {
     display: block;
-    padding: 0.25rem 0.3rem 0.3rem;
-    color: #c9d1d9;
-    font-size: 0.64rem;
-    line-height: 1.2;
-    min-height: 2.1em;
+    padding: 0.4rem 0.5rem 0.5rem;
+    color: #e6edf3;
+    font-size: 0.74rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  &:hover {
+    border-color: ${(p) => (p.$on ? '#00d4ff' : '#3d444d')};
+  }
+  &:focus-visible {
+    outline: 2px solid #00d4ff;
+    outline-offset: 1px;
   }
 `;
 
 const RecentGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: max-content;
   gap: 0.4rem;
 `;
 
-const RecentTile = styled.button`
-  padding: 0;
+const RecentTile = styled.div`
   border: 1px solid #222222;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   background: #0a0a0a;
 
-  img {
-    display: block;
-    width: 100%;
-    aspect-ratio: 2 / 1;
-    object-fit: cover;
-  }
   &:hover {
     border-color: #00d4ff;
   }
@@ -1892,6 +1964,8 @@ const Input = styled.input`
 const LogoGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 0.45rem;
   max-height: 46vh;
   overflow-y: auto;
