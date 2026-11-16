@@ -163,7 +163,7 @@ const DEFAULT_BG = {
   intensity: 1,
   seed: 1,
   flip: false,
-  grain: 0.3,
+  grain: 0.4,
   grainCoarse: false,
   grainOnTop: false,
   vignette: 0.25,
@@ -1121,7 +1121,7 @@ export default function CoverStudio({
 
             {bgTab === 'templates' && (
               <>
-                <Hint>Flat, institutional backgrounds drawn live. No AI, instant, fully recolourable.</Hint>
+                <Hint>Refined backgrounds drawn live: soft light, fine line work and grain. No AI, instant, fully recolourable.</Hint>
                 <TemplateGrid>
                   {TEMPLATES.map((t) => (
                     <TemplateTile
@@ -1751,7 +1751,7 @@ const RecentTile = styled.button`
 
 const PaletteGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 0.4rem;
 `;
 

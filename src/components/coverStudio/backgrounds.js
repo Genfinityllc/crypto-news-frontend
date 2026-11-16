@@ -47,19 +47,22 @@ function rng(seed) {
 
 // ---------- palettes ----------
 // base = field colour, a1 = primary accent, a2 = secondary accent.
+// Dark fields only: covers are never set on white or light backgrounds.
 export const PALETTES = [
-  { id: 'midnight', name: 'Midnight Navy', base: '#0a1020', a1: '#2f6bff', a2: '#8fb0ff' },
-  { id: 'graphite', name: 'Graphite', base: '#0d0e11', a1: '#7d8798', a2: '#e3e8f0' },
-  { id: 'royal', name: 'Royal Violet', base: '#0e0a1f', a1: '#6a4cf5', a2: '#b9a4ff' },
-  { id: 'teal', name: 'Deep Teal', base: '#06171b', a1: '#16a394', a2: '#8ad8cd' },
-  { id: 'oxblood', name: 'Oxblood', base: '#15080b', a1: '#b02a3c', a2: '#f09aa0' },
-  { id: 'forest', name: 'Forest', base: '#07130d', a1: '#2c9a66', a2: '#a3dcc0' },
-  { id: 'amber', name: 'Amber Ink', base: '#100b05', a1: '#d6952a', a2: '#f6d48c' },
-  { id: 'cobalt', name: 'Cobalt', base: '#0b2a8f', a1: '#4f8bff', a2: '#dfe8ff' },
-  { id: 'slate', name: 'Slate Blue', base: '#1a2333', a1: '#5a8bea', a2: '#cbd8f1' },
+  { id: 'midnight', name: 'Midnight Navy', base: '#070c1a', a1: '#2f6bff', a2: '#8fb0ff' },
+  { id: 'ocean', name: 'Ocean', base: '#050d18', a1: '#1f6fd1', a2: '#2bb8a6' },
+  { id: 'royal', name: 'Royal Violet', base: '#0b0819', a1: '#6a4cf5', a2: '#b9a4ff' },
+  { id: 'dusk', name: 'Dusk', base: '#0a0913', a1: '#5b4bd6', a2: '#d9577a' },
+  { id: 'plum', name: 'Plum', base: '#110714', a1: '#8a3fb0', a2: '#e07ab0' },
+  { id: 'teal', name: 'Deep Teal', base: '#051417', a1: '#16a394', a2: '#8ad8cd' },
+  { id: 'forest', name: 'Forest', base: '#06110b', a1: '#2c9a66', a2: '#a3dcc0' },
+  { id: 'oxblood', name: 'Oxblood', base: '#13070a', a1: '#b02a3c', a2: '#f09aa0' },
+  { id: 'ember', name: 'Ember', base: '#0f0706', a1: '#c2412d', a2: '#e8a23a' },
+  { id: 'amber', name: 'Amber Ink', base: '#0e0a05', a1: '#d6952a', a2: '#f6d48c' },
+  { id: 'steel', name: 'Steel', base: '#090d13', a1: '#4a6a8a', a2: '#b8c7d6' },
+  { id: 'graphite', name: 'Graphite', base: '#0b0c0f', a1: '#7d8798', a2: '#e3e8f0' },
+  { id: 'cobalt', name: 'Cobalt', base: '#0a2278', a1: '#4f8bff', a2: '#dfe8ff' },
   { id: 'ink', name: 'Black and White', base: '#050505', a1: '#ffffff', a2: '#9aa0a8' },
-  { id: 'paper', name: 'Cool White', base: '#f2f4f7', a1: '#1e4fd6', a2: '#0f172a' },
-  { id: 'fog', name: 'Fog Grey', base: '#e6eaef', a1: '#334155', a2: '#64748b' },
 ];
 
 // ---------- drawing primitives ----------
@@ -79,38 +82,88 @@ function field(ctx, x, y, r, color, alpha, sx = 1, sy = 1) {
   ctx.restore();
 }
 
-function fillBase(ctx, w, h, p) {
-  // A barely-there vertical shift keeps flat fields from looking dead.
-  const light = isLight(p.base);
+// Base field. deep > 0 pushes it toward black so colour blooms have more room.
+function fillBase(ctx, w, h, p, deep = 0) {
+  const top = mix(p.base, '#000000', deep);
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, mix(p.base, light ? '#ffffff' : '#ffffff', light ? 0.35 : 0.035));
-  g.addColorStop(1, mix(p.base, '#000000', light ? 0.05 : 0.28));
+  g.addColorStop(0, mix(top, '#ffffff', 0.03));
+  g.addColorStop(1, mix(top, '#000000', 0.35));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 }
 
-// Line colour that reads on either a dark or a light field.
-const lineColor = (p) => (isLight(p.base) ? mix(p.base, p.a2, 0.9) : p.a2);
+// Off-screen layer in template units (1800x900), rendered at quality q so
+// thumbnails stay cheap. Draw it back with ctx.drawImage(l.c, 0, 0, w, h).
+function layer(q) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(COVER_W * q));
+  c.height = Math.max(1, Math.round(COVER_H * q));
+  const g = c.getContext('2d');
+  g.scale(q, q);
+  return { c, g };
+}
+
+// Fade a layer out from a centre point (keeps line work from fighting text).
+function radialMask(g, w, h, cx, cy, r, inner = 1) {
+  g.globalCompositeOperation = 'destination-in';
+  const m = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+  m.addColorStop(0, `rgba(0,0,0,${inner})`);
+  m.addColorStop(0.55, `rgba(0,0,0,${inner * 0.45})`);
+  m.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = m;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+}
+
+const TAU = Math.PI * 2;
 
 // ---------- templates ----------
-// Each draw(ctx, w, h, p, k, rand) paints the full frame.
-// p = palette, k = intensity (0..1.5), rand = seeded random.
+// Each draw(ctx, w, h, p, k, rand, q) paints the full frame.
+// p = palette, k = intensity (0..1.5), rand = seeded random, q = render scale.
+// House rules: soft light, fine line work, grain. No hard colour blocks.
 export const TEMPLATES = [
   {
     id: 'fields',
     name: 'Soft Fields',
     note: 'Blurred colour fields on a deep base',
     draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      const x1 = w * (0.08 + rand() * 0.22);
-      const y1 = h * (0.1 + rand() * 0.3);
-      const x2 = w * (0.7 + rand() * 0.25);
-      const y2 = h * (0.6 + rand() * 0.35);
-      field(ctx, x1, y1, h * 1.05, p.a1, 0.62 * k);
-      field(ctx, x2, y2, h * 0.95, mix(p.a1, p.a2, 0.45), 0.42 * k);
-      field(ctx, w * (0.45 + rand() * 0.2), h * (rand() < 0.5 ? -0.1 : 1.1), h * 0.7, p.a2, 0.16 * k);
+      fillBase(ctx, w, h, p, 0.15);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * (0.06 + rand() * 0.22), h * (0.08 + rand() * 0.3), h * 1.2, p.a1, 0.85 * k);
+      field(ctx, w * (0.72 + rand() * 0.24), h * (0.62 + rand() * 0.35), h * 1.05, mix(p.a1, p.a2, 0.5), 0.6 * k);
+      field(ctx, w * (0.45 + rand() * 0.2), h * (rand() < 0.5 ? -0.12 : 1.12), h * 0.75, p.a2, 0.26 * k);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+  },
+  {
+    id: 'corner',
+    name: 'Corner Glow',
+    note: 'One bloom of colour falling off into black',
+    draw(ctx, w, h, p, k, rand) {
+      fillBase(ctx, w, h, p, 0.5);
+      const corner = Math.floor(rand() * 4);
+      const cx = corner % 2 ? w * 1.03 : -w * 0.03;
+      const cy = corner < 2 ? h * 1.1 : -h * 0.1;
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 1.85, p.a1, 0.95 * k);
+      field(ctx, cx, cy, h * 1.05, mix(p.a1, p.a2, 0.55), 0.7 * k);
+      field(ctx, cx, cy, h * 0.45, p.a2, 0.5 * k);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+  },
+  {
+    id: 'dual',
+    name: 'Dual Glow',
+    note: 'Two colours blooming from opposite corners',
+    draw(ctx, w, h, p, k, rand) {
+      fillBase(ctx, w, h, p, 0.45);
+      const flip = rand() < 0.5;
+      const ax = flip ? w * 1.05 : -w * 0.05;
+      const bx = flip ? -w * 0.05 : w * 1.05;
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, ax, h * 1.12, h * 1.5, p.a1, 0.9 * k);
+      field(ctx, ax, h * 1.12, h * 0.7, mix(p.a1, p.a2, 0.4), 0.45 * k);
+      field(ctx, bx, -h * 0.12, h * 1.3, mix(p.a2, p.a1, 0.25), 0.62 * k);
       ctx.globalCompositeOperation = 'source-over';
     },
   },
@@ -119,12 +172,84 @@ export const TEMPLATES = [
     name: 'Spotlight',
     note: 'One soft glow behind the centre, built for a hero logo',
     draw(ctx, w, h, p, k) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, w * 0.5, h * 0.5, h * 0.62, p.a1, 0.5 * k, 1.75, 1);
-      field(ctx, w * 0.5, h * 0.56, h * 0.3, p.a2, 0.2 * k, 1.9, 1);
+      fillBase(ctx, w, h, p, 0.25);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * 0.5, h * 0.5, h * 0.66, p.a1, 0.6 * k, 1.75, 1);
+      field(ctx, w * 0.5, h * 0.56, h * 0.32, p.a2, 0.24 * k, 1.9, 1);
       ctx.globalCompositeOperation = 'source-over';
+    },
+  },
+  {
+    id: 'halo',
+    name: 'Halo',
+    note: 'A soft ring of light. Set the logo inside it',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.4);
+      const cx = w / 2;
+      const cy = h / 2;
+      const r0 = h * 0.16;
+      const r1 = h * 0.66;
+      const ring = (g, color, a) => {
+        const gr = g.createRadialGradient(cx, cy, r0, cx, cy, r1);
+        gr.addColorStop(0, rgba(color, 0));
+        gr.addColorStop(0.34, rgba(color, a * 0.12));
+        gr.addColorStop(0.5, rgba(color, a));
+        gr.addColorStop(0.66, rgba(color, a * 0.28));
+        gr.addColorStop(1, rgba(color, 0));
+        g.fillStyle = gr;
+        g.fillRect(0, 0, w, h);
+      };
+      ctx.globalCompositeOperation = 'screen';
+      ring(ctx, p.a1, 0.8 * k);
+      // second colour washes across one side of the ring
+      const l = layer(q);
+      ring(l.g, p.a2, 0.85 * k);
+      l.g.globalCompositeOperation = 'destination-in';
+      const ang = rand() * TAU;
+      const m = l.g.createLinearGradient(cx - Math.cos(ang) * r1, cy - Math.sin(ang) * r1, cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+      m.addColorStop(0.35, 'rgba(0,0,0,0)');
+      m.addColorStop(1, 'rgba(0,0,0,1)');
+      l.g.fillStyle = m;
+      l.g.fillRect(0, 0, w, h);
+      ctx.drawImage(l.c, 0, 0, w, h);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+  },
+  {
+    id: 'eclipse',
+    name: 'Planet Rise',
+    note: 'Light breaking over a wide curved horizon',
+    draw(ctx, w, h, p, k) {
+      fillBase(ctx, w, h, p, 0.5);
+      // a very large disc, so only a gentle curve crosses the frame
+      const cx = w * 0.5;
+      const r = h * 2.4;
+      const cy = h * 0.62 + r;
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, h * 0.62, h * 0.8, p.a1, 0.85 * k, 2.2, 0.7);
+      field(ctx, cx, h * 0.62, h * 0.3, p.a2, 0.5 * k, 2.8, 0.45);
+      ctx.globalCompositeOperation = 'source-over';
+      const dg = ctx.createLinearGradient(0, h * 0.62, 0, h);
+      dg.addColorStop(0, mix(p.base, '#000000', 0.62));
+      dg.addColorStop(1, mix(p.base, '#000000', 0.85));
+      ctx.fillStyle = dg;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TAU);
+      ctx.fill();
+      // rim light: three passes stand in for a blur
+      const lg = ctx.createLinearGradient(0, 0, w, 0);
+      lg.addColorStop(0.05, rgba(p.a2, 0));
+      lg.addColorStop(0.5, rgba(mix(p.a2, '#ffffff', 0.35), 1));
+      lg.addColorStop(0.95, rgba(p.a2, 0));
+      ctx.strokeStyle = lg;
+      [[22, 0.06], [9, 0.15], [2.2, 0.9]].forEach(([lw, a]) => {
+        ctx.globalAlpha = Math.min(1, a * k);
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, Math.PI * 1.35, Math.PI * 1.65);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
     },
   },
   {
@@ -132,29 +257,25 @@ export const TEMPLATES = [
     name: 'Horizon',
     note: 'A lit horizon line low in the frame',
     draw(ctx, w, h, p, k) {
-      fillBase(ctx, w, h, p);
+      fillBase(ctx, w, h, p, 0.3);
       const y = h * 0.66;
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      // glow rising off the horizon, clipped to the sky
+      ctx.globalCompositeOperation = 'screen';
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, w, y);
       ctx.clip();
-      field(ctx, w * 0.5, y, h * 0.5, p.a1, 0.7 * k, 2.6, 0.62);
-      field(ctx, w * 0.5, y, h * 0.2, p.a2, 0.45 * k, 3.2, 0.4);
+      field(ctx, w * 0.5, y, h * 0.52, p.a1, 0.8 * k, 2.6, 0.62);
+      field(ctx, w * 0.5, y, h * 0.2, p.a2, 0.5 * k, 3.2, 0.4);
       ctx.restore();
       ctx.globalCompositeOperation = 'source-over';
-      // ground
       const g = ctx.createLinearGradient(0, y, 0, h);
-      g.addColorStop(0, mix(p.base, p.a1, light ? 0.1 : 0.16));
-      g.addColorStop(1, mix(p.base, '#000000', light ? 0.04 : 0.45));
+      g.addColorStop(0, mix(p.base, p.a1, 0.18));
+      g.addColorStop(1, mix(p.base, '#000000', 0.6));
       ctx.fillStyle = g;
       ctx.fillRect(0, y, w, h - y);
-      // the line itself, fading at both ends
       const lg = ctx.createLinearGradient(0, 0, w, 0);
       lg.addColorStop(0, rgba(p.a2, 0));
-      lg.addColorStop(0.5, rgba(p.a2, Math.min(1, 0.9 * k)));
+      lg.addColorStop(0.5, rgba(p.a2, Math.min(1, 0.95 * k)));
       lg.addColorStop(1, rgba(p.a2, 0));
       ctx.fillStyle = lg;
       ctx.fillRect(0, y - 1, w, 2);
@@ -165,150 +286,206 @@ export const TEMPLATES = [
     name: 'Mesh Gradient',
     note: 'Full-bleed colour blend, corner to corner',
     draw(ctx, w, h, p, k, rand) {
-      const light = isLight(p.base);
-      ctx.fillStyle = mix(p.base, p.a1, light ? 0.1 : 0.22);
+      ctx.fillStyle = mix(p.base, p.a1, 0.2);
       ctx.fillRect(0, 0, w, h);
       const flip = rand() < 0.5;
-      field(ctx, flip ? w : 0, 0, h * 1.5, p.a1, 0.85 * k);
-      field(ctx, flip ? 0 : w, h, h * 1.4, mix(p.a1, p.a2, 0.55), 0.7 * k);
-      field(ctx, w * 0.5, h * 1.15, h * 0.9, p.base, 0.85);
-      field(ctx, flip ? w * 0.15 : w * 0.85, h * -0.1, h * 0.8, p.a2, 0.3 * k);
+      field(ctx, flip ? w : 0, 0, h * 1.5, p.a1, 0.9 * k);
+      field(ctx, flip ? 0 : w, h, h * 1.4, mix(p.a1, p.a2, 0.55), 0.72 * k);
+      field(ctx, w * 0.5, h * 1.15, h * 0.95, mix(p.base, '#000000', 0.3), 0.9);
+      field(ctx, flip ? w * 0.15 : w * 0.85, h * -0.1, h * 0.8, p.a2, 0.32 * k);
     },
   },
   {
-    id: 'beams',
-    name: 'Light Beams',
-    note: 'Soft diagonal bands of light',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.save();
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      ctx.translate(w / 2, h / 2);
-      ctx.rotate((-28 * Math.PI) / 180);
-      const span = w * 1.6;
-      const beams = [
-        { x: -0.42 + rand() * 0.08, wd: 0.2, c: p.a1, a: 0.5 },
-        { x: -0.08 + rand() * 0.08, wd: 0.1, c: p.a2, a: 0.22 },
-        { x: 0.16 + rand() * 0.08, wd: 0.26, c: mix(p.a1, p.a2, 0.4), a: 0.36 },
-        { x: 0.48 + rand() * 0.06, wd: 0.08, c: p.a1, a: 0.3 },
-      ];
-      beams.forEach((b) => {
-        const x0 = b.x * w;
-        const bw = b.wd * w;
-        const g = ctx.createLinearGradient(x0, 0, x0 + bw, 0);
-        g.addColorStop(0, rgba(b.c, 0));
-        g.addColorStop(0.5, rgba(b.c, b.a * k));
-        g.addColorStop(1, rgba(b.c, 0));
+    id: 'fluted',
+    name: 'Fluted Glass',
+    note: 'Colour seen through ribbed glass',
+    draw(ctx, w, h, p, k, rand, q) {
+      // the scene behind the glass
+      const src = layer(q);
+      fillBase(src.g, w, h, p, 0.2);
+      src.g.globalCompositeOperation = 'screen';
+      field(src.g, w * (0.12 + rand() * 0.2), h * (0.2 + rand() * 0.3), h * 1.05, p.a1, 0.95 * k);
+      field(src.g, w * (0.68 + rand() * 0.2), h * (0.6 + rand() * 0.3), h * 0.95, mix(p.a1, p.a2, 0.55), 0.8 * k);
+      field(src.g, w * (0.45 + rand() * 0.2), -h * 0.05, h * 0.6, p.a2, 0.42 * k);
+      // each flute shows a squeezed, shifted slice of that scene
+      const n = 30;
+      const fw = w / n;
+      const sw = fw * 3.4;
+      for (let i = 0; i < n; i++) {
+        const x = i * fw;
+        const sx = Math.max(0, Math.min(w - sw, x + fw / 2 - sw / 2 + fw * 0.8));
+        ctx.drawImage(src.c, sx * q, 0, sw * q, h * q, x, 0, fw + 0.7, h);
+        const g = ctx.createLinearGradient(x, 0, x + fw, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0.36)');
+        g.addColorStop(0.2, 'rgba(0,0,0,0.08)');
+        g.addColorStop(0.55, 'rgba(255,255,255,0.055)');
+        g.addColorStop(0.88, 'rgba(255,255,255,0)');
+        g.addColorStop(1, 'rgba(0,0,0,0.22)');
         ctx.fillStyle = g;
-        ctx.fillRect(x0, -span, bw, span * 2);
-      });
-      ctx.restore();
+        ctx.fillRect(x, 0, fw + 0.7, h);
+      }
     },
   },
   {
-    id: 'split',
-    name: 'Diagonal Split',
-    note: 'Two-tone diagonal with a hairline rule',
-    draw(ctx, w, h, p, k) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const top = w * 0.66;
-      const bot = w * 0.46;
-      ctx.beginPath();
-      ctx.moveTo(top, 0);
-      ctx.lineTo(w, 0);
-      ctx.lineTo(w, h);
-      ctx.lineTo(bot, h);
-      ctx.closePath();
-      const g = ctx.createLinearGradient(bot, h, w, 0);
-      g.addColorStop(0, rgba(mix(p.a1, p.base, light ? 0.2 : 0.55), Math.min(1, 0.95 * k)));
-      g.addColorStop(1, rgba(p.a1, Math.min(1, 0.95 * k)));
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(top, 0);
-      ctx.lineTo(bot, h);
-      ctx.strokeStyle = rgba(p.a2, 0.85);
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    },
-  },
-  {
-    id: 'panel',
-    name: 'Side Panel',
-    note: 'A colour panel for the logo, open field for the headline',
-    draw(ctx, w, h, p, k) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const pw = w * 0.36;
-      const g = ctx.createLinearGradient(0, 0, pw * 0.4, h);
-      g.addColorStop(0, rgba(p.a1, Math.min(1, 0.96 * k)));
-      g.addColorStop(1, rgba(mix(p.a1, light ? '#000000' : p.base, 0.5), Math.min(1, 0.96 * k)));
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, pw, h);
-      ctx.fillStyle = rgba(p.a2, 0.8);
-      ctx.fillRect(pw, 0, 2, h);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, w * 0.95, h * 0.1, h * 0.8, p.a1, 0.18 * k);
+    id: 'veils',
+    name: 'Veils',
+    note: 'Fine luminous ridges drifting across the frame',
+    draw(ctx, w, h, p, k, rand) {
+      fillBase(ctx, w, h, p, 0.4);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * (0.3 + rand() * 0.4), h * 0.95, h * 0.95, p.a1, 0.34 * k);
+      const layers = 5;
+      for (let i = 0; i < layers; i++) {
+        const t = i / (layers - 1);
+        const baseY = h * (0.4 + t * 0.44);
+        const amp = h * (0.08 - t * 0.02);
+        const ph = rand() * TAU;
+        const f = 0.55 + rand() * 0.5;
+        const crest = (x) => {
+          const u = x / w;
+          return baseY + Math.sin(u * TAU * f + ph) * amp + Math.sin(u * TAU * f * 2.3 + ph * 1.7) * amp * 0.25;
+        };
+        const trace = () => {
+          ctx.beginPath();
+          ctx.moveTo(-10, crest(-10));
+          for (let x = 0; x <= w + 10; x += 14) ctx.lineTo(x, crest(x));
+        };
+        const col = mix(p.a1, p.a2, t * 0.75);
+        // light falls away quickly beneath each ridge, so no solid shapes form
+        trace();
+        ctx.lineTo(w + 10, baseY + amp + h * 0.24);
+        ctx.lineTo(-10, baseY + amp + h * 0.24);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, baseY - amp * 1.3, 0, baseY + amp + h * 0.22);
+        g.addColorStop(0, rgba(col, 0.3 * k));
+        g.addColorStop(0.3, rgba(col, 0.09 * k));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = g;
+        ctx.fill();
+        trace();
+        const lg = ctx.createLinearGradient(0, 0, w, 0);
+        const la = Math.min(1, 0.6 * k);
+        lg.addColorStop(0, rgba(col, 0));
+        lg.addColorStop(0.3 + rand() * 0.2, rgba(mix(col, '#ffffff', 0.35), la));
+        lg.addColorStop(1, rgba(col, la * 0.15));
+        ctx.strokeStyle = lg;
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+      }
       ctx.globalCompositeOperation = 'source-over';
     },
   },
   {
-    id: 'blocks',
-    name: 'Colour Blocks',
-    note: 'Flat Swiss-style blocks, no gradients',
+    id: 'flow',
+    name: 'Flow Lines',
+    note: 'A ribbon of fine lines twisting across the frame',
     draw(ctx, w, h, p, k, rand) {
-      ctx.fillStyle = p.base;
-      ctx.fillRect(0, 0, w, h);
-      const a = Math.min(1, 0.95 * k);
-      const right = rand() < 0.5;
-      const bw = w * 0.24;
-      ctx.fillStyle = rgba(p.a1, a);
-      ctx.fillRect(right ? w - bw : 0, 0, bw, h);
-      ctx.fillStyle = rgba(p.a2, a);
-      const s = h * 0.2;
-      ctx.fillRect(right ? w - bw - s : bw, h - s, s, s);
-      ctx.fillStyle = rgba(mix(p.a1, p.base, 0.6), a);
-      ctx.fillRect(right ? w - bw - s : bw, h - s * 2, s, s);
+      fillBase(ctx, w, h, p, 0.4);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * (0.35 + rand() * 0.3), h * 0.62, h * 0.9, p.a1, 0.34 * k, 1.6, 1);
+      const n = 54;
+      const ph = rand() * TAU;
+      const ph2 = rand() * TAU;
+      for (let j = 0; j < n; j++) {
+        const t = j / (n - 1);
+        ctx.beginPath();
+        for (let x = -20; x <= w + 20; x += 9) {
+          const u = x / w;
+          const yc = h * (0.56 + 0.12 * Math.sin(u * TAU * 0.6 + ph));
+          // thickness swings through zero, which is what twists the ribbon
+          const thick = h * 0.42 * Math.sin(u * TAU * 0.8 + ph2);
+          const y = yc + (t - 0.5) * thick;
+          if (x === -20) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        const col = mix(p.a1, p.a2, t);
+        // the two edges of the ribbon carry more light than its middle
+        const a = Math.min(1, (0.3 + 0.55 * Math.abs(2 * t - 1)) * 0.75 * k);
+        const g = ctx.createLinearGradient(0, 0, w, 0);
+        g.addColorStop(0, rgba(col, 0));
+        g.addColorStop(0.15, rgba(col, a));
+        g.addColorStop(0.85, rgba(col, a));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'source-over';
     },
   },
   {
-    id: 'grid',
-    name: 'Fine Grid',
-    note: 'Hairline grid fading into the field',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const cx = w * (0.62 + rand() * 0.25);
-      const cy = h * (0.2 + rand() * 0.5);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, cx, cy, h * 0.95, p.a1, 0.38 * k);
+    id: 'topo',
+    name: 'Topographic',
+    note: 'Organic contour rings around a soft glow',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.3);
+      const cx = w * (0.6 + rand() * 0.22);
+      const cy = h * (0.35 + rand() * 0.3);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 1.0, p.a1, 0.46 * k);
       ctx.globalCompositeOperation = 'source-over';
-      // grid on its own layer so it can be masked with a radial fade
-      const layer = document.createElement('canvas');
-      layer.width = w;
-      layer.height = h;
-      const lc = layer.getContext('2d');
-      const step = w / 30;
-      const col = lineColor(p);
-      for (let i = 0, x = 0; x <= w; x += step, i++) {
-        lc.fillStyle = rgba(col, i % 5 === 0 ? 0.34 : 0.15);
-        lc.fillRect(Math.round(x), 0, 1, h);
+      const p1 = rand() * TAU;
+      const p2 = rand() * TAU;
+      const p3 = rand() * TAU;
+      const l = layer(q);
+      for (let i = 1; i <= 24; i++) {
+        const r0 = h * 0.062 * i;
+        l.g.beginPath();
+        for (let th = 0; th <= TAU + 0.02; th += 0.025) {
+          const r = r0 * (1 + 0.11 * Math.sin(3 * th + p1 + i * 0.13) + 0.07 * Math.sin(5 * th + p2 - i * 0.09) + 0.05 * Math.sin(2 * th + p3));
+          const x = cx + Math.cos(th) * r;
+          const y = cy + Math.sin(th) * r;
+          if (th === 0) l.g.moveTo(x, y);
+          else l.g.lineTo(x, y);
+        }
+        l.g.strokeStyle = rgba(i % 5 === 0 ? mix(p.a2, '#ffffff', 0.2) : p.a2, i % 5 === 0 ? 0.7 : 0.34);
+        l.g.lineWidth = i % 5 === 0 ? 1.4 : 1;
+        l.g.stroke();
       }
-      for (let j = 0, y = 0; y <= h; y += step, j++) {
-        lc.fillStyle = rgba(col, j % 5 === 0 ? 0.34 : 0.15);
-        lc.fillRect(0, Math.round(y), w, 1);
-      }
-      lc.globalCompositeOperation = 'destination-in';
-      const m = lc.createRadialGradient(cx, cy, 0, cx, cy, h * 1.15);
-      m.addColorStop(0, 'rgba(0,0,0,1)');
-      m.addColorStop(0.55, 'rgba(0,0,0,0.45)');
-      m.addColorStop(1, 'rgba(0,0,0,0)');
-      lc.fillStyle = m;
-      lc.fillRect(0, 0, w, h);
+      radialMask(l.g, w, h, cx, cy, h * 1.5);
       ctx.globalAlpha = Math.min(1, k);
-      ctx.drawImage(layer, 0, 0);
+      ctx.drawImage(l.c, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+    },
+  },
+  {
+    id: 'guilloche',
+    name: 'Guilloche',
+    note: 'Banknote-style engraved rosette',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.3);
+      const right = rand() < 0.5;
+      const cx = right ? w * 0.8 : w * 0.2;
+      const cy = h * 0.5;
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 0.95, p.a1, 0.5 * k);
+      ctx.globalCompositeOperation = 'source-over';
+      const l = layer(q);
+      const bands = [
+        { R: h * 0.66, A: h * 0.075, n: 18, K: 10 },
+        { R: h * 0.45, A: h * 0.06, n: 14, K: 9 },
+        { R: h * 0.26, A: h * 0.045, n: 10, K: 8 },
+        { R: h * 0.11, A: h * 0.03, n: 6, K: 6 },
+      ];
+      bands.forEach((b, bi) => {
+        for (let kk = 0; kk < b.K; kk++) {
+          const phase = (kk / b.K) * TAU;
+          l.g.beginPath();
+          for (let th = 0; th <= TAU + 0.01; th += 0.008) {
+            const r = b.R + b.A * Math.sin(b.n * th + phase);
+            const x = cx + Math.cos(th) * r;
+            const y = cy + Math.sin(th) * r;
+            if (th === 0) l.g.moveTo(x, y);
+            else l.g.lineTo(x, y);
+          }
+          l.g.strokeStyle = rgba(bi % 2 ? mix(p.a2, p.a1, 0.35) : p.a2, 0.42);
+          l.g.lineWidth = 0.9;
+          l.g.stroke();
+        }
+      });
+      radialMask(l.g, w, h, cx, cy, h * 1.25);
+      ctx.globalAlpha = Math.min(1, k);
+      ctx.drawImage(l.c, 0, 0, w, h);
       ctx.globalAlpha = 1;
     },
   },
@@ -317,24 +494,21 @@ export const TEMPLATES = [
     name: 'Orbit Rings',
     note: 'Concentric hairline rings from one corner',
     draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
+      fillBase(ctx, w, h, p, 0.3);
       const right = rand() < 0.5;
       const cx = right ? w * 0.86 : w * 0.14;
       const cy = h * 1.08;
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, cx, cy, h * 1.1, p.a1, 0.5 * k);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 1.15, p.a1, 0.6 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const col = lineColor(p);
       const step = h * 0.085;
       for (let i = 1; i <= 22; i++) {
         ctx.beginPath();
-        ctx.arc(cx, cy, i * step, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(col, (i % 4 === 0 ? 0.42 : 0.2) * Math.min(1.3, k) * Math.max(0.25, 1 - i / 26));
+        ctx.arc(cx, cy, i * step, 0, TAU);
+        ctx.strokeStyle = rgba(p.a2, (i % 4 === 0 ? 0.42 : 0.2) * Math.min(1.3, k) * Math.max(0.25, 1 - i / 26));
         ctx.lineWidth = i % 4 === 0 ? 1.5 : 1;
         ctx.stroke();
       }
-      // one accent arc
       ctx.beginPath();
       const r = step * 8;
       ctx.arc(cx, cy, r, right ? Math.PI * 1.05 : Math.PI * 1.55, right ? Math.PI * 1.45 : Math.PI * 1.95);
@@ -344,140 +518,103 @@ export const TEMPLATES = [
     },
   },
   {
-    id: 'arcs',
-    name: 'Arc Sweep',
-    note: 'Large overlapping discs, cropped by the frame',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const right = rand() < 0.5;
-      const sx = (v) => (right ? w - v : v);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      const discs = [
-        { x: sx(w * 0.08), y: h * 0.95, r: h * 0.78, c: p.a1, a: 0.5 },
-        { x: sx(w * 0.3), y: h * 1.1, r: h * 0.62, c: mix(p.a1, p.a2, 0.5), a: 0.36 },
-        { x: sx(w * -0.02), y: h * 0.28, r: h * 0.46, c: p.a2, a: 0.2 },
-      ];
-      discs.forEach((d) => {
-        const g = ctx.createLinearGradient(d.x - d.r, d.y - d.r, d.x + d.r, d.y + d.r);
-        g.addColorStop(0, rgba(d.c, d.a * k));
-        g.addColorStop(1, rgba(d.c, d.a * k * 0.35));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
+    id: 'grid',
+    name: 'Fine Grid',
+    note: 'Hairline grid fading into the field',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.3);
+      const cx = w * (0.62 + rand() * 0.25);
+      const cy = h * (0.2 + rand() * 0.5);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 1.0, p.a1, 0.5 * k);
       ctx.globalCompositeOperation = 'source-over';
-    },
-  },
-  {
-    id: 'columns',
-    name: 'Columns',
-    note: 'Fine vertical columns rising from the base',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const n = 44;
-      const gap = 6;
-      const cw = w / n;
-      let v = 0.28 + rand() * 0.15;
-      for (let i = 0; i < n; i++) {
-        // smooth random walk so heights read as a skyline, not noise
-        v = Math.max(0.1, Math.min(0.58, v + (rand() - 0.5) * 0.12));
-        const ch = h * v;
-        const x = i * cw + gap / 2;
-        const g = ctx.createLinearGradient(0, h - ch, 0, h);
-        const c = i % 7 === 3 ? p.a2 : p.a1;
-        g.addColorStop(0, rgba(c, (light ? 0.4 : 0.3) * k));
-        g.addColorStop(1, rgba(c, 0));
-        ctx.fillStyle = g;
-        ctx.fillRect(x, h - ch, cw - gap, ch);
-        ctx.fillStyle = rgba(c, Math.min(1, 0.6 * k));
-        ctx.fillRect(x, h - ch, cw - gap, 2);
+      const l = layer(q);
+      const step = w / 30;
+      for (let i = 0, x = 0; x <= w; x += step, i++) {
+        l.g.fillStyle = rgba(p.a2, i % 5 === 0 ? 0.5 : 0.22);
+        l.g.fillRect(Math.round(x), 0, 1, h);
       }
+      for (let j = 0, y = 0; y <= h; y += step, j++) {
+        l.g.fillStyle = rgba(p.a2, j % 5 === 0 ? 0.5 : 0.22);
+        l.g.fillRect(0, Math.round(y), w, 1);
+      }
+      radialMask(l.g, w, h, cx, cy, h * 1.2);
+      ctx.globalAlpha = Math.min(1, k);
+      ctx.drawImage(l.c, 0, 0, w, h);
+      ctx.globalAlpha = 1;
     },
   },
   {
-    id: 'contours',
-    name: 'Contour Lines',
-    note: 'Flowing hairlines across the lower frame',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, w * 0.75, h * 0.9, h * 0.9, p.a1, 0.34 * k);
+    id: 'pinstripe',
+    name: 'Pinstripe',
+    note: 'Fine diagonal pinstripes catching the light',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.3);
+      const cx = w * (0.25 + rand() * 0.5);
+      const cy = h * (0.3 + rand() * 0.4);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, cy, h * 1.1, p.a1, 0.5 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const col = lineColor(p);
-      const ph = rand() * Math.PI * 2;
-      const lines = 18;
-      for (let i = 0; i < lines; i++) {
-        const t = i / (lines - 1);
-        ctx.beginPath();
-        for (let x = -20; x <= w + 20; x += 12) {
-          const u = x / w;
-          const y =
-            h * (0.5 + t * 0.52) +
-            Math.sin(u * Math.PI * 2 * 0.9 + ph + t * 1.4) * h * (0.07 + t * 0.05) +
-            Math.sin(u * Math.PI * 2 * 2.1 + ph * 1.7 - t * 2) * h * 0.022;
-          if (x === -20) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        const accent = i === 6;
-        ctx.strokeStyle = accent ? rgba(p.a2, Math.min(1, 0.85 * k)) : rgba(col, (0.1 + t * 0.16) * Math.min(1.3, k));
-        ctx.lineWidth = accent ? 2 : 1;
-        ctx.stroke();
+      const l = layer(q);
+      l.g.save();
+      l.g.translate(w / 2, h / 2);
+      l.g.rotate((-38 * Math.PI) / 180);
+      const span = w * 1.4;
+      for (let x = -span, i = 0; x <= span; x += 24, i++) {
+        l.g.fillStyle = rgba(p.a2, i % 6 === 0 ? 0.5 : 0.26);
+        l.g.fillRect(x, -span, 1.2, span * 2);
       }
+      l.g.restore();
+      radialMask(l.g, w, h, cx, cy, h * 1.25);
+      ctx.globalAlpha = Math.min(1, k);
+      ctx.drawImage(l.c, 0, 0, w, h);
+      ctx.globalAlpha = 1;
     },
   },
   {
-    id: 'ledger',
-    name: 'Ledger',
-    note: 'Ruled lines with a single colour band',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      const col = lineColor(p);
-      const step = h / 20;
-      for (let j = 1; j < 20; j++) {
-        ctx.fillStyle = rgba(col, (j % 5 === 0 ? 0.24 : 0.09) * Math.min(1.3, k));
-        ctx.fillRect(0, Math.round(j * step), w, 1);
-      }
-      const row = 11 + Math.floor(rand() * 4);
-      const g = ctx.createLinearGradient(0, 0, w, 0);
+    id: 'ruled',
+    name: 'Ruled',
+    note: 'Ledger rules fading across a soft glow',
+    draw(ctx, w, h, p, k, rand, q) {
+      fillBase(ctx, w, h, p, 0.3);
       const right = rand() < 0.5;
-      g.addColorStop(right ? 0 : 1, rgba(p.a1, 0));
-      g.addColorStop(right ? 1 : 0, rgba(p.a1, Math.min(1, (light ? 0.75 : 0.7) * k)));
-      ctx.fillStyle = g;
-      ctx.fillRect(0, Math.round(row * step) + 1, w, Math.round(step * 2) - 1);
-      // margin rule
-      ctx.fillStyle = rgba(p.a2, 0.55);
-      ctx.fillRect(Math.round(w * 0.075), 0, 1, h);
+      const cx = right ? w * 0.9 : w * 0.1;
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, cx, h * 0.95, h * 1.1, p.a1, 0.5 * k);
+      ctx.globalCompositeOperation = 'source-over';
+      const l = layer(q);
+      const step = h / 22;
+      for (let j = 1; j < 22; j++) {
+        l.g.fillStyle = rgba(p.a2, j % 5 === 0 ? 0.52 : 0.24);
+        l.g.fillRect(0, Math.round(j * step), w, 1);
+      }
+      l.g.fillStyle = rgba(p.a2, 0.6);
+      l.g.fillRect(Math.round(right ? w * 0.925 : w * 0.075), 0, 1, h);
+      radialMask(l.g, w, h, cx, h * 0.95, h * 1.9);
+      ctx.globalAlpha = Math.min(1, k);
+      ctx.drawImage(l.c, 0, 0, w, h);
+      ctx.globalAlpha = 1;
     },
   },
   {
     id: 'frame',
     name: 'Editorial Frame',
-    note: 'Inset hairline frame with an accent bar',
+    note: 'Inset hairline frame with corner ticks',
     draw(ctx, w, h, p, k) {
-      fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, w * 0.5, h * 1.2, h * 1.0, p.a1, 0.36 * k, 1.6, 1);
+      fillBase(ctx, w, h, p, 0.3);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * 0.5, h * 1.2, h * 1.05, p.a1, 0.5 * k, 1.6, 1);
       ctx.globalCompositeOperation = 'source-over';
       const m = 54;
-      const col = lineColor(p);
-      ctx.strokeStyle = rgba(col, 0.4);
+      ctx.strokeStyle = rgba(p.a2, 0.4);
       ctx.lineWidth = 1;
       ctx.strokeRect(m + 0.5, m + 0.5, w - m * 2 - 1, h - m * 2 - 1);
-      // corner ticks
-      ctx.fillStyle = rgba(col, 0.9);
+      ctx.fillStyle = rgba(p.a2, 0.9);
       const t = 16;
       [[m, m], [w - m, m], [m, h - m], [w - m, h - m]].forEach(([x, y]) => {
         ctx.fillRect(x - t / 2, y - 1, t, 2);
         ctx.fillRect(x - 1, y - t / 2, 2, t);
       });
-      ctx.fillStyle = rgba(p.a1, Math.min(1, k));
-      ctx.fillRect(m, m - 4, 150, 8);
     },
   },
   {
@@ -486,9 +623,8 @@ export const TEMPLATES = [
     note: 'A single quiet field. Let the logo do the work',
     draw(ctx, w, h, p, k) {
       fillBase(ctx, w, h, p);
-      const light = isLight(p.base);
-      ctx.globalCompositeOperation = light ? 'multiply' : 'screen';
-      field(ctx, w * 0.5, h * -0.25, h * 1.1, p.a1, 0.16 * k, 1.8, 1);
+      ctx.globalCompositeOperation = 'screen';
+      field(ctx, w * 0.5, h * -0.25, h * 1.1, p.a1, 0.2 * k, 1.8, 1);
       ctx.globalCompositeOperation = 'source-over';
     },
   },
@@ -587,7 +723,7 @@ export function renderBackground(canvas, spec, opts = {}) {
     const tpl = getTemplate(spec.templateId);
     const p = spec.palette || PALETTES[0];
     const k = spec.intensity == null ? 1 : spec.intensity;
-    tpl.draw(ctx, COVER_W, COVER_H, p, k, rng(spec.seed || 1));
+    tpl.draw(ctx, COVER_W, COVER_H, p, k, rng(spec.seed || 1), s);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
