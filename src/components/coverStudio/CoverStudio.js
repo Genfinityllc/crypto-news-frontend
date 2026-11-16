@@ -234,6 +234,7 @@ const DEFAULT_BG = {
   grainOnTop: false,
   vignette: 0.25,
   centerVignette: 0,
+  contrast: 0,
   dim: 0,
   image: null,
   imageLabel: '',
@@ -318,7 +319,7 @@ export default function CoverStudio({
   const [addingLogo, setAddingLogo] = useState('');
   const [aiStyle, setAiStyle] = useState('');
   const [aiSpace, setAiSpace] = useState('center');
-  const [aiUseColors, setAiUseColors] = useState(false);
+  const [aiUseColors, setAiUseColors] = useState(true); // owner 2026-11-16: on unless they untick it
   const [aiBusy, setAiBusy] = useState(false);
   const [recentBackdrops, setRecentBackdrops] = useState(() => {
     try {
@@ -688,7 +689,7 @@ export default function CoverStudio({
     loadImage(corsUrl(incoming.url))
       .then((img) => {
         if (cancelled) return;
-        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, vignette: 0, centerVignette: 0, grain: 0 });
+        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, contrast: 0, vignette: 0, centerVignette: 0, grain: 0 });
         setBgTab('image');
         setLeftTab('background');
         if (incoming.hadWatermark) {
@@ -1101,7 +1102,7 @@ export default function CoverStudio({
   const applyImageUrl = async (url, label) => {
     try {
       const img = await loadImage(corsUrl(url));
-      setBg({ kind: 'image', image: img, imageLabel: label || 'Image', dim: 0 });
+      setBg({ kind: 'image', image: img, imageLabel: label || 'Image', dim: 0, contrast: 0 });
     } catch (e) {
       toast.error('Could not load that image.');
     }
@@ -1162,7 +1163,7 @@ export default function CoverStudio({
     if (!file) return;
     readFileAsDataUrl(file)
       .then((url) => loadImage(url, false))
-      .then((img) => setBg({ kind: 'image', image: img, imageLabel: file.name, dim: 0 }))
+      .then((img) => setBg({ kind: 'image', image: img, imageLabel: file.name, dim: 0, contrast: 0 }))
       .catch(() => toast.error('Could not read that image.'));
   };
 
@@ -1471,6 +1472,7 @@ export default function CoverStudio({
             {bg.kind === 'image' && (
               <Slider label="Darken" min={0} max={0.8} step={0.02} value={bg.dim} onChange={(v) => setBg({ dim: v })} />
             )}
+            <Slider label="Contrast" min={0} max={1} step={0.02} value={bg.contrast} onChange={(v) => setBg({ contrast: v })} />
             <Slider label="Grain" min={0} max={1} step={0.02} value={bg.grain} onChange={(v) => setBg({ grain: v })} />
             <Slider label="Edge vignette" min={0} max={1} step={0.02} value={bg.vignette} onChange={(v) => setBg({ vignette: v })} />
             <Slider label="Centre vignette" min={0} max={1} step={0.02} value={bg.centerVignette} onChange={(v) => setBg({ centerVignette: v })} />

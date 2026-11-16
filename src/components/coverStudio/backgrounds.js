@@ -49,6 +49,8 @@ function rng(seed) {
 // base = field colour, a1 = primary accent, a2 = secondary accent.
 // Dark fields only: covers are never set on white or light backgrounds.
 export const PALETTES = [
+  // The owner's default (2026-11-16): black base, their purple, their aqua.
+  { id: 'signal', name: 'Violet and Aqua', base: '#000000', a1: '#6a4cf5', a2: '#00fdb1' },
   { id: 'ocean', name: 'Ocean', base: '#050d18', a1: '#1f6fd1', a2: '#2bb8a6' },
   { id: 'royal', name: 'Royal Violet', base: '#0b0819', a1: '#6a4cf5', a2: '#b9a4ff' },
   { id: 'dusk', name: 'Dusk', base: '#0a0913', a1: '#5b4bd6', a2: '#d9577a' },
@@ -59,7 +61,7 @@ export const PALETTES = [
 ];
 
 // The palette a new cover starts with (the owner's pick).
-export const DEFAULT_PALETTE = PALETTES.find((p) => p.id === 'royal') || PALETTES[0];
+export const DEFAULT_PALETTE = PALETTES.find((p) => p.id === 'signal') || PALETTES[0];
 
 // ---------- drawing primitives ----------
 // Soft colour field with a gaussian-like falloff (no blur filter needed).
@@ -614,6 +616,52 @@ export function drawVignette(ctx, w, h, amount) {
 
 // The reverse of the edge vignette: shade the middle of the frame and fade
 // out toward the edges, so a logo or headline placed there stands out.
+// Contrast for a flat or faded background. An S-curve around the picture's own
+// average brightness: darker tones go deeper, lighter tones lift, and nothing
+// is clipped to pure black or white. Pivoting on the average (not on mid grey)
+// matters here because covers are dark; a mid-grey pivot would only darken
+// them. Done on pixels because Safari has no ctx.filter.
+export function applyContrast(ctx, w, h, amount) {
+  if (!(amount > 0)) return;
+  let img;
+  try {
+    img = ctx.getImageData(0, 0, w, h);
+  } catch (e) {
+    return; // a canvas holding a non-CORS image cannot be read
+  }
+  const d = img.data;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4 * 23) {
+    sum += d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722;
+    n += 1;
+  }
+  const m = Math.min(0.7, Math.max(0.06, sum / Math.max(1, n) / 255));
+  const g = 1 + Math.min(1, amount) * 1.6;
+  // Stretching 8-bit tones leaves visible steps in smooth dark gradients, so
+  // each pixel is nudged by a random fraction of one input level first (four
+  // sub-levels per level). The result differs by about one level at most, far
+  // below anything visible, and the steps disappear.
+  const SUB = 4;
+  const lut = new Uint8ClampedArray(256 * SUB);
+  for (let k = 0; k < 256 * SUB; k += 1) {
+    const x = Math.min(1, Math.max(0, (Math.floor(k / SUB) + ((k % SUB) - 1.5) / SUB) / 255));
+    const y = x < m ? m * Math.pow(x / m, g) : 1 - (1 - m) * Math.pow((1 - x) / (1 - m), g);
+    lut[k] = Math.round(y * 255);
+  }
+  let r = 0x9e3779b9; // fixed seed: the same picture every time it is redrawn
+  for (let i = 0; i < d.length; i += 4) {
+    r ^= r << 13;
+    r ^= r >>> 17;
+    r ^= r << 5;
+    const j = (r >>> 9) & 3;
+    d[i] = lut[d[i] * SUB + j];
+    d[i + 1] = lut[d[i + 1] * SUB + j];
+    d[i + 2] = lut[d[i + 2] * SUB + j];
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 export function drawCenterVignette(ctx, w, h, amount) {
   if (!amount || amount <= 0) return;
   const a = Math.min(0.92, amount * 0.9);
@@ -680,6 +728,9 @@ export function renderBackground(canvas, spec, opts = {}) {
     ctx.globalAlpha = 1;
   }
   ctx.restore();
+
+  // Contrast acts on the picture itself, before the vignettes and the grain.
+  applyContrast(ctx, w, h, spec.contrast || 0);
 
   // A dark vignette muddies a light field, so it is much gentler there.
   const lightField = spec.kind !== 'image' && isLight((spec.palette || DEFAULT_PALETTE).base);
