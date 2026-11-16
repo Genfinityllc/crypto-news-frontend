@@ -315,7 +315,6 @@ export default function CoverStudio({
   const [leftTab, setLeftTab] = useState('background');
   const [bgTab, setBgTab] = useState('templates');
   const [logoQuery, setLogoQuery] = useState('');
-  const [logoKind, setLogoKind] = useState('logos'); // 'logos' | 'seals'
   const [addingLogo, setAddingLogo] = useState('');
   const [aiStyle, setAiStyle] = useState('');
   const [aiSpace, setAiSpace] = useState('center');
@@ -791,7 +790,7 @@ export default function CoverStudio({
       try {
         const img = await loadImage(corsUrl(seal.imageUrl));
         addLogoFromImage(img, { seal: true, name: seal.name });
-        prevTabRef.current = 'logos';
+        prevTabRef.current = 'seals';
         setLeftTab('edit'); // straight to its opacity, colour and size
       } catch (e) {
         toast.error(`Could not load the ${seal.name} seal.`);
@@ -1294,6 +1293,7 @@ export default function CoverStudio({
           {[
             ['background', 'Background'],
             ['logos', 'Logos'],
+            ['seals', 'Seals'],
             ['text', 'Text'],
             ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
             ['edit', 'Edit'],
@@ -1498,16 +1498,7 @@ export default function CoverStudio({
 
         {leftTab === 'logos' && (
           <PanelBody>
-            <Seg>
-              <SegBtn $on={logoKind === 'logos'} onClick={() => setLogoKind('logos')}>
-                Logos
-              </SegBtn>
-              <SegBtn $on={logoKind === 'seals'} onClick={() => setLogoKind('seals')}>
-                Government seals
-              </SegBtn>
-            </Seg>
-            {logoKind === 'logos' && (
-              <>
+            <>
                 <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
                 <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
                 <LogoGrid>
@@ -1532,26 +1523,26 @@ export default function CoverStudio({
                 <Ghost onClick={() => logoFileRef.current && logoFileRef.current.click()}>Use a logo file from my computer</Ghost>
                 <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/webp" hidden onChange={onLogoFile} />
                 <Hint>Files added here are used for this cover only. They are not saved to the logo library.</Hint>
-              </>
-            )}
-            {logoKind === 'seals' && (
-              <>
-                <Hint>
-                  Click a seal to place it behind your logos and text as a large, faded emblem. Then drag it, scale it, and set its opacity and colour in the Edit tab.
-                </Hint>
-                <SealGrid>
-                  {sealList.map((sl) => (
-                    <SealTile key={sl.slug} onClick={() => addSeal(sl)} disabled={!!addingLogo} title={sl.name}>
-                      <LogoThumb>
-                        <img src={sl.imageUrl} alt="" loading="lazy" />
-                      </LogoThumb>
-                      <span>{addingLogo === `seal:${sl.slug}` ? 'Adding...' : sl.name}</span>
-                    </SealTile>
-                  ))}
-                </SealGrid>
-                {sealList.length === 0 && <Hint>The seal library did not load. Refresh the page to try again.</Hint>}
-              </>
-            )}
+            </>
+          </PanelBody>
+        )}
+
+        {leftTab === 'seals' && (
+          <PanelBody>
+            <Hint>
+              Click a seal to place it behind your logos and text. It is the real seal, shown in white and faded by default. Then drag it, scale it, and set its opacity and colour (white, black, custom or full colour) in the Edit tab.
+            </Hint>
+            <SealGrid>
+              {sealList.map((sl) => (
+                <SealTile key={sl.slug} onClick={() => addSeal(sl)} disabled={!!addingLogo} title={sl.name}>
+                  <LogoThumb>
+                    <img src={sl.imageUrl} alt="" loading="lazy" />
+                  </LogoThumb>
+                  <span>{addingLogo === `seal:${sl.slug}` ? 'Adding...' : sl.name}</span>
+                </SealTile>
+              ))}
+            </SealGrid>
+            {sealList.length === 0 && <Hint>The seal library did not load. Refresh the page to try again.</Hint>}
           </PanelBody>
         )}
 
@@ -1866,8 +1857,8 @@ const Tab = styled.button`
   opacity: ${(p) => (p.$dim && !p.$on ? 0.45 : 1)};
   border: none;
   border-bottom: 2px solid ${(p) => (p.$on ? '#00d4ff' : 'transparent')};
-  padding: 0.85rem 0.3rem;
-  font-size: 0.78rem;
+  padding: 0.85rem 0.2rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
