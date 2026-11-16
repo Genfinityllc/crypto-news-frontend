@@ -154,6 +154,69 @@ function tintedCanvas(source, mode, color) {
   return c;
 }
 
+// Seals are full-colour discs, so recolouring one flat would give a blank
+// circle. This keeps the artwork: light areas become solid, dark areas become
+// see-through, which reads as a one-colour emblem that can then be tinted.
+function monoEmblem(source) {
+  const c = document.createElement('canvas');
+  c.width = source.width;
+  c.height = source.height;
+  const g = c.getContext('2d');
+  g.drawImage(source, 0, 0);
+  let img;
+  try {
+    img = g.getImageData(0, 0, c.width, c.height);
+  } catch (e) {
+    return source;
+  }
+  const d = img.data;
+  // stretch between the seal's own dark and light tones so every seal has contrast
+  const hist = new Uint32Array(256);
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] > 40) {
+      hist[Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++;
+      n++;
+    }
+  }
+  let lo = 0;
+  let hi = 255;
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= n * 0.08) {
+      lo = v;
+      break;
+    }
+  }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) {
+    acc += hist[v];
+    if (acc >= n * 0.08) {
+      hi = v;
+      break;
+    }
+  }
+  if (hi - lo < 40) {
+    lo = 0;
+    hi = 255;
+  }
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    let t = Math.min(1, Math.max(0, (lum - lo) / (hi - lo)));
+    t = t * t * (3 - 2 * t);
+    d[i] = 255;
+    d[i + 1] = 255;
+    d[i + 2] = 255;
+    d[i + 3] = Math.round(d[i + 3] * t);
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+// The picture an item should show for its current colour setting.
+const paintItem = (st) => tintedCanvas(st.tint === 'original' ? st.source : st.mono || st.source, st.tint, st.tintColor);
+
 const softShadow = () => new Shadow({ color: 'rgba(0,0,0,0.5)', blur: 34, offsetX: 0, offsetY: 14 });
 
 const normHex = (v, fallback = '#ffffff') => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : fallback);
@@ -191,6 +254,7 @@ export default function CoverStudio({
   networks = [],
   companies = [],
   styles = [],
+  seals = [],
   currentUser,
   incoming,
   active = true,
@@ -244,11 +308,14 @@ export default function CoverStudio({
     }
   };
   const [showGuides, setShowGuides] = useState(false);
+  const [snap, setSnap] = useState(true);
+  const snapRef = useRef(true);
   const [guides, setGuides] = useState({ v: null, h: null });
   const [, setTick] = useState(0);
   const [leftTab, setLeftTab] = useState('background');
   const [bgTab, setBgTab] = useState('templates');
   const [logoQuery, setLogoQuery] = useState('');
+  const [logoKind, setLogoKind] = useState('logos'); // 'logos' | 'seals'
   const [addingLogo, setAddingLogo] = useState('');
   const [aiStyle, setAiStyle] = useState('');
   const [aiSpace, setAiSpace] = useState('center');
@@ -263,6 +330,10 @@ export default function CoverStudio({
   });
   const [saving, setSaving] = useState(false);
   const [objectCount, setObjectCount] = useState(0);
+
+  useEffect(() => {
+    snapRef.current = snap;
+  }, [snap]);
 
   const bump = useCallback(() => {
     setTick((t) => t + 1);
@@ -355,7 +426,7 @@ export default function CoverStudio({
         if (o.studio && o.studio.kind === 'logo' && (o.studio.tint !== tint || o.studio.tintColor !== tintColor)) {
           o.studio.tint = tint;
           o.studio.tintColor = tintColor;
-          o.setElement(tintedCanvas(o.studio.source, tint, tintColor));
+          o.setElement(paintItem(o.studio));
         }
         o.setCoords();
         c.add(o);
@@ -451,7 +522,19 @@ export default function CoverStudio({
     c.on('object:moving', (e) => {
       const o = e.target;
       if (!o) return;
-      const T = 9 / (displayScaleRef.current || 0.5);
+      // Snapping can be switched off, or bypassed for one drag by holding
+      // Option/Alt (or Cmd), for placing something freely near a guide.
+      const ev = e.e;
+      if (!snapRef.current || (ev && (ev.altKey || ev.metaKey))) {
+        setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null }));
+        return;
+      }
+      // fabric has already moved the object to the pointer but only refreshes
+      // its cached corners AFTER this handler. Measuring without refreshing
+      // them reads the PREVIOUS step's position, which made the object stutter
+      // and lurch near every guide. Refresh first.
+      o.setCoords();
+      const T = 6 / (displayScaleRef.current || 0.5);
       const br = o.getBoundingRect();
       const pick = (cands) => {
         let best = null;
@@ -641,28 +724,42 @@ export default function CoverStudio({
       const c = fabricRef.current;
       if (!c) return;
       const source = prepareLogo(img);
-      const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo').length;
-      const o = new FabricImage(tintedCanvas(source, 'original'), {
-        originX: 'center',
-        originY: 'center',
-        left: COVER_W / 2 + existing * 46,
-        top: COVER_H / 2 + existing * 46,
-        objectCaching: false,
-      });
-      o.studio = {
+      const isSeal = !!meta.seal;
+      const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal).length;
+      const studio = {
         kind: 'logo',
-        symbol: meta.symbol || '',
+        seal: isSeal,
+        symbol: isSeal ? '' : meta.symbol || '',
         name: meta.name || meta.symbol || 'Logo',
-        tint: 'original',
+        // a seal starts as a faded one-colour emblem; a logo starts as itself
+        tint: isSeal ? 'white' : 'original',
         tintColor: '#ffffff',
         source,
-        colors: extractLogoColors(source),
+        mono: isSeal ? monoEmblem(source) : undefined,
+        colors: isSeal ? [] : extractLogoColors(source),
       };
+      const o = new FabricImage(paintItem(studio), {
+        originX: 'center',
+        originY: 'center',
+        left: isSeal ? COVER_W / 2 : COVER_W / 2 + existing * 46,
+        top: isSeal ? COVER_H / 2 : COVER_H / 2 + existing * 46,
+        opacity: isSeal ? 0.22 : 1,
+        objectCaching: false,
+      });
+      o.studio = studio;
       o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
-      fitLogo(o, 640, 320);
       styleObject(o);
       c.add(o);
-      if (autoLayoutRef.current.on && applyLayoutRef.current) applyLayoutRef.current(autoLayoutRef.current.id, true);
+      if (isSeal) {
+        // large, behind the logos and text, and left out of the auto layouts
+        const sc = 760 / o.height;
+        o.set({ scaleX: sc, scaleY: sc });
+        o.setCoords();
+        c.sendObjectToBack(o);
+      } else {
+        fitLogo(o, 640, 320);
+        if (autoLayoutRef.current.on && applyLayoutRef.current) applyLayoutRef.current(autoLayoutRef.current.id, true);
+      }
       c.setActiveObject(o);
       c.requestRenderAll();
       commit();
@@ -685,6 +782,24 @@ export default function CoverStudio({
       }
     },
     [addLogoFromImage, addingLogo, apiBase]
+  );
+
+  const addSeal = useCallback(
+    async (seal) => {
+      if (addingLogo) return;
+      setAddingLogo(`seal:${seal.slug}`);
+      try {
+        const img = await loadImage(corsUrl(seal.imageUrl));
+        addLogoFromImage(img, { seal: true, name: seal.name });
+        prevTabRef.current = 'logos';
+        setLeftTab('edit'); // straight to its opacity, colour and size
+      } catch (e) {
+        toast.error(`Could not load the ${seal.name} seal.`);
+      } finally {
+        setAddingLogo('');
+      }
+    },
+    [addLogoFromImage, addingLogo]
   );
 
   const onLogoFile = (e) => {
@@ -830,7 +945,7 @@ export default function CoverStudio({
     if (!c || !o || !o.studio || o.studio.kind !== 'logo') return;
     o.studio.tint = mode;
     if (color) o.studio.tintColor = color;
-    o.setElement(tintedCanvas(o.studio.source, mode, o.studio.tintColor));
+    o.setElement(paintItem(o.studio));
     c.requestRenderAll();
     commitSoon();
     bump();
@@ -851,7 +966,7 @@ export default function CoverStudio({
     if (!c) return;
     if (!auto) autoLayoutRef.current = { on: true, id };
     const objs = c.getObjects();
-    const logos = objs.filter((o) => o.studio && o.studio.kind === 'logo');
+    const logos = objs.filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal);
     const byRole = (r) => objs.find((o) => o.studio && o.studio.role === r);
     const texts = [byRole('label'), byRole('headline'), byRole('subhead')].filter(Boolean);
     if (!logos.length && !texts.length) {
@@ -1154,6 +1269,7 @@ export default function CoverStudio({
       return true;
     });
   }, [networks, companies]);
+  const sealList = useMemo(() => (seals || []).filter((x) => x && x.grounded && x.imageUrl), [seals]);
   const shownLogos = useMemo(() => {
     const q = logoQuery.trim().toLowerCase();
     const list = q
@@ -1382,30 +1498,60 @@ export default function CoverStudio({
 
         {leftTab === 'logos' && (
           <PanelBody>
-            <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
-            <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
-            <LogoGrid>
-              {shownLogos.map((l) => (
-                <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => addLogo(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
-                  <LogoThumb>
-                    <img
-                      src={`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(l.symbol)}`}
-                      alt=""
-                      loading="lazy"
-                      onError={(e) => {
-                        e.target.style.visibility = 'hidden';
-                      }}
-                    />
-                  </LogoThumb>
-                  <span>{addingLogo === l.symbol ? 'Adding...' : l.name}</span>
-                </LogoTile>
-              ))}
-            </LogoGrid>
-            {allLogos.length > shownLogos.length && !logoQuery && <Hint>Showing the first {shownLogos.length}. Search to find the rest.</Hint>}
-            {shownLogos.length === 0 && <Hint>No match. Upload the logo in the logo manager, or use a file below.</Hint>}
-            <Ghost onClick={() => logoFileRef.current && logoFileRef.current.click()}>Use a logo file from my computer</Ghost>
-            <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/webp" hidden onChange={onLogoFile} />
-            <Hint>Files added here are used for this cover only. They are not saved to the logo library.</Hint>
+            <Seg>
+              <SegBtn $on={logoKind === 'logos'} onClick={() => setLogoKind('logos')}>
+                Logos
+              </SegBtn>
+              <SegBtn $on={logoKind === 'seals'} onClick={() => setLogoKind('seals')}>
+                Government seals
+              </SegBtn>
+            </Seg>
+            {logoKind === 'logos' && (
+              <>
+                <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
+                <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
+                <LogoGrid>
+                  {shownLogos.map((l) => (
+                    <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => addLogo(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
+                      <LogoThumb>
+                        <img
+                          src={`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(l.symbol)}`}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.target.style.visibility = 'hidden';
+                          }}
+                        />
+                      </LogoThumb>
+                      <span>{addingLogo === l.symbol ? 'Adding...' : l.name}</span>
+                    </LogoTile>
+                  ))}
+                </LogoGrid>
+                {allLogos.length > shownLogos.length && !logoQuery && <Hint>Showing the first {shownLogos.length}. Search to find the rest.</Hint>}
+                {shownLogos.length === 0 && <Hint>No match. Upload the logo in the logo manager, or use a file below.</Hint>}
+                <Ghost onClick={() => logoFileRef.current && logoFileRef.current.click()}>Use a logo file from my computer</Ghost>
+                <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/webp" hidden onChange={onLogoFile} />
+                <Hint>Files added here are used for this cover only. They are not saved to the logo library.</Hint>
+              </>
+            )}
+            {logoKind === 'seals' && (
+              <>
+                <Hint>
+                  Click a seal to place it behind your logos and text as a large, faded emblem. Then drag it, scale it, and set its opacity and colour in the Edit tab.
+                </Hint>
+                <SealGrid>
+                  {sealList.map((sl) => (
+                    <SealTile key={sl.slug} onClick={() => addSeal(sl)} disabled={!!addingLogo} title={sl.name}>
+                      <LogoThumb>
+                        <img src={sl.imageUrl} alt="" loading="lazy" />
+                      </LogoThumb>
+                      <span>{addingLogo === `seal:${sl.slug}` ? 'Adding...' : sl.name}</span>
+                    </SealTile>
+                  ))}
+                </SealGrid>
+                {sealList.length === 0 && <Hint>The seal library did not load. Refresh the page to try again.</Hint>}
+              </>
+            )}
           </PanelBody>
         )}
 
@@ -1440,7 +1586,7 @@ export default function CoverStudio({
                   bump();
                 }}
               >
-                <em>{o.studio && o.studio.kind === 'text' ? 'Text' : 'Logo'}</em>
+                <em>{o.studio && o.studio.kind === 'text' ? 'Text' : o.studio && o.studio.seal ? 'Seal' : 'Logo'}</em>
                 <span>{layerName(o)}</span>
                 <button type="button" title="Bring forward" onClick={(e) => { e.stopPropagation(); reorder(o, 'up'); }}>Up</button>
                 <button type="button" title="Send backward" onClick={(e) => { e.stopPropagation(); reorder(o, 'down'); }}>Down</button>
@@ -1465,7 +1611,7 @@ export default function CoverStudio({
           {sel && (
             <>
               <InsHead>
-                <strong>{selKind === 'text' ? 'Text' : 'Logo'}: {layerName(sel)}</strong>
+                <strong>{selKind === 'text' ? 'Text' : sel.studio.seal ? 'Seal' : 'Logo'}: {layerName(sel)}</strong>
                 <Group>
                   <Tool onClick={duplicate}>Duplicate</Tool>
                   <Tool onClick={() => reorder(sel, 'front')}>To front</Tool>
@@ -1527,9 +1673,9 @@ export default function CoverStudio({
                 {selKind === 'logo' && (
                   <>
                     <InsCell>
-                      <FieldLabel>Logo colour</FieldLabel>
+                      <FieldLabel>{sel.studio.seal ? 'Seal colour' : 'Logo colour'}</FieldLabel>
                       <Seg>
-                        {[['original', 'Original'], ['white', 'White'], ['black', 'Black'], ['custom', 'Custom']].map(([id, label]) => (
+                        {[['original', sel.studio.seal ? 'Full colour' : 'Original'], ['white', 'White'], ['black', 'Black'], ['custom', 'Custom']].map(([id, label]) => (
                           <SegBtn key={id} $on={sel.studio.tint === id} onClick={() => setTint(id)}>{label}</SegBtn>
                         ))}
                       </Seg>
@@ -1611,6 +1757,9 @@ export default function CoverStudio({
             <ToolCheck>
               <input type="checkbox" checked={showGuides} onChange={(e) => setShowGuides(e.target.checked)} /> Safe area
             </ToolCheck>
+            <ToolCheck title="Pull items to the centre lines and safe margins while dragging. Hold Option/Alt to place freely.">
+              <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap
+            </ToolCheck>
           </Group>
           <Group>
             <ToolLabel>Watermark</ToolLabel>
@@ -1653,7 +1802,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
@@ -2090,6 +2239,43 @@ const LogoTile = styled.button`
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  &:hover {
+    border-color: #00d4ff;
+  }
+  &:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+`;
+
+const SealGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 0.45rem;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 2px;
+`;
+
+const SealTile = styled.button`
+  background: #0a0a0a;
+  border: 1px solid #222222;
+  border-radius: 9px;
+  padding: 0.4rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  text-align: left;
+
+  span {
+    color: #c9d1d9;
+    font-size: 0.68rem;
+    line-height: 1.25;
   }
   &:hover {
     border-color: #00d4ff;

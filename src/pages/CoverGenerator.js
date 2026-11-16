@@ -3088,6 +3088,7 @@ export default function CoverGenerator() {
             networks={networks}
             companies={companies}
             styles={styles}
+            seals={sealOptions}
             currentUser={currentUser}
             incoming={studioIncoming}
             active={mode === 'studio'}
