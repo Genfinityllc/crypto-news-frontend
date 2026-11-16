@@ -226,7 +226,23 @@ export default function CoverStudio({
   const applyLayoutRef = useRef(null);
 
   const [bg, setBgState] = useState(DEFAULT_BG);
-  const [watermark, setWatermark] = useState(true);
+  // Watermark on or off is the owner's call on every cover, so the choice is
+  // remembered between visits (this browser only).
+  const [watermark, setWatermark] = useState(() => {
+    try {
+      return localStorage.getItem('cg_studio_watermark') !== 'off';
+    } catch (e) {
+      return true;
+    }
+  });
+  const chooseWatermark = (on) => {
+    setWatermark(on);
+    try {
+      localStorage.setItem('cg_studio_watermark', on ? 'on' : 'off');
+    } catch (e) {
+      /* storage unavailable: the choice still applies to this cover */
+    }
+  };
   const [showGuides, setShowGuides] = useState(false);
   const [guides, setGuides] = useState({ v: null, h: null });
   const [, setTick] = useState(0);
@@ -1595,9 +1611,17 @@ export default function CoverStudio({
             <ToolCheck>
               <input type="checkbox" checked={showGuides} onChange={(e) => setShowGuides(e.target.checked)} /> Safe area
             </ToolCheck>
-            <ToolCheck>
-              <input type="checkbox" checked={watermark} onChange={(e) => setWatermark(e.target.checked)} /> Watermark
-            </ToolCheck>
+          </Group>
+          <Group>
+            <ToolLabel>Watermark</ToolLabel>
+            <Seg>
+              <SegBtn $on={watermark} onClick={() => chooseWatermark(true)} title="Show the Genfinity watermark on this cover">
+                On
+              </SegBtn>
+              <SegBtn $on={!watermark} onClick={() => chooseWatermark(false)} title="No watermark on this cover">
+                Off
+              </SegBtn>
+            </Seg>
           </Group>
           <Spacer />
           <Group>

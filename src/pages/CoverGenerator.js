@@ -1098,7 +1098,14 @@ export default function CoverGenerator() {
   const resumeCancelRef = useRef(false); // set true to abandon a resumed poll when a new generation starts
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
-  const [showWatermark, setShowWatermark] = useState(true);
+  // Remembered between visits so the watermark stays off once switched off.
+  const [showWatermark, setShowWatermark] = useState(() => {
+    try { return localStorage.getItem('cg_watermark') !== 'off'; } catch (e) { return true; }
+  });
+  const chooseWatermark = (on) => {
+    setShowWatermark(on);
+    try { localStorage.setItem('cg_watermark', on ? 'on' : 'off'); } catch (e) {}
+  };
   // 'generate' = AI generation (this page), 'studio' = hand-composed covers.
   const [mode, setMode] = useState('generate');
   const [studioOpened, setStudioOpened] = useState(false); // mount on first open, then keep the work alive
@@ -2830,17 +2837,18 @@ export default function CoverGenerator() {
               </InputSection>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', color: '#8b949e' }}>
-                <input
-                  type="checkbox"
-                  checked={showWatermark}
-                  onChange={(e) => setShowWatermark(e.target.checked)}
-                  style={{ accentColor: '#00d4ff' }}
-                />
-                Watermark
-              </label>
-            </div>
+            <InputSection>
+              <label>Watermark</label>
+              <ToggleRow>
+                <ToggleButton type="button" active={showWatermark} onClick={() => chooseWatermark(true)}>
+                  On
+                </ToggleButton>
+                <ToggleButton type="button" active={!showWatermark} onClick={() => chooseWatermark(false)}>
+                  Off
+                </ToggleButton>
+              </ToggleRow>
+              <div className="hint">Off generates the cover with no Genfinity watermark. Your choice is remembered.</div>
+            </InputSection>
             <GenerateButton
               onClick={handleGenerate}
               disabled={(!networkInput.trim() && !selectedStyle && !(refImageUrl && customPromptText.trim())) || loading}
