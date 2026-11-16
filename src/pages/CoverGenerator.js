@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
+import CoverStudio from '../components/coverStudio/CoverStudio';
 
 const API_BASE = 'https://crypto-news-curator-backend-production.up.railway.app';
 
@@ -28,10 +29,47 @@ const Subtitle = styled.p`
   font-size: 1.1rem;
 `;
 
+const ModeTabs = styled.div`
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  margin-bottom: 1.25rem;
+  background: #111111;
+  border: 1px solid #222222;
+  border-radius: 14px;
+`;
+
+const ModeTab = styled.button`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid ${props => props.$active ? '#00d4ff' : 'transparent'};
+  background: ${props => props.$active ? 'rgba(0, 212, 255, 0.08)' : 'transparent'};
+  color: ${props => props.$active ? '#ffffff' : '#8b949e'};
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  small {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #8b949e;
+  }
+
+  &:hover {
+    color: #ffffff;
+  }
+`;
+
 const MainGrid = styled.div`
   display: grid;
-  grid-template-columns: 400px 1fr;
+  grid-template-columns: 440px 1fr;
   gap: 2rem;
+  align-items: start;
   
   @media (max-width: 1024px) {
     grid-template-columns: 1fr;
@@ -205,6 +243,17 @@ const ResultsSection = styled.div`
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  /* Keep the preview in view while the long settings column scrolls. */
+  position: sticky;
+  top: 86px; /* 70px sticky site nav + 16px */
+  max-height: calc(100vh - 102px);
+  overflow-y: auto;
+
+  @media (max-width: 1024px) {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
 `;
 
 const CurrentGeneration = styled.div`
@@ -865,10 +914,10 @@ const RefCountBadge = styled.span`
 
 const StyleGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  grid-auto-rows: minmax(80px, auto);
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  grid-auto-rows: minmax(112px, auto);
   gap: 0.5rem;
-  max-height: 300px;
+  max-height: 440px;
   overflow-y: auto;
   padding-right: 0.25rem;
 `;
@@ -909,7 +958,7 @@ const StyleLabel = styled.div`
   padding: 0.2rem 0.3rem;
   background: rgba(0, 0, 0, 0.75);
   color: #e6edf3;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -1050,6 +1099,11 @@ export default function CoverGenerator() {
   const [patternId, setPatternId] = useState('');
   const [patternColor, setPatternColor] = useState('');
   const [showWatermark, setShowWatermark] = useState(true);
+  // 'generate' = AI generation (this page), 'studio' = hand-composed covers.
+  const [mode, setMode] = useState('generate');
+  const [studioOpened, setStudioOpened] = useState(false); // mount on first open, then keep the work alive
+  const [studioIncoming, setStudioIncoming] = useState(null); // cover handed to the Studio as its background
+  const [copySpace, setCopySpace] = useState('center'); // background-only: where to leave clear space
 
   // Phase 4: Reference image + custom prompt mode
   // Phase 4-ext3: now supports up to 14 reference images (Wavespeed cap)
@@ -1672,6 +1726,7 @@ export default function CoverGenerator() {
         patternId: patternId || undefined,
         patternColor: patternColor || undefined,
         skipWatermark: !showWatermark || undefined,
+        copySpace: isBackgroundOnly ? copySpace : undefined,
         // Phase 4: reference image + custom prompt
         // Phase 4-ext3: send full array (up to 14) plus legacy single-URL for back-compat
         referenceImageUrl: refImageUrls[0] || undefined,
@@ -1805,6 +1860,15 @@ export default function CoverGenerator() {
     document.body.removeChild(link);
   };
 
+  // Hand a finished cover (or a generated background) to the Design Studio.
+  const openInStudio = (url, hadWatermark) => {
+    if (!url) return;
+    setStudioIncoming({ url, hadWatermark, nonce: Date.now() });
+    setStudioOpened(true);
+    setMode('studio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleHistoryClick = (item) => {
     setCurrentImage(item.imageUrl);
     setCurrentMeta({
@@ -1898,11 +1962,25 @@ export default function CoverGenerator() {
 
   return (
     <PageContainer>
-      <Header>
-        <Title>Cover Generator</Title>
-        <Subtitle>Create stunning 3D cryptocurrency cover images</Subtitle>
-      </Header>
+      {mode === 'generate' && (
+        <Header>
+          <Title>Cover Generator</Title>
+          <Subtitle>Generate a cover with AI, or compose one by hand in the Design Studio.</Subtitle>
+        </Header>
+      )}
 
+      <ModeTabs>
+        <ModeTab type="button" $active={mode === 'generate'} onClick={() => setMode('generate')}>
+          Generate with AI
+          <small>Styles, logos and prompts</small>
+        </ModeTab>
+        <ModeTab type="button" $active={mode === 'studio'} onClick={() => { setStudioOpened(true); setMode('studio'); }}>
+          Design Studio
+          <small>Place logos and text on any background</small>
+        </ModeTab>
+      </ModeTabs>
+
+      <div style={{ display: mode === 'generate' ? 'block' : 'none' }}>
       <MainGrid>
         <div>
           <Card>
@@ -2738,6 +2816,20 @@ export default function CoverGenerator() {
               <div className="hint">Choose whether to preserve the full logo text or only the symbol.</div>
             </InputSection>
 
+            {!networkInput.trim() && (
+              <InputSection>
+                <label>Background only: keep clear space</label>
+                <ToggleRow>
+                  {[['center', 'Centre'], ['left', 'Left'], ['right', 'Right'], ['bottom', 'Bottom'], ['none', 'Even']].map(([id, label]) => (
+                    <ToggleButton key={id} type="button" active={copySpace === id} onClick={() => setCopySpace(id)}>
+                      {label}
+                    </ToggleButton>
+                  ))}
+                </ToggleRow>
+                <div className="hint">No logo selected, so this makes a background. It is composed with calm space where you choose, ready for a logo and headline in the Design Studio.</div>
+              </InputSection>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', color: '#8b949e' }}>
                 <input
@@ -2797,6 +2889,7 @@ export default function CoverGenerator() {
                 </MetaInfo>
                 <ActionButtons>
                   <ActionButton onClick={handleDownload}>Download</ActionButton>
+                  <ActionButton onClick={() => openInStudio(currentImage, !(currentMeta.settings && currentMeta.settings.showWatermark === false))}>Open in Studio</ActionButton>
                   {currentMeta.settings && (
                     <ActionButton onClick={(e) => handleReuseStyle(e, { settings: currentMeta.settings })}>Reuse Style</ActionButton>
                   )}
@@ -2978,6 +3071,22 @@ export default function CoverGenerator() {
           </Card>
         </ResultsSection>
       </MainGrid>
+      </div>
+
+      {studioOpened && (
+        <div style={{ display: mode === 'studio' ? 'block' : 'none' }}>
+          <CoverStudio
+            apiBase={API_BASE}
+            networks={networks}
+            companies={companies}
+            styles={styles}
+            currentUser={currentUser}
+            incoming={studioIncoming}
+            active={mode === 'studio'}
+            onSaved={(imageUrl, label) => setHistory(prev => [{ imageUrl, network: label, timestamp: new Date().toISOString(), saved: true }, ...prev])}
+          />
+        </div>
+      )}
     </PageContainer>
   );
 }

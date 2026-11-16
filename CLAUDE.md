@@ -1,7 +1,7 @@
 # ⚡ CLAUDE: READ THIS FIRST — Crypto News Frontend
 
 > The full source-of-truth doc lives in the backend repo's CLAUDE.md:
-> `/Users/valorkopeny/Desktop/crypto-news-curator-backend/CLAUDE.md`
+> `/Users/valorkopeny/crypto-news-curator-backend/CLAUDE.md`
 > Read that first if you have any questions about what is live, what is dead, or how to deploy.
 
 ## 📍 This repo
@@ -69,6 +69,15 @@ Only the Wavespeed Nano-Banana-Pro flow via these backend endpoints:
 - `/api/style-catalog/*`, `/api/logos/*`, `/api/client-networks/*`
 
 The whole cover generator UI lives in `src/pages/CoverGenerator.js`. Everything else in the app (news feed, auth, admin, etc.) is unrelated to the cover generator and should not be touched when working on cover features.
+
+## Design Studio (2026-11-16)
+The Cover Generator page has two modes: **Generate with AI** (the original flow) and **Design Studio**.
+- Code: `src/components/coverStudio/CoverStudio.js` (editor) and `src/components/coverStudio/backgrounds.js` (flat procedural templates, palettes, grain). Uses `fabric` v7.
+- The canvas backing store is always 1800x900 and is scaled with CSS only, so the export is exactly what is on screen. Do not change the canvas size.
+- Logos load from `/api/cover-generator/logo-preview/:symbol` with `crossOrigin="anonymous"`. Anything drawn on the canvas must be CORS-enabled or the export is blocked.
+- Use gradients and paths only in `backgrounds.js` (no `ctx.filter`, Safari does not support it).
+- No emojis and no em dashes in UI copy.
+- Local dev: launch config `crypto-news-frontend` (port 3000, which the backend CORS allowlist accepts).
 
 ## 🗺 Recent cover-generator UI changes
 - **2026-06-17 — Phase 4-ext3** (commit `9677ce5`): Reference Image + Prompt section now accepts up to **14 ref images** (Wavespeed cap), with drag-and-drop (`RefDropZone`) and a thumbnail grid (`RefThumbGrid`) with per-image × remove. State changed from `refImageUrl` (string) → `refImageUrls` (array). Generate payload sends `referenceImageUrls` array + legacy `referenceImageUrl` (first item) for back-compat.
