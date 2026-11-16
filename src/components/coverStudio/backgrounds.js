@@ -650,6 +650,53 @@ function mulberry32(seed) {
   };
 }
 
+// Normally-distributed noise (sum of three uniforms is close enough).
+function gaussianNoise(n, rand) {
+  const a = new Float32Array(n);
+  for (let i = 0; i < n; i++) a[i] = (rand() + rand() + rand() - 1.5) * 2;
+  return a;
+}
+
+// Separable binomial blur [1,4,6,4,1]/16 (about one pixel of softness).
+function soften(src, w, h) {
+  const tmp = new Float32Array(src.length);
+  const out = new Float32Array(src.length);
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const m2 = row + (x > 1 ? x - 2 : 0);
+      const m1 = row + (x > 0 ? x - 1 : 0);
+      const p1 = row + (x < w - 1 ? x + 1 : w - 1);
+      const p2 = row + (x < w - 2 ? x + 2 : w - 1);
+      tmp[row + x] = (src[m2] + 4 * src[m1] + 6 * src[row + x] + 4 * src[p1] + src[p2]) / 16;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    const m2 = (y > 1 ? y - 2 : 0) * w;
+    const m1 = (y > 0 ? y - 1 : 0) * w;
+    const c0 = y * w;
+    const p1 = (y < h - 1 ? y + 1 : h - 1) * w;
+    const p2 = (y < h - 2 ? y + 2 : h - 1) * w;
+    for (let x = 0; x < w; x++) {
+      out[c0 + x] = (tmp[m2 + x] + 4 * tmp[m1 + x] + 6 * tmp[c0 + x] + 4 * tmp[p1 + x] + tmp[p2 + x]) / 16;
+    }
+  }
+  return out;
+}
+
+// Scale to unit strength so blurring does not weaken the grain.
+function unitStrength(a) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * a[i];
+  const k = 1 / Math.sqrt(s / a.length || 1);
+  for (let i = 0; i < a.length; i++) a[i] *= k;
+  return a;
+}
+
+// Film-like grain: soft flecks about two pixels across, plus a layer of
+// larger clumps. Single-pixel specks look fine at exactly 100% but turn into
+// a regular ripple (moire) the moment the cover is shown at any other size,
+// which is how it is always seen in the editor and on a news page.
 // Seeded so the grain holds still while you edit and the export matches the
 // preview, but with no structure a viewer could pick out.
 const grainFields = new Map();
@@ -657,19 +704,45 @@ function grainField(w, h, seed) {
   const key = `${w}x${h}_${seed}`;
   const hit = grainFields.get(key);
   if (hit) return hit;
+  const rand = mulberry32(seed * 7919 + 104729);
+
+  const fine = unitStrength(soften(gaussianNoise(w * h, rand), w, h));
+
+  const cw = Math.max(2, Math.ceil(w / 3));
+  const ch = Math.max(2, Math.ceil(h / 3));
+  const clump = unitStrength(soften(gaussianNoise(cw * ch, rand), cw, ch));
+
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const g = c.getContext('2d');
   const img = g.createImageData(w, h);
   const d = img.data;
-  const rand = mulberry32(seed * 7919 + 104729);
-  for (let i = 0; i < d.length; i += 4) {
-    const v = rand() < 0.5 ? 0 : 255;
-    d[i] = v;
-    d[i + 1] = v;
-    d[i + 2] = v;
-    d[i + 3] = (rand() * rand() * 255) | 0;
+  const sx = (cw - 1) / Math.max(1, w - 1);
+  const sy = (ch - 1) / Math.max(1, h - 1);
+  for (let y = 0; y < h; y++) {
+    const fy = y * sy;
+    const y0 = Math.floor(fy);
+    const y1 = Math.min(ch - 1, y0 + 1);
+    const ty = fy - y0;
+    for (let x = 0; x < w; x++) {
+      const fx = x * sx;
+      const x0 = Math.floor(fx);
+      const x1 = Math.min(cw - 1, x0 + 1);
+      const tx = fx - x0;
+      // smooth (bilinear) read of the clump layer
+      const top = clump[y0 * cw + x0] * (1 - tx) + clump[y0 * cw + x1] * tx;
+      const bot = clump[y1 * cw + x0] * (1 - tx) + clump[y1 * cw + x1] * tx;
+      // Mostly fine flecks with a light layer of clumps. These weights were
+      // tuned by measurement: finer flecks bring the resize ripple back.
+      const n = 0.97 * fine[y * w + x] + 0.2 * (top * (1 - ty) + bot * ty);
+      const i = (y * w + x) * 4;
+      const v = n > 0 ? 255 : 0; // light fleck or dark fleck
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = Math.min(255, Math.abs(n) * 84);
+    }
   }
   g.putImageData(img, 0, 0);
   if (grainFields.size >= 6) grainFields.delete(grainFields.keys().next().value);
