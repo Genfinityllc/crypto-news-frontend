@@ -35,23 +35,33 @@ const FONTS = [
   { family: 'IBM Plex Sans', weights: [400, 500, 600, 700], kind: 'Sans' },
   { family: 'Space Grotesk', weights: [400, 500, 700], kind: 'Sans' },
   { family: 'Archivo', weights: [400, 600, 800], kind: 'Sans' },
+  { family: 'Montserrat', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
+  { family: 'CMG Sans', weights: [100, 400, 700], kind: 'Sans', italic: true },
   { family: 'Barlow Condensed', weights: [500, 600, 700], kind: 'Condensed' },
   { family: 'Playfair Display', weights: [400, 600, 700, 800], kind: 'Serif' },
   { family: 'Source Serif 4', weights: [400, 600, 700], kind: 'Serif' },
   { family: 'Newsreader', weights: [400, 500, 700], kind: 'Serif' },
   { family: 'Fraunces', weights: [400, 600, 800], kind: 'Serif' },
   { family: 'DM Serif Display', weights: [400], kind: 'Serif' },
+  { family: 'Instrument Serif', weights: [400], kind: 'Serif', italic: true },
+  { family: 'CMG Sans Wide', weights: [800], kind: 'Display' },
+  { family: 'CMG Sans Wide Outline', weights: [800], kind: 'Display' },
+  { family: 'CMG Sans Outline', weights: [700], kind: 'Display' },
+  { family: 'CMG Sans Rounded', weights: [700], kind: 'Display' },
+  { family: 'CMG Sans Slab', weights: [700], kind: 'Display' },
+  { family: 'CMG Sans Backslant', weights: [700], kind: 'Display' },
+  { family: 'CMG Sans Mono Digits', weights: [700], kind: 'Display' },
   { family: 'IBM Plex Mono', weights: [400, 500, 600], kind: 'Mono' },
 ];
-const WEIGHT_NAMES = { 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold' };
+const WEIGHT_NAMES = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
 
 // Canvas text is measured the moment it is drawn, so the font file must be in
 // memory first or the text box wraps with fallback metrics.
-async function ensureFont(family, weight) {
+async function ensureFont(family, weight, italic = false) {
   if (!document.fonts || !document.fonts.load) return;
   try {
     await Promise.race([
-      document.fonts.load(`${weight} 64px "${family}"`),
+      document.fonts.load(`${italic ? 'italic ' : ''}${weight} 64px "${family}"`),
       new Promise((r) => setTimeout(r, 4000)),
     ]);
   } catch (e) {
@@ -383,6 +393,7 @@ export default function CoverStudio({
         text: o.text,
         fontFamily: o.fontFamily,
         fontWeight: o.fontWeight,
+        fontStyle: o.fontStyle,
         fontSize: o.fontSize,
         fill: o.fill,
         charSpacing: o.charSpacing,
@@ -951,13 +962,16 @@ export default function CoverStudio({
     bump();
   };
 
-  const setFont = async (family, weight) => {
+  // Italic is kept only where the family really has one; the browser would
+  // otherwise fake it by slanting the upright letters.
+  const setFont = async (family, weight, italic) => {
     const o = active1();
     if (!o) return;
     const def = FONTS.find((f) => f.family === family) || FONTS[0];
     const w = def.weights.includes(Number(weight)) ? Number(weight) : def.weights.reduce((a, b) => (Math.abs(b - weight) < Math.abs(a - weight) ? b : a));
-    await ensureFont(family, w);
-    change({ fontFamily: family, fontWeight: w });
+    const it = !!def.italic && (italic === undefined ? o.fontStyle === 'italic' : !!italic);
+    await ensureFont(family, w, it);
+    change({ fontFamily: family, fontWeight: w, fontStyle: it ? 'italic' : 'normal' });
   };
 
   // ---------- one-click layouts ----------
@@ -1623,7 +1637,7 @@ export default function CoverStudio({
                     <InsCell>
                       <FieldLabel>Font</FieldLabel>
                       <Select value={sel.fontFamily} onChange={(e) => setFont(e.target.value, sel.fontWeight)}>
-                        {['Sans', 'Condensed', 'Serif', 'Mono'].map((kind) => (
+                        {['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => (
                           <optgroup key={kind} label={kind}>
                             {FONTS.filter((f) => f.kind === kind).map((f) => (
                               <option key={f.family} value={f.family}>{f.family}</option>
@@ -1636,6 +1650,12 @@ export default function CoverStudio({
                           <option key={w} value={w}>{WEIGHT_NAMES[w] || w}</option>
                         ))}
                       </Select>
+                      {selFont.italic && (
+                        <Check style={{ marginTop: 6 }}>
+                          <input type="checkbox" checked={sel.fontStyle === 'italic'} onChange={(e) => setFont(sel.fontFamily, sel.fontWeight, e.target.checked)} />
+                          Italic
+                        </Check>
+                      )}
                     </InsCell>
                     <InsCell>
                       <Slider label="Size" min={12} max={260} step={1} value={sel.fontSize} onChange={(v) => change({ fontSize: v })} fmt={(v) => `${Math.round(v)}px`} />

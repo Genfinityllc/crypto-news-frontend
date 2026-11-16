@@ -1,0 +1,93 @@
+/* CMG Sans: a renamed Montserrat derivative, SIL Open Font License 1.1 (see LICENSE.txt).
+   One file per style, latin and latin-ext, converted from the owner's TTF files. */
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+  src: url('./CMGSans-Thin.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: italic;
+  font-weight: 100;
+  font-display: swap;
+  src: url('./CMGSans-ThinItalic.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./CMGSans-Regular.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./CMGSans-Italic.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-Bold.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldItalic.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Wide';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('./CMGSans-ExtraBoldWide.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Wide Outline';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('./CMGSans-ExtraBoldWideOutline.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Outline';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldOutline.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Rounded';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldRounded.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Slab';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldSlab.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Backslant';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldBackslant.woff') format('woff');
+}
+@font-face {
+  font-family: 'CMG Sans Mono Digits';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./CMGSans-BoldMonoDigits.woff') format('woff');
+}

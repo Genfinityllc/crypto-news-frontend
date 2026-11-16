@@ -1,0 +1,8 @@
+CMG Sans
+Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+The license is available with a FAQ at: https://openfontlicense.org
+
+The .woff files here are subsets (latin, latin-ext) of the CMGSans-*.ttf files, which carry
+the same copyright and licence statements in their name tables.
