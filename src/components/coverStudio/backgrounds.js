@@ -693,75 +693,81 @@ function unitStrength(a) {
   return a;
 }
 
-// Film-like grain: soft flecks about two pixels across, plus a layer of
-// larger clumps. Single-pixel specks look fine at exactly 100% but turn into
-// a regular ripple (moire) the moment the cover is shown at any other size,
-// which is how it is always seen in the editor and on a news page.
-// Seeded so the grain holds still while you edit and the export matches the
-// preview, but with no structure a viewer could pick out.
+// Two kinds of grain, both ONE field the exact size of the surface they are
+// drawn on, so the grain itself is never resized:
+//  - fine: single-pixel flecks. The default. Fully random at 1:1.
+//  - soft: flecks about two pixels across plus light clumps ("coarser grain").
+// Fine grain only stays pattern-free while it is shown pixel for pixel.
+// Resizing it produces a woven ripple (moire). That is why the editor draws
+// its grain on a separate layer at the screen's own pixels, and the exported
+// file gets its grain drawn at the cover's own pixels. See CoverStudio.
+// Seeded so the grain holds still while you edit.
 const grainFields = new Map();
-function grainField(w, h, seed) {
-  const key = `${w}x${h}_${seed}`;
+export function grainField(w, h, seed, soft = false) {
+  const key = `${w}x${h}_${seed}_${soft ? 's' : 'f'}`;
   const hit = grainFields.get(key);
   if (hit) return hit;
   const rand = mulberry32(seed * 7919 + 104729);
-
-  const fine = unitStrength(soften(gaussianNoise(w * h, rand), w, h));
-
-  const cw = Math.max(2, Math.ceil(w / 3));
-  const ch = Math.max(2, Math.ceil(h / 3));
-  const clump = unitStrength(soften(gaussianNoise(cw * ch, rand), cw, ch));
-
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const g = c.getContext('2d');
   const img = g.createImageData(w, h);
   const d = img.data;
-  const sx = (cw - 1) / Math.max(1, w - 1);
-  const sy = (ch - 1) / Math.max(1, h - 1);
-  for (let y = 0; y < h; y++) {
-    const fy = y * sy;
-    const y0 = Math.floor(fy);
-    const y1 = Math.min(ch - 1, y0 + 1);
-    const ty = fy - y0;
-    for (let x = 0; x < w; x++) {
-      const fx = x * sx;
-      const x0 = Math.floor(fx);
-      const x1 = Math.min(cw - 1, x0 + 1);
-      const tx = fx - x0;
-      // smooth (bilinear) read of the clump layer
-      const top = clump[y0 * cw + x0] * (1 - tx) + clump[y0 * cw + x1] * tx;
-      const bot = clump[y1 * cw + x0] * (1 - tx) + clump[y1 * cw + x1] * tx;
-      // Mostly fine flecks with a light layer of clumps. These weights were
-      // tuned by measurement: finer flecks bring the resize ripple back.
-      const n = 0.97 * fine[y * w + x] + 0.2 * (top * (1 - ty) + bot * ty);
-      const i = (y * w + x) * 4;
-      const v = n > 0 ? 255 : 0; // light fleck or dark fleck
+
+  if (!soft) {
+    for (let i = 0; i < d.length; i += 4) {
+      const v = rand() < 0.5 ? 0 : 255; // light fleck or dark fleck
       d[i] = v;
       d[i + 1] = v;
       d[i + 2] = v;
-      d[i + 3] = Math.min(255, Math.abs(n) * 84);
+      d[i + 3] = (rand() * rand() * 255) | 0;
+    }
+  } else {
+    const fine = unitStrength(soften(gaussianNoise(w * h, rand), w, h));
+    const cw = Math.max(2, Math.ceil(w / 3));
+    const ch = Math.max(2, Math.ceil(h / 3));
+    const clump = unitStrength(soften(gaussianNoise(cw * ch, rand), cw, ch));
+    const sx = (cw - 1) / Math.max(1, w - 1);
+    const sy = (ch - 1) / Math.max(1, h - 1);
+    for (let y = 0; y < h; y++) {
+      const fy = y * sy;
+      const y0 = Math.floor(fy);
+      const y1 = Math.min(ch - 1, y0 + 1);
+      const ty = fy - y0;
+      for (let x = 0; x < w; x++) {
+        const fx = x * sx;
+        const x0 = Math.floor(fx);
+        const x1 = Math.min(cw - 1, x0 + 1);
+        const tx = fx - x0;
+        // smooth (bilinear) read of the clump layer
+        const top = clump[y0 * cw + x0] * (1 - tx) + clump[y0 * cw + x1] * tx;
+        const bot = clump[y1 * cw + x0] * (1 - tx) + clump[y1 * cw + x1] * tx;
+        const n = 0.97 * fine[y * w + x] + 0.2 * (top * (1 - ty) + bot * ty);
+        const i = (y * w + x) * 4;
+        const v = n > 0 ? 255 : 0;
+        d[i] = v;
+        d[i + 1] = v;
+        d[i + 2] = v;
+        d[i + 3] = Math.min(255, Math.abs(n) * 84);
+      }
     }
   }
   g.putImageData(img, 0, 0);
-  if (grainFields.size >= 6) grainFields.delete(grainFields.keys().next().value);
+  if (grainFields.size >= 8) grainFields.delete(grainFields.keys().next().value);
   grainFields.set(key, c);
   return c;
 }
 
-// amount 0..1, coarse = larger softer grain
-export function drawGrain(ctx, w, h, amount, coarse = false, seed = 1) {
+// How opaque the grain layer is for a given slider amount (0..1).
+export const grainOpacity = (amount) => Math.min(1, Math.max(0, amount || 0) * 0.55);
+
+// Draw grain pixel for pixel onto a surface of exactly w x h.
+export function drawGrain(ctx, w, h, amount, soft = false, seed = 1) {
   if (!amount || amount <= 0) return;
-  // Coarse grain is a smaller field stretched up, still without any repeat.
-  const k = coarse ? 1.8 : 1;
-  const fw = Math.ceil(w / k);
-  const fh = Math.ceil(h / k);
-  const f = grainField(fw, fh, seed);
   ctx.save();
-  ctx.globalAlpha = Math.min(1, amount * 0.55);
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(f, 0, 0, fw, fh, 0, 0, w, h);
+  ctx.globalAlpha = grainOpacity(amount);
+  ctx.drawImage(grainField(w, h, seed, soft), 0, 0);
   ctx.restore();
 }
 
@@ -848,8 +854,10 @@ export function renderBackground(canvas, spec, opts = {}) {
   drawVignette(ctx, w, h, (spec.vignette || 0) * (lightField ? 0.3 : 1));
   drawCenterVignette(ctx, w, h, spec.centerVignette || 0);
   if (!opts.skipGrain) {
-    // Grain is authored for full size; thumbnails get a lighter pass.
-    drawGrain(ctx, w, h, (spec.grain || 0) * (s < 0.5 ? 0.6 : 1), spec.grainCoarse, 3);
+    // Thumbnails are shown resized, so they always use the soft grain (fine
+    // grain would ripple) and a lighter pass.
+    const thumb = s < 0.5;
+    drawGrain(ctx, w, h, (spec.grain || 0) * (thumb ? 0.6 : 1), spec.grainCoarse || thumb, 3);
   }
   return canvas;
 }

@@ -9,6 +9,8 @@ import {
   TEMPLATES,
   renderBackground,
   drawGrain,
+  grainField,
+  grainOpacity,
   extractLogoColors,
   isLight,
 } from './backgrounds';
@@ -196,7 +198,17 @@ export default function CoverStudio({
   const hostRef = useRef(null);
   const stageRef = useRef(null);
   const fabricRef = useRef(null);
+  // What you see while editing is three stacked layers, so the grain is never
+  // resized (resized grain ripples):
+  //   1. bgCanvasRef   the background, 1800x900, scaled by CSS (no grain in it)
+  //   2. grainViewRef  the grain, drawn at the screen's own pixels
+  //   3. the fabric canvas (transparent) with logos, text and the watermark
+  // The downloaded file is composed separately at 1800x900 with its grain
+  // drawn at the cover's own pixels (exportBgRef).
   const bgCanvasRef = useRef(null);
+  const grainViewRef = useRef(null);
+  const grainTimer = useRef(null);
+  const exportBgRef = useRef(null);
   const bgObjRef = useRef(null);
   const overlayCanvasRef = useRef(null);
   const overlayObjRef = useRef(null);
@@ -354,7 +366,6 @@ export default function CoverStudio({
       height: COVER_H,
       preserveObjectStacking: true,
       enableRetinaScaling: false,
-      backgroundColor: '#050505',
       selectionColor: 'rgba(0,212,255,0.08)',
       selectionBorderColor: '#00d4ff',
       uniformScaling: true,
@@ -367,18 +378,18 @@ export default function CoverStudio({
     });
     fabricRef.current = c;
 
-    const bgC = document.createElement('canvas');
-    bgC.width = COVER_W;
-    bgC.height = COVER_H;
-    bgCanvasRef.current = bgC;
+    const bgC = bgCanvasRef.current; // the visible background layer
+    const exC = document.createElement('canvas'); // background for the exported file
+    exC.width = COVER_W;
+    exC.height = COVER_H;
+    exportBgRef.current = exC;
     const ovC = document.createElement('canvas');
     ovC.width = COVER_W;
     ovC.height = COVER_H;
     overlayCanvasRef.current = ovC;
 
     const fixed = { originX: 'left', originY: 'top', left: 0, top: 0, selectable: false, evented: false, objectCaching: false };
-    bgObjRef.current = new FabricImage(bgC, fixed);
-    c.backgroundImage = bgObjRef.current;
+    bgObjRef.current = new FabricImage(exC, fixed); // attached only while exporting
     overlayObjRef.current = new FabricImage(ovC, fixed);
     c.overlayImage = overlayObjRef.current;
 
@@ -465,10 +476,18 @@ export default function CoverStudio({
       });
       c.calcOffset();
       c.requestRenderAll();
+      // rebuild the grain for the new on-screen size once resizing settles
+      clearTimeout(grainTimer.current);
+      grainTimer.current = setTimeout(syncGrainView, 140);
     };
     const ro = new ResizeObserver(fit);
     ro.observe(stageRef.current);
     fit();
+    const onWinResize = () => {
+      clearTimeout(grainTimer.current);
+      grainTimer.current = setTimeout(syncGrainView, 140);
+    };
+    window.addEventListener('resize', onWinResize);
 
     loadImage(watermarkUrl, false)
       .then((img) => {
@@ -480,14 +499,17 @@ export default function CoverStudio({
     ensureFont('Inter', 700);
     ensureFont('Inter', 400);
 
-    renderBackground(bgC, bgRef.current, { skipGrain: bgRef.current.grainOnTop });
+    renderBackground(bgC, bgRef.current, { skipGrain: true });
     drawOverlay();
+    syncGrainView();
     c.requestRenderAll();
     commit();
 
     return () => {
       ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
       clearTimeout(commitTimer.current);
+      clearTimeout(grainTimer.current);
       fabricRef.current = null;
       c.dispose();
       if (el.parentNode) el.parentNode.removeChild(el);
@@ -497,16 +519,15 @@ export default function CoverStudio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- overlay: optional top grain + watermark ----------
+  // ---------- overlay: watermark (plus top grain in the exported file) ----------
   const watermarkRef = useRef(true);
-  const drawOverlay = useCallback(() => {
+  const drawOverlay = useCallback((forExport = false) => {
     const ov = overlayCanvasRef.current;
     const c = fabricRef.current;
     if (!ov || !c) return;
     const g = ov.getContext('2d');
     g.clearRect(0, 0, COVER_W, COVER_H);
     const b = bgRef.current;
-    if (b.grainOnTop) drawGrain(g, COVER_W, COVER_H, b.grain, b.grainCoarse, 3);
     const wm = wmImgRef.current;
     if (watermarkRef.current && wm) {
       // Same locked placement as the server watermark: centred, 5px low.
@@ -514,8 +535,35 @@ export default function CoverStudio({
       const wh = wm.naturalHeight;
       g.drawImage(wm, Math.round((COVER_W - ww) / 2), COVER_H - wh + 5);
     }
+    // "Grain over logos and text too": while editing that is the grain layer
+    // sitting above the canvas; in the file it is drawn here, over everything.
+    if (forExport && b.grainOnTop) drawGrain(g, COVER_W, COVER_H, b.grain, b.grainCoarse, 3);
     if (overlayObjRef.current) overlayObjRef.current.dirty = true;
-    c.requestRenderAll();
+    if (!forExport) c.requestRenderAll();
+  }, []);
+
+  // ---------- the on-screen grain layer ----------
+  // One grain field at exactly the screen's pixel size, shown 1:1. Strength is
+  // plain CSS opacity, so the Grain slider never has to redraw anything.
+  const syncGrainView = useCallback(() => {
+    const gv = grainViewRef.current;
+    const stage = stageRef.current;
+    if (!gv || !stage) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(stage.clientWidth * dpr);
+    const h = Math.round(stage.clientHeight * dpr);
+    if (w < 2 || h < 2) return; // hidden tab
+    // Size the layer in whole pixels (not 100%), so one grain pixel is exactly
+    // one screen pixel even when the stage has a fractional width.
+    gv.style.width = `${w / dpr}px`;
+    gv.style.height = `${h / dpr}px`;
+    const soft = !!bgRef.current.grainCoarse;
+    const key = `${w}x${h}_${soft}`;
+    if (gv.dataset.key === key) return;
+    gv.width = w;
+    gv.height = h;
+    gv.getContext('2d').drawImage(grainField(w, h, 3, soft), 0, 0);
+    gv.dataset.key = key;
   }, []);
 
   useEffect(() => {
@@ -528,12 +576,11 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c || !bgCanvasRef.current) return undefined;
     const id = requestAnimationFrame(() => {
-      renderBackground(bgCanvasRef.current, bg, { skipGrain: bg.grainOnTop });
-      if (bgObjRef.current) bgObjRef.current.dirty = true;
-      drawOverlay();
+      renderBackground(bgCanvasRef.current, bg, { skipGrain: true });
+      syncGrainView();
     });
     return () => cancelAnimationFrame(id);
-  }, [bg, drawOverlay]);
+  }, [bg, syncGrainView]);
 
   // ---------- incoming cover from the Generate tab ----------
   useEffect(() => {
@@ -993,13 +1040,24 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c) return null;
     c.discardActiveObject();
+    // Compose the real file: background with its grain baked in at 1800x900,
+    // then logos and text, then the watermark (and top grain if chosen).
+    const b = bgRef.current;
+    renderBackground(exportBgRef.current, b, { skipGrain: b.grainOnTop });
+    bgObjRef.current.dirty = true;
+    c.backgroundImage = bgObjRef.current;
+    drawOverlay(true);
     c.renderAll();
+    let url = null;
     try {
-      return c.toDataURL({ format: 'png', multiplier: 1, enableRetinaScaling: false });
+      url = c.toDataURL({ format: 'png', multiplier: 1, enableRetinaScaling: false });
     } catch (e) {
       toast.error('Export was blocked by an image that does not allow reuse. Remove the last image you added and try again.');
-      return null;
     }
+    // back to the editing view
+    c.backgroundImage = undefined;
+    drawOverlay(false);
+    return url;
   };
 
   const exportLabel = () => {
@@ -1548,7 +1606,16 @@ export default function CoverStudio({
         </Toolbar>
 
         <Stage ref={stageRef}>
-          <div ref={hostRef} />
+          <BgLayer ref={bgCanvasRef} width={COVER_W} height={COVER_H} />
+          <GrainLayer
+            ref={grainViewRef}
+            style={{
+              opacity: grainOpacity(bg.grain),
+              zIndex: bg.grainOnTop ? 3 : 1,
+              display: bg.grain > 0 ? 'block' : 'none',
+            }}
+          />
+          <CanvasHost ref={hostRef} />
           {showGuides && <SafeBox />}
           {guides.v !== null && <GuideV style={{ left: `${(guides.v / COVER_W) * 100}%` }} />}
           {guides.h !== null && <GuideH style={{ top: `${(guides.h / COVER_H) * 100}%` }} />}
@@ -2198,8 +2265,36 @@ const Stage = styled.div`
   line-height: 0;
 `;
 
+const BgLayer = styled.canvas`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+`;
+
+// Drawn at the screen's own pixels and never resized: that is what keeps
+// single-pixel grain free of any pattern.
+const GrainLayer = styled.canvas`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+`;
+
+const CanvasHost = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+`;
+
 const SafeBox = styled.div`
   position: absolute;
+  z-index: 4;
   left: ${(SAFE / COVER_W) * 100}%;
   right: ${(SAFE / COVER_W) * 100}%;
   top: ${(SAFE / COVER_H) * 100}%;
@@ -2210,6 +2305,7 @@ const SafeBox = styled.div`
 
 const GuideV = styled.div`
   position: absolute;
+  z-index: 5;
   top: 0;
   bottom: 0;
   width: 1px;
@@ -2219,6 +2315,7 @@ const GuideV = styled.div`
 
 const GuideH = styled.div`
   position: absolute;
+  z-index: 5;
   left: 0;
   right: 0;
   height: 1px;
@@ -2228,6 +2325,7 @@ const GuideH = styled.div`
 
 const EmptyHint = styled.div`
   position: absolute;
+  z-index: 5;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
