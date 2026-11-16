@@ -635,40 +635,60 @@ export const getTemplate = (id) => TEMPLATES.find((t) => t.id === id) || TEMPLAT
 // ---------- grain + vignette ----------
 // Monochrome speckle (light and dark flecks with random alpha) reads as film
 // grain on both dark and light fields, and dithers away gradient banding.
-const grainTiles = {};
-function grainTile(size, seed) {
-  const key = `${size}_${seed}`;
-  if (grainTiles[key]) return grainTiles[key];
+//
+// The grain is ONE field the full size of the canvas, never a repeated tile,
+// and it comes from a long-period generator. (A small tile repeats visibly,
+// and the simple layout generator above cycles after about 230,000 values,
+// which is fewer than one tile needs, so it printed its own pattern.)
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Seeded so the grain holds still while you edit and the export matches the
+// preview, but with no structure a viewer could pick out.
+const grainFields = new Map();
+function grainField(w, h, seed) {
+  const key = `${w}x${h}_${seed}`;
+  const hit = grainFields.get(key);
+  if (hit) return hit;
   const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
+  c.width = w;
+  c.height = h;
   const g = c.getContext('2d');
-  const img = g.createImageData(size, size);
-  const rand = rng(seed + 7);
-  for (let i = 0; i < img.data.length; i += 4) {
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const rand = mulberry32(seed * 7919 + 104729);
+  for (let i = 0; i < d.length; i += 4) {
     const v = rand() < 0.5 ? 0 : 255;
-    img.data[i] = v;
-    img.data[i + 1] = v;
-    img.data[i + 2] = v;
-    img.data[i + 3] = Math.floor(rand() * rand() * 255);
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+    d[i + 3] = (rand() * rand() * 255) | 0;
   }
   g.putImageData(img, 0, 0);
-  grainTiles[key] = c;
+  if (grainFields.size >= 6) grainFields.delete(grainFields.keys().next().value);
+  grainFields.set(key, c);
   return c;
 }
 
 // amount 0..1, coarse = larger softer grain
 export function drawGrain(ctx, w, h, amount, coarse = false, seed = 1) {
   if (!amount || amount <= 0) return;
-  const tile = grainTile(512, seed);
+  // Coarse grain is a smaller field stretched up, still without any repeat.
+  const k = coarse ? 1.8 : 1;
+  const fw = Math.ceil(w / k);
+  const fh = Math.ceil(h / k);
+  const f = grainField(fw, fh, seed);
   ctx.save();
   ctx.globalAlpha = Math.min(1, amount * 0.55);
-  if (coarse) {
-    ctx.scale(1.8, 1.8);
-    ctx.imageSmoothingEnabled = true;
-  }
-  ctx.fillStyle = ctx.createPattern(tile, 'repeat');
-  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(f, 0, 0, fw, fh, 0, 0, w, h);
   ctx.restore();
 }
 
