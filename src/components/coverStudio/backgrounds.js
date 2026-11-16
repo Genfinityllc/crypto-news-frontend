@@ -49,21 +49,17 @@ function rng(seed) {
 // base = field colour, a1 = primary accent, a2 = secondary accent.
 // Dark fields only: covers are never set on white or light backgrounds.
 export const PALETTES = [
-  { id: 'midnight', name: 'Midnight Navy', base: '#070c1a', a1: '#2f6bff', a2: '#8fb0ff' },
   { id: 'ocean', name: 'Ocean', base: '#050d18', a1: '#1f6fd1', a2: '#2bb8a6' },
   { id: 'royal', name: 'Royal Violet', base: '#0b0819', a1: '#6a4cf5', a2: '#b9a4ff' },
   { id: 'dusk', name: 'Dusk', base: '#0a0913', a1: '#5b4bd6', a2: '#d9577a' },
   { id: 'plum', name: 'Plum', base: '#110714', a1: '#8a3fb0', a2: '#e07ab0' },
-  { id: 'teal', name: 'Deep Teal', base: '#051417', a1: '#16a394', a2: '#8ad8cd' },
-  { id: 'forest', name: 'Forest', base: '#06110b', a1: '#2c9a66', a2: '#a3dcc0' },
-  { id: 'oxblood', name: 'Oxblood', base: '#13070a', a1: '#b02a3c', a2: '#f09aa0' },
-  { id: 'ember', name: 'Ember', base: '#0f0706', a1: '#c2412d', a2: '#e8a23a' },
-  { id: 'amber', name: 'Amber Ink', base: '#0e0a05', a1: '#d6952a', a2: '#f6d48c' },
   { id: 'steel', name: 'Steel', base: '#090d13', a1: '#4a6a8a', a2: '#b8c7d6' },
   { id: 'graphite', name: 'Graphite', base: '#0b0c0f', a1: '#7d8798', a2: '#e3e8f0' },
-  { id: 'cobalt', name: 'Cobalt', base: '#0a2278', a1: '#4f8bff', a2: '#dfe8ff' },
   { id: 'ink', name: 'Black and White', base: '#050505', a1: '#ffffff', a2: '#9aa0a8' },
 ];
+
+// The palette a new cover starts with (the owner's pick).
+export const DEFAULT_PALETTE = PALETTES.find((p) => p.id === 'royal') || PALETTES[0];
 
 // ---------- drawing primitives ----------
 // Soft colour field with a gaussian-like falloff (no blur filter needed).
@@ -180,42 +176,6 @@ export const TEMPLATES = [
     },
   },
   {
-    id: 'halo',
-    name: 'Halo',
-    note: 'A soft ring of light. Set the logo inside it',
-    draw(ctx, w, h, p, k, rand, q) {
-      fillBase(ctx, w, h, p, 0.4);
-      const cx = w / 2;
-      const cy = h / 2;
-      const r0 = h * 0.16;
-      const r1 = h * 0.66;
-      const ring = (g, color, a) => {
-        const gr = g.createRadialGradient(cx, cy, r0, cx, cy, r1);
-        gr.addColorStop(0, rgba(color, 0));
-        gr.addColorStop(0.34, rgba(color, a * 0.12));
-        gr.addColorStop(0.5, rgba(color, a));
-        gr.addColorStop(0.66, rgba(color, a * 0.28));
-        gr.addColorStop(1, rgba(color, 0));
-        g.fillStyle = gr;
-        g.fillRect(0, 0, w, h);
-      };
-      ctx.globalCompositeOperation = 'screen';
-      ring(ctx, p.a1, 0.8 * k);
-      // second colour washes across one side of the ring
-      const l = layer(q);
-      ring(l.g, p.a2, 0.85 * k);
-      l.g.globalCompositeOperation = 'destination-in';
-      const ang = rand() * TAU;
-      const m = l.g.createLinearGradient(cx - Math.cos(ang) * r1, cy - Math.sin(ang) * r1, cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
-      m.addColorStop(0.35, 'rgba(0,0,0,0)');
-      m.addColorStop(1, 'rgba(0,0,0,1)');
-      l.g.fillStyle = m;
-      l.g.fillRect(0, 0, w, h);
-      ctx.drawImage(l.c, 0, 0, w, h);
-      ctx.globalCompositeOperation = 'source-over';
-    },
-  },
-  {
     id: 'eclipse',
     name: 'Planet Rise',
     note: 'Light breaking over a wide curved horizon',
@@ -327,93 +287,6 @@ export const TEMPLATES = [
     },
   },
   {
-    id: 'veils',
-    name: 'Veils',
-    note: 'Fine luminous ridges drifting across the frame',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p, 0.4);
-      ctx.globalCompositeOperation = 'screen';
-      field(ctx, w * (0.3 + rand() * 0.4), h * 0.95, h * 0.95, p.a1, 0.34 * k);
-      const layers = 5;
-      for (let i = 0; i < layers; i++) {
-        const t = i / (layers - 1);
-        const baseY = h * (0.4 + t * 0.44);
-        const amp = h * (0.08 - t * 0.02);
-        const ph = rand() * TAU;
-        const f = 0.55 + rand() * 0.5;
-        const crest = (x) => {
-          const u = x / w;
-          return baseY + Math.sin(u * TAU * f + ph) * amp + Math.sin(u * TAU * f * 2.3 + ph * 1.7) * amp * 0.25;
-        };
-        const trace = () => {
-          ctx.beginPath();
-          ctx.moveTo(-10, crest(-10));
-          for (let x = 0; x <= w + 10; x += 14) ctx.lineTo(x, crest(x));
-        };
-        const col = mix(p.a1, p.a2, t * 0.75);
-        // light falls away quickly beneath each ridge, so no solid shapes form
-        trace();
-        ctx.lineTo(w + 10, baseY + amp + h * 0.24);
-        ctx.lineTo(-10, baseY + amp + h * 0.24);
-        ctx.closePath();
-        const g = ctx.createLinearGradient(0, baseY - amp * 1.3, 0, baseY + amp + h * 0.22);
-        g.addColorStop(0, rgba(col, 0.3 * k));
-        g.addColorStop(0.3, rgba(col, 0.09 * k));
-        g.addColorStop(1, rgba(col, 0));
-        ctx.fillStyle = g;
-        ctx.fill();
-        trace();
-        const lg = ctx.createLinearGradient(0, 0, w, 0);
-        const la = Math.min(1, 0.6 * k);
-        lg.addColorStop(0, rgba(col, 0));
-        lg.addColorStop(0.3 + rand() * 0.2, rgba(mix(col, '#ffffff', 0.35), la));
-        lg.addColorStop(1, rgba(col, la * 0.15));
-        ctx.strokeStyle = lg;
-        ctx.lineWidth = 1.3;
-        ctx.stroke();
-      }
-      ctx.globalCompositeOperation = 'source-over';
-    },
-  },
-  {
-    id: 'flow',
-    name: 'Flow Lines',
-    note: 'A ribbon of fine lines twisting across the frame',
-    draw(ctx, w, h, p, k, rand) {
-      fillBase(ctx, w, h, p, 0.4);
-      ctx.globalCompositeOperation = 'screen';
-      field(ctx, w * (0.35 + rand() * 0.3), h * 0.62, h * 0.9, p.a1, 0.34 * k, 1.6, 1);
-      const n = 54;
-      const ph = rand() * TAU;
-      const ph2 = rand() * TAU;
-      for (let j = 0; j < n; j++) {
-        const t = j / (n - 1);
-        ctx.beginPath();
-        for (let x = -20; x <= w + 20; x += 9) {
-          const u = x / w;
-          const yc = h * (0.56 + 0.12 * Math.sin(u * TAU * 0.6 + ph));
-          // thickness swings through zero, which is what twists the ribbon
-          const thick = h * 0.42 * Math.sin(u * TAU * 0.8 + ph2);
-          const y = yc + (t - 0.5) * thick;
-          if (x === -20) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        const col = mix(p.a1, p.a2, t);
-        // the two edges of the ribbon carry more light than its middle
-        const a = Math.min(1, (0.3 + 0.55 * Math.abs(2 * t - 1)) * 0.75 * k);
-        const g = ctx.createLinearGradient(0, 0, w, 0);
-        g.addColorStop(0, rgba(col, 0));
-        g.addColorStop(0.15, rgba(col, a));
-        g.addColorStop(0.85, rgba(col, a));
-        g.addColorStop(1, rgba(col, 0));
-        ctx.strokeStyle = g;
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-      }
-      ctx.globalCompositeOperation = 'source-over';
-    },
-  },
-  {
     id: 'topo',
     name: 'Topographic',
     note: 'Organic contour rings around a soft glow',
@@ -443,47 +316,6 @@ export const TEMPLATES = [
         l.g.stroke();
       }
       radialMask(l.g, w, h, cx, cy, h * 1.5);
-      ctx.globalAlpha = Math.min(1, k);
-      ctx.drawImage(l.c, 0, 0, w, h);
-      ctx.globalAlpha = 1;
-    },
-  },
-  {
-    id: 'guilloche',
-    name: 'Guilloche',
-    note: 'Banknote-style engraved rosette',
-    draw(ctx, w, h, p, k, rand, q) {
-      fillBase(ctx, w, h, p, 0.3);
-      const right = rand() < 0.5;
-      const cx = right ? w * 0.8 : w * 0.2;
-      const cy = h * 0.5;
-      ctx.globalCompositeOperation = 'screen';
-      field(ctx, cx, cy, h * 0.95, p.a1, 0.5 * k);
-      ctx.globalCompositeOperation = 'source-over';
-      const l = layer(q);
-      const bands = [
-        { R: h * 0.66, A: h * 0.075, n: 18, K: 10 },
-        { R: h * 0.45, A: h * 0.06, n: 14, K: 9 },
-        { R: h * 0.26, A: h * 0.045, n: 10, K: 8 },
-        { R: h * 0.11, A: h * 0.03, n: 6, K: 6 },
-      ];
-      bands.forEach((b, bi) => {
-        for (let kk = 0; kk < b.K; kk++) {
-          const phase = (kk / b.K) * TAU;
-          l.g.beginPath();
-          for (let th = 0; th <= TAU + 0.01; th += 0.008) {
-            const r = b.R + b.A * Math.sin(b.n * th + phase);
-            const x = cx + Math.cos(th) * r;
-            const y = cy + Math.sin(th) * r;
-            if (th === 0) l.g.moveTo(x, y);
-            else l.g.lineTo(x, y);
-          }
-          l.g.strokeStyle = rgba(bi % 2 ? mix(p.a2, p.a1, 0.35) : p.a2, 0.42);
-          l.g.lineWidth = 0.9;
-          l.g.stroke();
-        }
-      });
-      radialMask(l.g, w, h, cx, cy, h * 1.25);
       ctx.globalAlpha = Math.min(1, k);
       ctx.drawImage(l.c, 0, 0, w, h);
       ctx.globalAlpha = 1;
@@ -841,7 +673,7 @@ export function renderBackground(canvas, spec, opts = {}) {
     }
   } else {
     const tpl = getTemplate(spec.templateId);
-    const p = spec.palette || PALETTES[0];
+    const p = spec.palette || DEFAULT_PALETTE;
     const k = spec.intensity == null ? 1 : spec.intensity;
     tpl.draw(ctx, COVER_W, COVER_H, p, k, rng(spec.seed || 1), s);
     ctx.globalCompositeOperation = 'source-over';
@@ -850,7 +682,7 @@ export function renderBackground(canvas, spec, opts = {}) {
   ctx.restore();
 
   // A dark vignette muddies a light field, so it is much gentler there.
-  const lightField = spec.kind !== 'image' && isLight((spec.palette || PALETTES[0]).base);
+  const lightField = spec.kind !== 'image' && isLight((spec.palette || DEFAULT_PALETTE).base);
   drawVignette(ctx, w, h, (spec.vignette || 0) * (lightField ? 0.3 : 1));
   drawCenterVignette(ctx, w, h, spec.centerVignette || 0);
   if (!opts.skipGrain) {

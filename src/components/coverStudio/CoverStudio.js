@@ -6,6 +6,7 @@ import {
   COVER_W,
   COVER_H,
   PALETTES,
+  DEFAULT_PALETTE,
   TEMPLATES,
   renderBackground,
   drawGrain,
@@ -160,8 +161,8 @@ const normHex = (v, fallback = '#ffffff') => (/^#[0-9a-fA-F]{6}$/.test(String(v 
 const DEFAULT_BG = {
   kind: 'template',
   templateId: 'fields',
-  paletteId: 'midnight',
-  palette: { base: PALETTES[0].base, a1: PALETTES[0].a1, a2: PALETTES[0].a2 },
+  paletteId: DEFAULT_PALETTE.id,
+  palette: { base: DEFAULT_PALETTE.base, a1: DEFAULT_PALETTE.a1, a2: DEFAULT_PALETTE.a2 },
   intensity: 1,
   seed: 1,
   flip: false,
