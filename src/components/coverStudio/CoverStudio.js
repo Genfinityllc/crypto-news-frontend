@@ -167,6 +167,7 @@ const DEFAULT_BG = {
   grainCoarse: false,
   grainOnTop: false,
   vignette: 0.25,
+  centerVignette: 0,
   dim: 0,
   image: null,
   imageLabel: '',
@@ -541,7 +542,7 @@ export default function CoverStudio({
     loadImage(corsUrl(incoming.url))
       .then((img) => {
         if (cancelled) return;
-        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, vignette: 0, grain: 0 });
+        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, vignette: 0, centerVignette: 0, grain: 0 });
         setBgTab('image');
         setLeftTab('background');
         if (incoming.hadWatermark) {
@@ -1280,7 +1281,8 @@ export default function CoverStudio({
               <Slider label="Darken" min={0} max={0.8} step={0.02} value={bg.dim} onChange={(v) => setBg({ dim: v })} />
             )}
             <Slider label="Grain" min={0} max={1} step={0.02} value={bg.grain} onChange={(v) => setBg({ grain: v })} />
-            <Slider label="Vignette" min={0} max={1} step={0.02} value={bg.vignette} onChange={(v) => setBg({ vignette: v })} />
+            <Slider label="Edge vignette" min={0} max={1} step={0.02} value={bg.vignette} onChange={(v) => setBg({ vignette: v })} />
+            <Slider label="Centre vignette" min={0} max={1} step={0.02} value={bg.centerVignette} onChange={(v) => setBg({ centerVignette: v })} />
             <Check>
               <input type="checkbox" checked={bg.grainCoarse} onChange={(e) => setBg({ grainCoarse: e.target.checked })} />
               Coarser grain

@@ -701,12 +701,33 @@ export function drawVignette(ctx, w, h, amount) {
   ctx.fillRect(0, 0, w, h);
 }
 
+// The reverse of the edge vignette: shade the middle of the frame and fade
+// out toward the edges, so a logo or headline placed there stands out.
+export function drawCenterVignette(ctx, w, h, amount) {
+  if (!amount || amount <= 0) return;
+  const a = Math.min(0.92, amount * 0.9);
+  ctx.save();
+  // an ellipse that follows the 2:1 frame
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(1.75, 1);
+  const r = h * 0.66;
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+  g.addColorStop(0, `rgba(0,0,0,${a})`);
+  g.addColorStop(0.3, `rgba(0,0,0,${a * 0.82})`);
+  g.addColorStop(0.6, `rgba(0,0,0,${a * 0.4})`);
+  g.addColorStop(0.85, `rgba(0,0,0,${a * 0.1})`);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+  ctx.restore();
+}
+
 // ---------- full background render ----------
 // spec = {
 //   kind: 'template' | 'image',
 //   templateId, palette:{base,a1,a2}, intensity, seed, flip,
 //   image (HTMLImageElement|canvas), dim (0..1), tint,
-//   grain (0..1), grainCoarse, vignette (0..1)
+//   grain (0..1), grainCoarse, vignette (0..1), centerVignette (0..1)
 // }
 export function renderBackground(canvas, spec, opts = {}) {
   const w = canvas.width;
@@ -752,6 +773,7 @@ export function renderBackground(canvas, spec, opts = {}) {
   // A dark vignette muddies a light field, so it is much gentler there.
   const lightField = spec.kind !== 'image' && isLight((spec.palette || PALETTES[0]).base);
   drawVignette(ctx, w, h, (spec.vignette || 0) * (lightField ? 0.3 : 1));
+  drawCenterVignette(ctx, w, h, spec.centerVignette || 0);
   if (!opts.skipGrain) {
     // Grain is authored for full size; thumbnails get a lighter pass.
     drawGrain(ctx, w, h, (spec.grain || 0) * (s < 0.5 ? 0.6 : 1), spec.grainCoarse, 3);
