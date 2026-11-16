@@ -77,6 +77,7 @@ The Cover Generator page has two modes: **Generate with AI** (the original flow)
 - Logos load from `/api/cover-generator/logo-preview/:symbol` with `crossOrigin="anonymous"`. Anything drawn on the canvas must be CORS-enabled or the export is blocked.
 - Use gradients and paths only in `backgrounds.js` (no `ctx.filter`, Safari does not support it).
 - No emojis and no em dashes in UI copy.
+- **The live site has a strict Content-Security-Policy and a catch-all route (both in `vercel.json`) that localhost does not have.** Anything new must respect them: fonts are self-hosted (`studioFonts.js`, `@fontsource/*`, no font CDN), images may be `https:` or `data:` but never `blob:`, `fetch()` of a `data:` URL is blocked, and files in `public/` outside `/static/` and `/logos/` are answered with `index.html` (so assets are imported through webpack, like the watermark). Always verify on the live URL after a deploy.
 - Local dev: launch config `crypto-news-frontend` (port 3000, which the backend CORS allowlist accepts).
 
 ## 🗺 Recent cover-generator UI changes

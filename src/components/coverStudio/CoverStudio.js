@@ -12,6 +12,8 @@ import {
   extractLogoColors,
   isLight,
 } from './backgrounds';
+import './studioFonts';
+import watermarkUrl from './genfinity-watermark.png';
 
 // ---------------------------------------------------------------------------
 // Design Studio: compose a cover by hand.
@@ -40,34 +42,9 @@ const FONTS = [
 ];
 const WEIGHT_NAMES = { 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold' };
 
-const FONT_HREF =
-  'https://fonts.googleapis.com/css2?' +
-  FONTS.map((f) => `family=${f.family.replace(/ /g, '+')}:wght@${f.weights.join(';')}`).join('&') +
-  '&display=swap';
-
-let fontCssPromise = null;
-function loadFontCss() {
-  if (fontCssPromise) return fontCssPromise;
-  fontCssPromise = new Promise((resolve) => {
-    const existing = document.querySelector('link[data-cover-studio-fonts]');
-    if (existing) return resolve();
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = FONT_HREF;
-    link.setAttribute('data-cover-studio-fonts', '1');
-    link.onload = () => resolve();
-    link.onerror = () => resolve();
-    document.head.appendChild(link);
-    setTimeout(resolve, 5000);
-    return undefined;
-  });
-  return fontCssPromise;
-}
-
 // Canvas text is measured the moment it is drawn, so the font file must be in
 // memory first or the text box wraps with fallback metrics.
 async function ensureFont(family, weight) {
-  await loadFontCss();
   if (!document.fonts || !document.fonts.load) return;
   try {
     await Promise.race([
@@ -77,6 +54,27 @@ async function ensureFont(family, weight) {
   } catch (e) {
     /* fall back to whatever is available */
   }
+}
+
+// Local files are read as data: URLs. The live site's Content-Security-Policy
+// allows data: images but not blob: images.
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('File could not be read'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// data: URL to Blob without fetch() (the CSP forbids fetching data: URLs).
+function dataUrlToBlob(dataUrl) {
+  const [head, body] = dataUrl.split(',');
+  const mime = (head.match(/:(.*?);/) || [])[1] || 'image/png';
+  const bin = atob(body);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }
 
 function loadImage(url, cors = true) {
@@ -465,14 +463,13 @@ export default function CoverStudio({
     ro.observe(stageRef.current);
     fit();
 
-    loadImage(`${process.env.PUBLIC_URL || ''}/genfinity-watermark.png`, false)
+    loadImage(watermarkUrl, false)
       .then((img) => {
         wmImgRef.current = img;
         drawOverlay();
       })
       .catch(() => {});
 
-    loadFontCss();
     ensureFont('Inter', 700);
     ensureFont('Inter', 400);
 
@@ -623,11 +620,10 @@ export default function CoverStudio({
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    loadImage(url, false)
+    readFileAsDataUrl(file)
+      .then((url) => loadImage(url, false))
       .then((img) => addLogoFromImage(img, { symbol: '', name: file.name.replace(/\.[^.]+$/, '') }))
-      .catch(() => toast.error('Could not read that image.'))
-      .finally(() => URL.revokeObjectURL(url));
+      .catch(() => toast.error('Could not read that image.'));
   };
 
   const TEXT_PRESETS = {
@@ -978,8 +974,8 @@ export default function CoverStudio({
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    loadImage(url, false)
+    readFileAsDataUrl(file)
+      .then((url) => loadImage(url, false))
       .then((img) => setBg({ kind: 'image', image: img, imageLabel: file.name, dim: 0 }))
       .catch(() => toast.error('Could not read that image.'));
   };
@@ -1031,7 +1027,7 @@ export default function CoverStudio({
     if (!dataUrl) return;
     setSaving(true);
     try {
-      const blob = await fetch(dataUrl).then((r) => r.blob());
+      const blob = dataUrlToBlob(dataUrl);
       const label = exportLabel();
       const form = new FormData();
       form.append('image', blob, 'cover.png');
