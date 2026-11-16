@@ -357,6 +357,12 @@ export default function CoverStudio({
       selectionColor: 'rgba(0,212,255,0.08)',
       selectionBorderColor: '#00d4ff',
       uniformScaling: true,
+      // Hold Shift while dragging a corner to scale from the centre.
+      centeredKey: 'shiftKey',
+      // Fabric's defaults put distortion on Shift (free-ratio scaling and
+      // skew). Logos and text must never be stretched, so both are off.
+      uniScaleKey: null,
+      altActionKey: null,
     });
     fabricRef.current = c;
 
@@ -1299,7 +1305,7 @@ export default function CoverStudio({
 
         {leftTab === 'logos' && (
           <PanelBody>
-            <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them.</Hint>
+            <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
             <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
             <LogoGrid>
               {shownLogos.map((l) => (
@@ -1553,7 +1559,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
