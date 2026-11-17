@@ -336,6 +336,9 @@ export function removePlainBackground(source, tolerance = 34) {
 // Positions are in cover pixels (1920x1080). Colours 'a1', 'a2' and 'base' are
 // taken from the current background palette when the layout is applied.
 // Every item becomes an ordinary object that can be moved, edited or removed.
+// The headline starts aligned to the side the guests are on (owner's rule):
+// guests in a right column, headline right-aligned against it; guests in a
+// left column, headline left-aligned. Centred layouts stay centred.
 const HEAD = 'Your Headline\nGoes Here';
 
 export const INTERVIEW_LAYOUTS = [
@@ -350,7 +353,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 70, w: 300, h: 100, caption: true },
       { t: 'logo', slot: 'partner', cx: 700, cy: 228, w: 440, h: 110 },
       { t: 'pill', cx: 1190, cy: 228, size: 56 },
-      { t: 'text', role: 'headline', text: HEAD, x: 170, y: 370, w: 1230, size: 158, weight: 800, align: 'left', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: HEAD, x: 160, y: 370, w: 1230, size: 158, weight: 800, align: 'right', lineHeight: 1.0 },
       { t: 'brought', anchor: 'right', x: 1390, cy: 905 },
     ],
   },
@@ -366,7 +369,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 80, w: 380, h: 110, caption: true },
       { t: 'logo', slot: 'partner', cx: 750, cy: 225, w: 300, h: 170 },
       { t: 'pill', cx: 1160, cy: 232, size: 54 },
-      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 365, w: 1290, size: 172, weight: 800, align: 'left', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 365, w: 1290, size: 172, weight: 800, align: 'right', lineHeight: 1.0 },
       { t: 'text', role: 'subhead', text: 'Supporting line goes here', x: 360, y: 760, w: 990, size: 52, weight: 500, align: 'right', box: { color: 'a1', padX: 30, padY: 12, radius: 0 } },
       { t: 'brought', anchor: 'center', x: 1045, cy: 915 },
     ],
@@ -427,7 +430,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 80, w: 330, h: 80, caption: true },
       { t: 'logo', slot: 'partner', cx: 650, cy: 265, w: 440, h: 95 },
       { t: 'pill', cx: 1120, cy: 265, size: 56 },
-      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1180, size: 138, weight: 500, align: 'left', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1180, size: 138, weight: 500, align: 'right', lineHeight: 1.0 },
       { t: 'text', role: 'subhead', text: 'Highlighted Words', x: 150, y: 565, w: 1180, size: 132, weight: 400, font: 'serif', italic: true, align: 'right', box: { color: 'a1', padX: 32, padY: 4, radius: 0 } },
       { t: 'brought', anchor: 'right', x: 1320, cy: 865 },
     ],
