@@ -423,16 +423,18 @@ export const INTERVIEW_LAYOUTS = [
   {
     id: 'edge2',
     name: 'Two guests, right edge',
-    note: 'Large guest photos flush to the right edge with colour label bars.',
+    note: 'Tall guest photos flush to the right edge with colour label bars.',
+    // Two portrait photos, each with its bar, fill the full height: a guest
+    // 376 wide is 427 tall (aspect 0.88) plus a bar of about 112.
     items: [
-      { t: 'guest', cx: 1649, cy: 190, size: 543, shape: 'rect', aspect: 1.43, style: 'bar', align: 'right', barFill: 'a1' },
-      { t: 'guest', cx: 1649, cy: 730, size: 543, shape: 'rect', aspect: 1.43, style: 'bar', align: 'right', barFill: 'a1' },
+      { t: 'guest', cx: 1732, cy: 214, size: 376, shape: 'rect', aspect: 0.88, style: 'bar', align: 'right', barFill: 'a1' },
+      { t: 'guest', cx: 1732, cy: 754, size: 376, shape: 'rect', aspect: 0.88, style: 'bar', align: 'right', barFill: 'a1' },
       { t: 'logo', slot: 'ecosystem', x: 80, y: 80, w: 330, h: 80, caption: true },
-      { t: 'logo', slot: 'partner', cx: 650, cy: 265, w: 440, h: 95 },
-      { t: 'pill', cx: 1120, cy: 265, size: 56 },
-      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1180, size: 138, weight: 500, align: 'right', lineHeight: 1.0 },
-      { t: 'text', role: 'subhead', text: 'Highlighted Words', x: 150, y: 565, w: 1180, size: 132, weight: 400, font: 'serif', italic: true, align: 'right', box: { color: 'a1', padX: 32, padY: 4, radius: 0 } },
-      { t: 'brought', anchor: 'right', x: 1320, cy: 865 },
+      { t: 'logo', slot: 'partner', cx: 790, cy: 265, w: 440, h: 95 },
+      { t: 'pill', cx: 1260, cy: 265, size: 56 },
+      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1320, size: 138, weight: 500, align: 'right', lineHeight: 1.0 },
+      { t: 'text', role: 'subhead', text: 'Highlighted Words', x: 150, y: 565, w: 1320, size: 132, weight: 400, font: 'serif', italic: true, align: 'right', box: { color: 'a1', padX: 32, padY: 4, radius: 0 } },
+      { t: 'brought', anchor: 'right', x: 1460, cy: 865 },
     ],
   },
   {
