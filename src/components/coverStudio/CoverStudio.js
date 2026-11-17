@@ -351,6 +351,10 @@ function applyTextBox(o) {
 }
 
 // A copy of an item's settings for undo (nested bits copied too).
+// Size of a guest's name, title and a logo's caption as a share of the photo's
+// (or logo's) width. These are the sizes the starting layouts show.
+const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.062 };
+
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
 
@@ -415,6 +419,7 @@ export default function CoverStudio({
 
   const [bg, setBgState] = useState(DEFAULT_BG);
   const [bgNote, setBgNote] = useState('');
+  const [ringAll, setRingAll] = useState(false);
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
   const [watermark, setWatermark] = useState(() => {
@@ -1116,7 +1121,12 @@ export default function CoverStudio({
       a.dy += (t.top - a.lastTop) / base;
     }
     const together = rode && !stayed;
-    if (Math.abs(size - a.lastSize * (together ? grew : 1)) > 0.5) a.rel = size / (together ? fw : base);
+    if (Math.abs(size - a.lastSize * (together ? grew : 1)) > 0.5) {
+      a.rel = size / (together ? fw : base);
+      // Sized by hand: from now on this line is whatever the person made it,
+      // until it is typed again in the name fields (see setGuestTextOf).
+      if (a.role === 'name' || a.role === 'title') a.free = true;
+    }
   };
   const noteLayout = (t, frame, fw) => {
     const a = t.studio.attach;
@@ -1177,15 +1187,27 @@ export default function CoverStudio({
       t.initDimensions();
       let widest = 1;
       for (let i = 0; i < t._textLines.length; i += 1) widest = Math.max(widest, t.getLineWidth(i));
-      let size = widest > tw ? Math.max(want * 0.45, (want * tw) / widest) * 0.995 : want;
-      if (a.role === 'title' && nameSize) size = Math.min(size, nameSize * 0.82);
-      t.set({ fontSize: size, width: tw });
+      let size = want;
+      let boxW = tw;
+      if (a.free) {
+        // sized by hand: keep it, even if it is wider than the photo
+        boxW = Math.max(tw, widest + 2);
+      } else {
+        // The layout's size is the largest a line gets. A longer line is made
+        // smaller until it fits the width; it wraps only below 45%.
+        if (widest > tw) size = Math.max(want * 0.45, (want * tw) / widest) * 0.995;
+        if (a.role === 'title' && nameSize) size = Math.min(size, nameSize * 0.82);
+      }
+      t.set({ fontSize: size, width: boxW });
       t.initDimensions();
       if (a.role === 'name') nameSize = size;
-      t.set({ left: cx + a.dx * fw, top: y + t.height / 2 + a.dy * fw });
+      // a line wider than the photo still starts (or ends) on the chosen side
+      const lean = align === 'left' ? (boxW - tw) / 2 : align === 'right' ? -(boxW - tw) / 2 : 0;
+      t.set({ left: cx + lean + a.dx * fw, top: y + t.height / 2 + a.dy * fw });
       t.setCoords();
       noteLayout(t, frame, fw);
-      y += t.height + fw * 0.012;
+      // an empty line takes no room, so a guest with no title gets a shorter plate
+      if (String(t.text || '').trim()) y += t.height + fw * 0.012;
     });
     if (bar) {
       const hgt = Math.max(fw * 0.14, y - fw * 0.012 - bottom + padY);
@@ -1240,7 +1262,7 @@ export default function CoverStudio({
       textAlign: 'center',
       editable: true,
     });
-    t.studio = { kind: 'text', role: `guest-${role}`, attach: { to: frame, role, rel: isName ? 0.105 : role === 'title' ? 0.06 : 0.062, dx: 0, dy: 0 } };
+    t.studio = { kind: 'text', role: `guest-${role}`, attach: { to: frame, role, rel: ATTACH_REL[role] || ATTACH_REL.title, dx: 0, dy: 0 } };
     t.setControlsVisibility({ mt: false, mb: false });
     styleObject(t);
     c.add(t);
@@ -1507,6 +1529,22 @@ export default function CoverStudio({
     bump();
   };
 
+  // The border, for the selected guest or (with the tick box) every guest.
+  const setRing = (patch, all = ringAll) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo') return;
+    const targets = all ? c.getObjects().filter((g) => g.studio && g.studio.kind === 'photo') : [o];
+    targets.forEach((g) => {
+      Object.assign(g.studio, patch);
+      repaintPhoto(g);
+      layoutAttached(g);
+    });
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
   // Size a guest (or a logo with its label) as one piece: the photo, the name,
   // the title and the label bar all change together.
   const resizeWhole = (frame, width) => {
@@ -1548,22 +1586,33 @@ export default function CoverStudio({
 
   const guestText = (frame, role) => kidsOf(frame).find((k) => k.studio.attach.role === role) || null;
 
-  const setGuestText = (role, value) => {
+  // Typing a name or title in a field (the name strip above the cover, or the
+  // Edit panel) always follows the layout's rules: the line goes back to the
+  // layout's size, which is its largest, and is made smaller only as far as
+  // needed to fit the width of the plate. Sizes set by hand on the cover are
+  // kept until the line is typed here again.
+  const setGuestTextOf = (o, role, value) => {
     const c = fabricRef.current;
-    const o = active1();
     if (!c || !o) return;
     let t = guestText(o, role);
     if (!t && value) t = makeAttachedText(o, role, value);
-    if (t) t.set('text', value);
+    if (t) {
+      // settle anything dragged since the last layout before the reset
+      layoutAttached(o);
+      t.set('text', value);
+      t.studio.attach.rel = ATTACH_REL[role] || t.studio.attach.rel;
+      t.studio.attach.free = false;
+    }
     layoutAttached(o);
     c.requestRenderAll();
     commitSoon();
     bump();
   };
+  const setGuestText = (role, value) => setGuestTextOf(active1(), role, value);
 
-  const setGuestStyle = (patch) => {
+  const setGuestStyle = (patch) => setGuestStyleOf(active1(), patch);
+  const setGuestStyleOf = (o, patch) => {
     const c = fabricRef.current;
-    const o = active1();
     if (!c || !o || !o.studio || o.studio.kind !== 'photo') return;
     Object.assign(o.studio, patch);
     const st = o.studio;
@@ -1572,13 +1621,32 @@ export default function CoverStudio({
     if (st.textStyle !== 'bar' && bar) c.remove(bar);
     if (st.textStyle === 'bar' && bar) bar.set('fill', st.barFill);
     if (st.textStyle === 'none') {
+      // Keep what was typed (and how it was styled) so that switching back to
+      // "Under photo" or "Label bar" brings the same name and title back.
+      const kept = { ...(st.kept || {}) };
       ['name', 'title'].forEach((r) => {
         const t = guestText(o, r);
-        if (t) c.remove(t);
+        if (!t) return;
+        const a = t.studio.attach;
+        kept[r] = {
+          text: t.text,
+          look: { fontFamily: t.fontFamily, fontWeight: t.fontWeight, fontStyle: t.fontStyle, fill: t.fill, charSpacing: t.charSpacing, lineHeight: t.lineHeight },
+          attach: { rel: a.rel, free: !!a.free, dx: a.dx, dy: a.dy },
+        };
+        c.remove(t);
       });
+      st.kept = kept;
     } else {
-      if (!guestText(o, 'name')) makeAttachedText(o, 'name', 'Guest Name');
-      if (!guestText(o, 'title')) makeAttachedText(o, 'title', 'Title at Company');
+      [['name', 'Guest Name'], ['title', 'Title at Company']].forEach(([r, fallback]) => {
+        if (guestText(o, r)) return;
+        const k = st.kept && st.kept[r];
+        const t = makeAttachedText(o, r, k ? k.text : fallback);
+        if (k) {
+          t.set(k.look);
+          Object.assign(t.studio.attach, k.attach);
+        }
+      });
+      st.kept = undefined;
     }
     layoutAttached(o);
     c.requestRenderAll();
@@ -2389,6 +2457,18 @@ export default function CoverStudio({
   };
   const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
   const selPhoto = selKind === 'photo' ? sel.studio : null;
+  // Guests that show a name plate, in reading order, for the name strip.
+  const plateGuests = guestList
+    .filter((o) => o.studio.textStyle !== 'none')
+    .sort((p, q) => (Math.abs(p.top - q.top) > 60 ? p.top - q.top : p.left - q.left));
+  const plateAlign = plateGuests.length && plateGuests.every((o) => (o.studio.textAlign || 'center') === (plateGuests[0].studio.textAlign || 'center')) ? plateGuests[0].studio.textAlign || 'center' : '';
+  // Show on the cover which guest a name field belongs to.
+  const pointAt = (o) => {
+    if (!c || c.getActiveObject() === o) return;
+    c.setActiveObject(o);
+    c.requestRenderAll();
+    bump();
+  };
   const selBox = selKind === 'text' && sel.studio.box && sel.studio.box.on ? sel.studio.box : null;
   const paletteSwatches = [bg.palette.a1, bg.palette.a2, '#141414', '#ffffff'];
 
@@ -3092,14 +3172,28 @@ export default function CoverStudio({
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Border</FieldLabel>
-                      <Slider label="Border width" min={0} max={90} step={1} value={selPhoto.ring} onChange={(v) => setPhoto({ ring: v })} fmt={(v) => (v < 1 ? 'None' : `${Math.round(v)}`)} />
+                      <Slider label="Border width" min={0} max={90} step={1} value={selPhoto.ring} onChange={(v) => setRing({ ring: v })} fmt={(v) => (v < 1 ? 'None' : `${Math.round(v)}`)} />
                       {selPhoto.ring > 0 && (
                         <SwatchRow>
-                          <input type="color" value={normHex(selPhoto.ringColor)} onChange={(e) => setPhoto({ ringColor: e.target.value })} />
+                          <input type="color" value={normHex(selPhoto.ringColor)} onChange={(e) => setRing({ ringColor: e.target.value })} />
                           {paletteSwatches.map((col, i) => (
-                            <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ ringColor: col })} />
+                            <Swatch key={i} style={{ background: col }} onClick={() => setRing({ ringColor: col })} />
                           ))}
                         </SwatchRow>
+                      )}
+                      {guestList.length > 1 && (
+                        <Check>
+                          <input
+                            type="checkbox"
+                            checked={ringAll}
+                            onChange={(e) => {
+                              setRingAll(e.target.checked);
+                              // ticking it gives every guest this guest's border straight away
+                              if (e.target.checked) setRing({ ring: selPhoto.ring, ringColor: selPhoto.ringColor }, true);
+                            }}
+                          />
+                          Same border on every guest photo
+                        </Check>
                       )}
                       <FieldLabel style={{ marginTop: 10 }}>Colour behind a cut-out photo</FieldLabel>
                       <SwatchRow>
@@ -3316,6 +3410,45 @@ export default function CoverStudio({
           </Group>
         </Toolbar>
 
+        {isInterview && plateGuests.length > 0 && (
+          <NameBar>
+            <NameHead>
+              <ToolLabel>Names and titles</ToolLabel>
+              <NameNote>Type here. Each line keeps the layout's size and gets smaller only if it is too long for its plate.</NameNote>
+              {plateGuests.length > 1 && (
+                <Group>
+                  <ToolLabel>Align all</ToolLabel>
+                  <AlignSet value={plateAlign} onPick={(a) => plateGuests.forEach((o) => setGuestStyleOf(o, { textAlign: a }))} />
+                </Group>
+              )}
+            </NameHead>
+            <NameGrid>
+              {plateGuests.map((o, i) => (
+                <NameCell key={i} $on={selection.includes(o)}>
+                  <NameNum>{i + 1}</NameNum>
+                  <NameFields>
+                    <NameInput
+                      placeholder="Name"
+                      aria-label={`Guest ${i + 1} name`}
+                      value={(guestText(o, 'name') || {}).text || ''}
+                      onFocus={() => pointAt(o)}
+                      onChange={(e) => setGuestTextOf(o, 'name', e.target.value)}
+                    />
+                    <NameInput
+                      placeholder="Title"
+                      aria-label={`Guest ${i + 1} title`}
+                      value={(guestText(o, 'title') || {}).text || ''}
+                      onFocus={() => pointAt(o)}
+                      onChange={(e) => setGuestTextOf(o, 'title', e.target.value)}
+                    />
+                  </NameFields>
+                  <AlignSet value={o.studio.textAlign || 'center'} onPick={(a) => setGuestStyleOf(o, { textAlign: a })} />
+                </NameCell>
+              ))}
+            </NameGrid>
+          </NameBar>
+        )}
+
         <Stage ref={stageRef} $ratio={`${W} / ${H}`}>
           <BgLayer ref={bgCanvasRef} width={W} height={H} />
           <GrainLayer
@@ -3357,6 +3490,25 @@ function Slider({ label, min, max, step, value, onChange, fmt }) {
       </div>
       <input type="range" min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(Number(e.target.value))} />
     </SliderWrap>
+  );
+}
+
+// Left / centre / right buttons for a guest's name and title.
+const ALIGN_LINES = { left: [[1, 13], [1, 8], [1, 11]], center: [[2, 14], [4.5, 11.5], [3, 13]], right: [[3, 15], [8, 15], [5, 15]] };
+const ALIGN_NAMES = { left: 'Left', center: 'Centre', right: 'Right' };
+function AlignSet({ value, onPick }) {
+  return (
+    <AlignWrap role="group" aria-label="Alignment">
+      {['left', 'center', 'right'].map((a) => (
+        <AlignBtn key={a} type="button" $on={value === a} title={`${ALIGN_NAMES[a]} aligned`} aria-label={`${ALIGN_NAMES[a]} aligned`} aria-pressed={value === a} onClick={() => onPick(a)}>
+          <svg width="16" height="14" viewBox="0 0 16 14" aria-hidden="true">
+            {ALIGN_LINES[a].map(([x1, x2], i) => (
+              <line key={i} x1={x1} x2={x2} y1={2 + i * 5} y2={2 + i * 5} stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            ))}
+          </svg>
+        </AlignBtn>
+      ))}
+    </AlignWrap>
   );
 }
 
@@ -3975,6 +4127,120 @@ const Toolbar = styled.div`
   align-items: center;
   flex-wrap: wrap;
   gap: 0.6rem 1rem;
+`;
+
+const NameBar = styled.div`
+  background: #111111;
+  border: 1px solid #222222;
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+`;
+
+const NameHead = styled.div`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+`;
+
+const NameNote = styled.span`
+  color: #8b949e;
+  font-size: 0.74rem;
+  flex: 1;
+  min-width: 200px;
+`;
+
+const NameGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 0.5rem;
+`;
+
+const NameCell = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #0a0a0a;
+  border: 1px solid ${(p) => (p.$on ? '#00d4ff' : '#30363d')};
+  border-radius: 10px;
+  padding: 0.45rem 0.5rem;
+  min-width: 0;
+`;
+
+const NameNum = styled.span`
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: #1f2a33;
+  color: #c9d1d9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+`;
+
+const NameFields = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+`;
+
+const NameInput = styled.input`
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: #111111;
+  border: 1px solid #30363d;
+  border-radius: 7px;
+  color: #e6edf3;
+  padding: 0.36rem 0.5rem;
+  font-size: 0.82rem;
+
+  &:first-child {
+    font-weight: 700;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+  }
+`;
+
+const AlignWrap = styled.div`
+  flex: none;
+  display: flex;
+  gap: 2px;
+  background: #0a0a0a;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 2px;
+`;
+
+const AlignBtn = styled.button`
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.6rem;
+  background: ${(p) => (p.$on ? '#1f2a33' : 'transparent')};
+  color: ${(p) => (p.$on ? '#00d4ff' : '#c9d1d9')};
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background: ${(p) => (p.$on ? '#1f2a33' : '#161616')};
+  }
+
+  &:focus-visible {
+    outline: 2px solid #00d4ff;
+    outline-offset: 1px;
+  }
 `;
 
 const Group = styled.div`
