@@ -398,6 +398,7 @@ export default function CoverStudio({
   const layoutAttachedRef = useRef(null);
   const layoutAllRef = useRef(null);
   const [logoMode, setLogoMode] = useState('logo'); // interview: 'logo' | 'ecosystem'
+  const [swapQuery, setSwapQuery] = useState(''); // search in the Edit tab's logo picker
   const fontFileRef = useRef(null);
   const userFontItemsRef = useRef([]); // every font file registered in this browser
   const userFontsRef = useRef([]);
@@ -1595,6 +1596,22 @@ export default function CoverStudio({
     bump();
   };
 
+  // Swap the selected logo (or fill a placeholder) with one from the library.
+  const swapLogoFromLibrary = async (entry) => {
+    const c = fabricRef.current;
+    const target = active1();
+    if (!c || !target || !target.studio || target.studio.kind !== 'logo' || addingLogo) return;
+    setAddingLogo(`swap:${entry.symbol}`);
+    try {
+      const img = await loadImage(corsUrl(`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(entry.symbol)}`));
+      if (c.getObjects().includes(target)) replaceLogo(target, img, entry);
+    } catch (e) {
+      toast.error(`No logo file found for ${entry.name || entry.symbol}. Upload it in the logo manager first.`);
+    } finally {
+      setAddingLogo('');
+    }
+  };
+
   const pickReplaceLogo = (target) => {
     logoTargetRef.current = target || null;
     if (logoFileRef.current) logoFileRef.current.click();
@@ -2187,6 +2204,14 @@ export default function CoverStudio({
     return list.slice(0, 72);
   }, [allLogos, logoQuery]);
 
+  const swapLogos = useMemo(() => {
+    const q = swapQuery.trim().toLowerCase();
+    const list = q
+      ? allLogos.filter((l) => (l.name || '').toLowerCase().includes(q) || (l.symbol || '').toLowerCase().includes(q))
+      : allLogos;
+    return list.slice(0, 45);
+  }, [allLogos, swapQuery]);
+
   const applyPalette = (p) => setBg({ paletteId: p.id, palette: { base: p.base, a1: p.a1, a2: p.a2 } });
   const setColor = (key, value) => setBg((prev) => ({ paletteId: 'custom', palette: { ...prev.palette, [key]: value } }));
   const selFont = selKind === 'text' ? findFont(sel.fontFamily, userFonts) : null;
@@ -2241,6 +2266,9 @@ export default function CoverStudio({
             </Tab>
           ))}
         </Tabs>
+
+        {/* Kept outside the tab panels: the Edit tab opens it too (Replace logo). */}
+        <input ref={logoFileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden onChange={onLogoFile} />
 
         {leftTab === 'layouts' && (
           <PanelBody>
@@ -2557,7 +2585,6 @@ export default function CoverStudio({
                 {allLogos.length > shownLogos.length && !logoQuery && <Hint>Showing the first {shownLogos.length}. Search to find the rest.</Hint>}
                 {shownLogos.length === 0 && <Hint>No match. Upload the logo in the logo manager, or use a file below.</Hint>}
                 <Ghost onClick={() => logoFileRef.current && logoFileRef.current.click()}>Use a logo file from my computer</Ghost>
-                <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/webp" hidden onChange={onLogoFile} />
                 <Hint>Files added here are used for this cover only. They are not saved to the logo library.</Hint>
             </>
           </PanelBody>
@@ -2946,12 +2973,36 @@ export default function CoverStudio({
                     </InsCell>
                     {isInterview && !sel.studio.seal && (
                       <InsCell>
-                        <FieldLabel>Logo file</FieldLabel>
-                        <Row>
-                          <Ghost onClick={() => pickReplaceLogo(sel)}>{sel.studio.placeholder ? 'Choose a file' : 'Replace logo'}</Ghost>
+                        <FieldLabel>{sel.studio.placeholder ? 'Choose the logo for this spot' : 'Change this logo'}</FieldLabel>
+                        <Muted>
+                          {sel.studio.placeholder
+                            ? 'Click a logo from the library, or use a file. It takes this spot and size.'
+                            : 'Click a logo from the library to swap it in at the same place and size.'}
+                        </Muted>
+                        <Input style={{ marginTop: 8 }} placeholder="Search networks and companies" value={swapQuery} onChange={(e) => setSwapQuery(e.target.value)} />
+                        <LogoGrid style={{ maxHeight: 250, marginTop: 8 }}>
+                          {swapLogos.map((l) => (
+                            <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => swapLogoFromLibrary(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
+                              <LogoThumb>
+                                <img
+                                  src={`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(l.symbol)}`}
+                                  alt=""
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.target.style.visibility = 'hidden';
+                                  }}
+                                />
+                              </LogoThumb>
+                              <span>{addingLogo === `swap:${l.symbol}` ? 'Loading...' : l.name}</span>
+                            </LogoTile>
+                          ))}
+                        </LogoGrid>
+                        {swapLogos.length === 0 && <Muted style={{ marginTop: 6 }}>No match in the library. Use a file instead.</Muted>}
+                        {allLogos.length > swapLogos.length && !swapQuery && <Muted style={{ marginTop: 6 }}>Showing the first {swapLogos.length}. Search to find the rest.</Muted>}
+                        <Row style={{ marginTop: 8 }}>
+                          <Ghost onClick={() => pickReplaceLogo(sel)}>Use a file from my computer</Ghost>
                           {!sel.studio.placeholder && <Ghost onClick={removeLogoBackground}>Remove plain background</Ghost>}
                         </Row>
-                        {sel.studio.placeholder && <Muted style={{ marginTop: 6 }}>This is a placeholder. Open the Logos tab and click a logo to fill it, or choose a file.</Muted>}
                         <Check style={{ marginTop: 8 }}>
                           <input type="checkbox" checked={!!guestText(sel, 'caption')} onChange={(e) => toggleCaption(e.target.checked)} />
                           Small "ECOSYSTEM" label under this logo
