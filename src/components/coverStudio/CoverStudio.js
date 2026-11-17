@@ -364,6 +364,11 @@ function applyTextBox(o) {
 }
 
 // A copy of an item's settings for undo (nested bits copied too).
+// The interview studio's "Most used" logos, in the owner's order: Hedera,
+// HashPack, Solana, XDC, Canton. Where the library has both a full wordmark
+// and a mark, the wordmark comes first. Symbols are the logo library's own.
+const MOST_USED_LOGOS = ['HEDERA_FULL', 'HBAR', 'HASHPACK', 'HASHPACKMARK', 'SOLANA_FULL', 'SOL', 'XDC', 'CANTON', 'CANTONSIMPLE'];
+
 // Size of a guest's name, title and a logo's caption as a share of the photo's
 // (or logo's) width. These are the sizes the starting layouts show.
 const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.062, hostlabel: 0.225, hostmic: 0.356 };
@@ -3067,6 +3072,27 @@ export default function CoverStudio({
     return list.slice(0, 72);
   }, [allLogos, logoQuery]);
 
+  const mostUsedLogos = useMemo(
+    () => (isInterview ? MOST_USED_LOGOS.map((sym) => allLogos.find((l) => l.symbol === sym)).filter(Boolean) : []),
+    [allLogos, isInterview]
+  );
+  // one tile of a logo grid
+  const logoTile = (l, onPick, busy, busyWord) => (
+    <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => onPick(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
+      <LogoThumb>
+        <img
+          src={`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(l.symbol)}`}
+          alt=""
+          loading="lazy"
+          onError={(e) => {
+            e.target.style.visibility = 'hidden';
+          }}
+        />
+      </LogoThumb>
+      <span>{addingLogo === busy ? busyWord : l.name}</span>
+    </LogoTile>
+  );
+
   const swapLogos = useMemo(() => {
     const q = swapQuery.trim().toLowerCase();
     const list = q
@@ -3598,6 +3624,13 @@ export default function CoverStudio({
                 )}
                 <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
                 <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
+                {mostUsedLogos.length > 0 && !logoQuery && (
+                  <>
+                    <FieldLabel>Most used</FieldLabel>
+                    <LogoGrid>{mostUsedLogos.map((l) => logoTile(l, addLogo, l.symbol, 'Adding...'))}</LogoGrid>
+                    <FieldLabel>All logos</FieldLabel>
+                  </>
+                )}
                 <LogoGrid>
                   {shownLogos.map((l) => (
                     <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => addLogo(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
@@ -4064,6 +4097,13 @@ export default function CoverStudio({
                             : 'Click a logo from the library to swap it in at the same place and size.'}
                         </Muted>
                         <Input style={{ marginTop: 8 }} placeholder="Search networks and companies" value={swapQuery} onChange={(e) => setSwapQuery(e.target.value)} />
+                        {mostUsedLogos.length > 0 && !swapQuery && (
+                          <>
+                            <FieldLabel style={{ marginTop: 10 }}>Most used</FieldLabel>
+                            <LogoGrid style={{ marginTop: 6 }}>{mostUsedLogos.map((l) => logoTile(l, swapLogoFromLibrary, `swap:${l.symbol}`, 'Loading...'))}</LogoGrid>
+                            <FieldLabel style={{ marginTop: 10 }}>All logos</FieldLabel>
+                          </>
+                        )}
                         <LogoGrid style={{ maxHeight: 250, marginTop: 8 }}>
                           {swapLogos.map((l) => (
                             <LogoTile key={`${l.group}_${l.symbol}`} onClick={() => swapLogoFromLibrary(l)} disabled={!!addingLogo} title={`${l.name} (${l.symbol})`}>
@@ -5209,7 +5249,7 @@ const Spacer = styled.div`
 `;
 
 const ToolRange = styled.input`
-  width: 130px;
+  width: 96px;
   accent-color: #00d4ff;
   cursor: pointer;
 
@@ -5222,7 +5262,7 @@ const ToolRange = styled.input`
 const ToolValue = styled.span`
   color: #8b949e;
   font-size: 0.72rem;
-  min-width: 3.6rem;
+  min-width: 3.1rem;
   font-variant-numeric: tabular-nums;
 `;
 
