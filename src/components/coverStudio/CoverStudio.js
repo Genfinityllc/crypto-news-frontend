@@ -16,6 +16,7 @@ import {
   isLight,
 } from './backgrounds';
 import './studioFonts';
+import { buildFamilies, deleteFontFiles, loadStoredFontFiles, readFontMeta, registerFont, storeFontFile } from './userFonts';
 import watermarkUrl from './genfinity-watermark.png';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,11 @@ const FONTS = [
   { family: 'IBM Plex Mono', weights: [400, 500, 600], kind: 'Mono' },
 ];
 const WEIGHT_NAMES = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
+
+// A font can come from the built-in list or from files the person added.
+const findFont = (family, extra) => FONTS.find((f) => f.family === family) || (extra || []).find((f) => f.family === family) || FONTS[0];
+const hasItalic = (def, weight) => (def.italicWeights ? def.italicWeights.includes(Number(weight)) : !!def.italic);
+const weightLabel = (def, w) => (def.names && def.names[w]) || WEIGHT_NAMES[w] || w;
 
 // Canvas text is measured the moment it is drawn, so the font file must be in
 // memory first or the text box wraps with fallback metrics.
@@ -295,6 +301,11 @@ export default function CoverStudio({
   const bgRef = useRef(DEFAULT_BG);
   const fileInputRef = useRef(null);
   const logoFileRef = useRef(null);
+  const fontFileRef = useRef(null);
+  const userFontItemsRef = useRef([]); // every font file registered in this browser
+  const userFontsRef = useRef([]);
+  const [userFonts, setUserFonts] = useState([]); // the same, grouped by family
+  const [fontDrop, setFontDrop] = useState(false);
   // New items are arranged for you until you move something by hand.
   const autoLayoutRef = useRef({ on: true, id: 'center' });
   const prevTabRef = useRef('background');
@@ -962,16 +973,101 @@ export default function CoverStudio({
     bump();
   };
 
-  // Italic is kept only where the family really has one; the browser would
-  // otherwise fake it by slanting the upright letters.
+  // Italic is kept only where the chosen weight really has one; the browser
+  // would otherwise fake it by slanting the upright letters.
   const setFont = async (family, weight, italic) => {
     const o = active1();
     if (!o) return;
-    const def = FONTS.find((f) => f.family === family) || FONTS[0];
+    const def = findFont(family, userFontsRef.current);
     const w = def.weights.includes(Number(weight)) ? Number(weight) : def.weights.reduce((a, b) => (Math.abs(b - weight) < Math.abs(a - weight) ? b : a));
-    const it = !!def.italic && (italic === undefined ? o.fontStyle === 'italic' : !!italic);
-    await ensureFont(family, w, it);
-    change({ fontFamily: family, fontWeight: w, fontStyle: it ? 'italic' : 'normal' });
+    const forced = !!def.italicOnly && def.italicOnly.includes(w);
+    const it = forced || (hasItalic(def, w) && (italic === undefined ? o.fontStyle === 'italic' : !!italic));
+    await ensureFont(def.family, w, it);
+    change({ fontFamily: def.family, fontWeight: w, fontStyle: it ? 'italic' : 'normal' });
+  };
+
+  // ---------- the person's own fonts ----------
+  const refreshUserFonts = useCallback(() => {
+    const fams = buildFamilies(userFontItemsRef.current);
+    userFontsRef.current = fams;
+    setUserFonts(fams);
+  }, []);
+
+  // Fonts added on an earlier visit are kept in this browser and come back here.
+  useEffect(() => {
+    let off = false;
+    loadStoredFontFiles().then(async (rows) => {
+      for (const row of rows) {
+        try {
+          const item = await registerFont(row.buffer, row.fileName);
+          if (off) return;
+          userFontItemsRef.current.push(item);
+        } catch (e) {
+          /* a file the browser can no longer read is skipped */
+        }
+      }
+      if (!off && rows.length) {
+        refreshUserFonts();
+        const c = fabricRef.current;
+        if (c) c.requestRenderAll();
+      }
+    });
+    return () => {
+      off = true;
+    };
+  }, [refreshUserFonts]);
+
+  const addFontFiles = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => /\.(ttf|otf|ttc|woff2?)$/i.test(f.name));
+    if (!files.length) {
+      toast.warning('Choose font files (.ttf, .otf, .woff or .woff2).');
+      return;
+    }
+    let added = 0;
+    let failed = 0;
+    const families = new Set();
+    for (const f of files) {
+      try {
+        const buffer = await f.arrayBuffer();
+        const meta = readFontMeta(buffer, f.name);
+        families.add(meta.family);
+        // The same style twice (a duplicate file) is only needed once.
+        if (userFontItemsRef.current.some((it) => it.family === meta.family && it.weight === meta.weight && it.italic === meta.italic)) continue;
+        const item = await registerFont(buffer, f.name);
+        userFontItemsRef.current.push(item);
+        await storeFontFile(f.name, buffer);
+        added += 1;
+      } catch (e) {
+        failed += 1;
+      }
+    }
+    refreshUserFonts();
+    const names = Array.from(families).join(', ');
+    if (added) toast.success(`Added ${added} font ${added === 1 ? 'style' : 'styles'}: ${names}. Select a text block and choose it under Font, in the "Your fonts" group.`);
+    else if (!failed) toast.info(`${names} is already in your fonts.`);
+    if (failed) toast.error(`${failed} ${failed === 1 ? 'file' : 'files'} could not be read as a font.`);
+  };
+
+  const onFontFiles = (e) => {
+    const list = e.target.files;
+    addFontFiles(list);
+    e.target.value = '';
+  };
+
+  const removeUserFont = (fam) => {
+    userFontItemsRef.current = userFontItemsRef.current.filter((it) => {
+      if (it.family !== fam.family) return true;
+      try {
+        document.fonts.delete(it.face);
+      } catch (e) {
+        /* already gone */
+      }
+      return false;
+    });
+    deleteFontFiles(fam.files);
+    refreshUserFonts();
+    const c = fabricRef.current;
+    if (c) c.requestRenderAll();
   };
 
   // ---------- one-click layouts ----------
@@ -1294,7 +1390,7 @@ export default function CoverStudio({
 
   const applyPalette = (p) => setBg({ paletteId: p.id, palette: { base: p.base, a1: p.a1, a2: p.a2 } });
   const setColor = (key, value) => setBg((prev) => ({ paletteId: 'custom', palette: { ...prev.palette, [key]: value } }));
-  const selFont = selKind === 'text' ? FONTS.find((f) => f.family === sel.fontFamily) || FONTS[0] : null;
+  const selFont = selKind === 'text' ? findFont(sel.fontFamily, userFonts) : null;
   const layerName = (o) =>
     o.studio && o.studio.kind === 'text'
       ? String(o.text || '').replace(/\s+/g, ' ').slice(0, 26) || 'Text'
@@ -1577,6 +1673,39 @@ export default function CoverStudio({
               <b style={{ fontSize: 12, letterSpacing: 2 }}>ADD A LABEL</b>
               <small>Small spaced caps above the title</small>
             </AddText>
+
+            <FieldLabel>Your own fonts</FieldLabel>
+            <Hint>
+              Use fonts you have on this computer. The files stay in this browser and are remembered here; they are not uploaded. Add every weight of a family at once.
+            </Hint>
+            <FontDrop
+              $over={fontDrop}
+              onClick={() => fontFileRef.current && fontFileRef.current.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setFontDrop(true);
+              }}
+              onDragLeave={() => setFontDrop(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setFontDrop(false);
+                addFontFiles(e.dataTransfer.files);
+              }}
+            >
+              <b>Add font files</b>
+              <small>Click to choose, or drop .ttf / .otf files here</small>
+            </FontDrop>
+            <input ref={fontFileRef} type="file" accept=".ttf,.otf,.ttc,.woff,.woff2" multiple hidden onChange={onFontFiles} />
+            <Hint>On a Mac your Font Book fonts are in the Fonts folder of your Library: in the file window press Cmd+Shift+G and type ~/Library/Fonts.</Hint>
+            {userFonts.map((f) => (
+              <FontRow key={f.family}>
+                <div>
+                  <b style={{ fontFamily: `"${f.family}"` }}>{f.family}</b>
+                  <small>{f.weights.map((w) => weightLabel(f, w)).join(', ')}{f.italicWeights.length ? ' (with italics)' : ''}</small>
+                </div>
+                <Ghost onClick={() => removeUserFont(f)}>Remove</Ghost>
+              </FontRow>
+            ))}
           </PanelBody>
         )}
 
@@ -1637,6 +1766,13 @@ export default function CoverStudio({
                     <InsCell>
                       <FieldLabel>Font</FieldLabel>
                       <Select value={sel.fontFamily} onChange={(e) => setFont(e.target.value, sel.fontWeight)}>
+                        {userFonts.length > 0 && (
+                          <optgroup label="Your fonts">
+                            {userFonts.map((f) => (
+                              <option key={f.family} value={f.family}>{f.family}</option>
+                            ))}
+                          </optgroup>
+                        )}
                         {['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => (
                           <optgroup key={kind} label={kind}>
                             {FONTS.filter((f) => f.kind === kind).map((f) => (
@@ -1647,10 +1783,10 @@ export default function CoverStudio({
                       </Select>
                       <Select value={sel.fontWeight} onChange={(e) => setFont(sel.fontFamily, Number(e.target.value))} style={{ marginTop: 6 }}>
                         {selFont.weights.map((w) => (
-                          <option key={w} value={w}>{WEIGHT_NAMES[w] || w}</option>
+                          <option key={w} value={w}>{weightLabel(selFont, w)}</option>
                         ))}
                       </Select>
-                      {selFont.italic && (
+                      {hasItalic(selFont, sel.fontWeight) && !(selFont.italicOnly || []).includes(Number(sel.fontWeight)) && (
                         <Check style={{ marginTop: 6 }}>
                           <input type="checkbox" checked={sel.fontStyle === 'italic'} onChange={(e) => setFont(sel.fontFamily, sel.fontWeight, e.target.checked)} />
                           Italic
@@ -1900,6 +2036,62 @@ const PanelBody = styled.div`
   /* Scrolling grids inside must keep their height; the panel itself scrolls. */
   > * {
     flex-shrink: 0;
+  }
+`;
+
+const FontDrop = styled.button`
+  display: block;
+  width: 100%;
+  padding: 0.85rem 0.75rem;
+  border-radius: 10px;
+  border: 1px dashed ${(p) => (p.$over ? '#00d4ff' : '#3a424d')};
+  background: ${(p) => (p.$over ? 'rgba(0, 212, 255, 0.08)' : '#12161c')};
+  color: #e6edf3;
+  cursor: pointer;
+  text-align: center;
+
+  b {
+    display: block;
+    font-size: 0.86rem;
+  }
+  small {
+    display: block;
+    margin-top: 2px;
+    color: #8b949e;
+    font-size: 0.72rem;
+  }
+  &:hover {
+    border-color: #00d4ff;
+  }
+`;
+
+const FontRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #262c36;
+  border-radius: 8px;
+  background: #12161c;
+
+  div {
+    min-width: 0;
+  }
+  b {
+    display: block;
+    color: #e6edf3;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  small {
+    display: block;
+    color: #8b949e;
+    font-size: 0.7rem;
+    line-height: 1.35;
+  }
+  button {
+    flex: 0 0 auto;
   }
 `;
 
