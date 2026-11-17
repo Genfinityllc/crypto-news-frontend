@@ -371,7 +371,7 @@ const MOST_USED_LOGOS = ['HEDERA_FULL', 'HBAR', 'HASHPACK', 'HASHPACKMARK', 'SOL
 
 // Size of a guest's name, title and a logo's caption as a share of the photo's
 // (or logo's) width. These are the sizes the starting layouts show.
-const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.062, hostlabel: 0.225, hostmic: 0.356 };
+const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.046, hostlabel: 0.225, hostmic: 0.356 };
 
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
@@ -1307,14 +1307,20 @@ export default function CoverStudio({
     if (cap) {
       takeHandEdits(cap, frame, fw);
       const a = cap.studio.attach;
-      const size = Math.max(9, a.rel * fw);
+      const size = Math.max(6, a.rel * fw);
       cap.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: size, charSpacing: 0, width: 6000, textAlign: 'center' });
       cap.initDimensions();
       const n = String(cap.text || '').length;
       const w0 = cap.getLineWidth(0);
-      // spread the letters so the word is exactly as wide as the logo
-      const spacing = n > 1 ? Math.max(0, Math.min(2500, ((fw - w0) * 1000) / ((n - 1) * size))) : 0;
-      cap.set({ charSpacing: spacing, width: fw + size * 2 });
+      // Letter spacing: the person's own figure once they have set one
+      // (a.track, see setCaption); until then the letters are spread so the
+      // word is exactly as wide as the logo.
+      const fit = n > 1 ? Math.max(0, Math.min(8000, ((fw - w0) * 1000) / ((n - 1) * size))) : 0;
+      const spacing = a.track != null ? a.track : fit;
+      cap.set({ charSpacing: spacing });
+      cap.initDimensions();
+      // never let a widely spaced word wrap
+      cap.set({ width: Math.max(fw, cap.getLineWidth(0)) + size * 2 });
       cap.initDimensions();
       cap.set({ left: cx + a.dx * fw, top: bottom + fw * 0.075 + cap.height / 2 + a.dy * fw });
       cap.setCoords();
@@ -2494,6 +2500,21 @@ export default function CoverStudio({
     bump();
   };
 
+  // The small label under a logo: its size and its letter spacing.
+  // spacing: null spreads the letters to the logo's width again.
+  const setCaption = (frame, patch) => {
+    const c = fabricRef.current;
+    const cap = frame ? guestText(frame, 'caption') : null;
+    if (!c || !cap) return;
+    const a = cap.studio.attach;
+    if (patch.size != null) a.rel = patch.size / Math.max(1, frame.getScaledWidth());
+    if ('spacing' in patch) a.track = patch.spacing;
+    layoutAttached(frame);
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
   // ---------- selection actions ----------
   const active1 = () => {
     const c = fabricRef.current;
@@ -3218,6 +3239,10 @@ export default function CoverStudio({
   };
   const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
   const selPhoto = selKind === 'photo' ? sel.studio : null;
+  // the small label under a logo: its logo when the label itself is selected,
+  // or the label when its logo is selected
+  const selCap = selKind === 'text' && sel.studio.attach && sel.studio.attach.role === 'caption' ? sel.studio.attach.to : null;
+  const logoCap = selKind === 'logo' && !sel.studio.attach ? guestText(sel, 'caption') : null;
   const sizedGuests = guestList.filter((o) => !o.studio.host).length; // guests that size together (a host is not one)
   // the whole pieces behind the selection, for the toolbar's Size control
   const sizePieces = c && selection.length ? piecesOf(selection) : [];
@@ -3874,8 +3899,20 @@ export default function CoverStudio({
                       )}
                     </InsCell>
                     <InsCell>
-                      <Slider label="Size" min={12} max={260} step={1} value={sel.fontSize} onChange={(v) => change({ fontSize: v })} fmt={(v) => `${Math.round(v)}px`} />
-                      <Slider label="Letter spacing" min={-80} max={500} step={5} value={sel.charSpacing} onChange={(v) => change({ charSpacing: v })} fmt={(v) => `${Math.round(v)}`} />
+                      {selCap ? (
+                        <>
+                          <Slider label="Size" min={6} max={60} step={0.5} value={sel.fontSize} onChange={(v) => setCaption(selCap, { size: v })} fmt={(v) => `${v.toFixed(1)}px`} />
+                          <Slider label="Letter spacing" min={0} max={3000} step={10} value={sel.charSpacing} onChange={(v) => setCaption(selCap, { spacing: v })} fmt={(v) => `${Math.round(v)}`} />
+                          <Row style={{ marginBottom: 8 }}>
+                            <Ghost onClick={() => setCaption(selCap, { spacing: null })} disabled={sel.studio.attach.track == null}>Spread to the logo's width</Ghost>
+                          </Row>
+                        </>
+                      ) : (
+                        <>
+                          <Slider label="Size" min={12} max={260} step={1} value={sel.fontSize} onChange={(v) => change({ fontSize: v })} fmt={(v) => `${Math.round(v)}px`} />
+                          <Slider label="Letter spacing" min={-80} max={500} step={5} value={sel.charSpacing} onChange={(v) => change({ charSpacing: v })} fmt={(v) => `${Math.round(v)}`} />
+                        </>
+                      )}
                       <Slider label="Line height" min={0.8} max={1.8} step={0.02} value={sel.lineHeight} onChange={(v) => change({ lineHeight: v })} fmt={(v) => v.toFixed(2)} />
                     </InsCell>
                     <InsCell>
@@ -4126,6 +4163,25 @@ export default function CoverStudio({
                     </InsCell>
                     {isInterview && !sel.studio.seal && (
                       <InsCell>
+                        <FieldLabel>Label under the logo</FieldLabel>
+                        <Check>
+                          <input type="checkbox" checked={!!guestText(sel, 'caption')} onChange={(e) => toggleCaption(e.target.checked)} />
+                          Small "ECOSYSTEM" label under this logo
+                        </Check>
+                        {logoCap && (
+                          <>
+                            <Slider label="Label size" min={6} max={60} step={0.5} value={logoCap.fontSize} onChange={(v) => setCaption(sel, { size: v })} fmt={(v) => `${v.toFixed(1)}px`} />
+                            <Slider label="Label letter spacing" min={0} max={3000} step={10} value={logoCap.charSpacing} onChange={(v) => setCaption(sel, { spacing: v })} fmt={(v) => `${Math.round(v)}`} />
+                            <Row>
+                              <Ghost onClick={() => setCaption(sel, { spacing: null })} disabled={logoCap.studio.attach.track == null}>Spread to the logo's width</Ghost>
+                            </Row>
+                            <Muted style={{ marginTop: 6 }}>The letters spread to the logo's width until you set the spacing yourself.</Muted>
+                          </>
+                        )}
+                      </InsCell>
+                    )}
+                    {isInterview && !sel.studio.seal && (
+                      <InsCell>
                         <FieldLabel>{sel.studio.placeholder ? 'Choose the logo for this spot' : 'Change this logo'}</FieldLabel>
                         <Muted>
                           {sel.studio.placeholder
@@ -4163,10 +4219,6 @@ export default function CoverStudio({
                           <Ghost onClick={() => pickReplaceLogo(sel)}>Use a file from my computer</Ghost>
                           {!sel.studio.placeholder && <Ghost onClick={removeLogoBackground}>Remove plain background</Ghost>}
                         </Row>
-                        <Check style={{ marginTop: 8 }}>
-                          <input type="checkbox" checked={!!guestText(sel, 'caption')} onChange={(e) => toggleCaption(e.target.checked)} />
-                          Small "ECOSYSTEM" label under this logo
-                        </Check>
                       </InsCell>
                     )}
                     {sel.studio.colors && sel.studio.colors.length > 0 && bg.kind === 'template' && (
