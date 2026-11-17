@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
-import { Canvas, FabricImage, Textbox, Shadow } from 'fabric';
+import { Canvas, FabricImage, Textbox, Shadow, Rect } from 'fabric';
 import {
   COVER_W,
   COVER_H,
@@ -18,6 +18,19 @@ import {
 import './studioFonts';
 import { buildFamilies, deleteFontFiles, loadStoredFontFiles, readFontMeta, registerFont, storeFontFile } from './userFonts';
 import watermarkUrl from './genfinity-watermark.png';
+import wordmarkUrl from './genfinity-wordmark-white.png';
+import {
+  INTERVIEW_W,
+  INTERVIEW_H,
+  PHOTO_BASE,
+  DEFAULT_PHOTO,
+  INTERVIEW_LAYOUTS,
+  paintPhoto,
+  preparePhoto,
+  placeholderLogo,
+  removePlainBackground,
+  drawLayoutThumb,
+} from './interviewKit';
 
 // ---------------------------------------------------------------------------
 // Design Studio: compose a cover by hand.
@@ -233,6 +246,14 @@ function monoEmblem(source) {
 // The picture an item should show for its current colour setting.
 const paintItem = (st) => tintedCanvas(st.tint === 'original' ? st.source : st.mono || st.source, st.tint, st.tintColor);
 
+// Redraw a guest frame after any of its settings change.
+function repaintPhoto(o) {
+  const el = paintPhoto(o.studio);
+  o.setElement(el);
+  o.set({ width: el.width, height: el.height, dirty: true });
+  o.setCoords();
+}
+
 const softShadow = () => new Shadow({ color: 'rgba(0,0,0,0.5)', blur: 34, offsetX: 0, offsetY: 14 });
 
 const normHex = (v, fallback = '#ffffff') => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : fallback);
@@ -257,14 +278,78 @@ const DEFAULT_BG = {
 };
 
 // ----- small template thumbnail (re-renders with the current palette) -----
-function TemplateThumb({ templateId, palette, seed }) {
+function TemplateThumb({ templateId, palette, seed, wide }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!ref.current) return;
-    renderBackground(ref.current, { kind: 'template', templateId, palette, intensity: 1, seed, grain: 0.25, vignette: 0.15 });
-  }, [templateId, palette, seed]);
-  return <canvas ref={ref} width={240} height={120} />;
+    renderBackground(
+      ref.current,
+      { kind: 'template', templateId, palette, intensity: 1, seed, grain: 0.25, vignette: 0.15 },
+      wide ? { designW: INTERVIEW_W, designH: INTERVIEW_H } : {}
+    );
+  }, [templateId, palette, seed, wide]);
+  return <canvas ref={ref} width={240} height={wide ? 135 : 120} />;
 }
+
+// ----- schematic of an interview layout for its picker tile -----
+function LayoutThumb({ layout, palette }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) drawLayoutThumb(ref.current, layout, palette);
+  }, [layout, palette]);
+  return <canvas ref={ref} width={320} height={180} />;
+}
+
+// Text can carry a filled box behind it (a pill, a highlight bar). fabric only
+// draws a tight background, so the box is painted here with its own padding
+// and corner radius. The override lives on the one object; caching is off for
+// it because the box extends past the text's own bounds.
+function applyTextBox(o) {
+  const box = o.studio && o.studio.box;
+  if (!box || !box.on) {
+    if (o.__boxed) {
+      delete o._renderBackground;
+      o.__boxed = false;
+      o.objectCaching = true;
+      o.dirty = true;
+    }
+    return;
+  }
+  o.__boxed = true;
+  o.objectCaching = false;
+  o._renderBackground = function renderBox(ctx) {
+    const b = this.studio && this.studio.box;
+    const n = this._textLines ? this._textLines.length : 0;
+    if (!b || !b.on || !n) return;
+    let minOff = Infinity;
+    let maxRight = -Infinity;
+    for (let i = 0; i < n; i += 1) {
+      const off = this._getLineLeftOffset(i);
+      minOff = Math.min(minOff, off);
+      maxRight = Math.max(maxRight, off + this.getLineWidth(i));
+    }
+    const x = -this.width / 2 + minOff - b.padX;
+    const y = -this.height / 2 - b.padY;
+    const w = maxRight - minOff + b.padX * 2;
+    const h = this.height + b.padY * 2;
+    const r = Math.max(0, Math.min(b.radius || 0, h / 2, w / 2));
+    ctx.save();
+    ctx.fillStyle = b.color || '#000000';
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+}
+
+// A copy of an item's settings for undo (nested bits copied too).
+const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
+const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
 
 export default function CoverStudio({
   apiBase,
@@ -276,7 +361,12 @@ export default function CoverStudio({
   incoming,
   active = true,
   onSaved,
+  profile = 'cover', // 'cover' = article covers (1800x900), 'interview' = interview covers (1920x1080)
 }) {
+  const isInterview = profile === 'interview';
+  const W = isInterview ? INTERVIEW_W : COVER_W;
+  const H = isInterview ? INTERVIEW_H : COVER_H;
+  const design = useMemo(() => ({ designW: W, designH: H }), [W, H]);
   const hostRef = useRef(null);
   const stageRef = useRef(null);
   const fabricRef = useRef(null);
@@ -301,20 +391,28 @@ export default function CoverStudio({
   const bgRef = useRef(DEFAULT_BG);
   const fileInputRef = useRef(null);
   const logoFileRef = useRef(null);
+  const guestFileRef = useRef(null);
+  const guestTargetRef = useRef(null); // the guest frame a chosen photo should go into
+  const logoTargetRef = useRef(null); // the logo a chosen file should replace
+  const wordmarkRef = useRef(null);
+  const layoutAttachedRef = useRef(null);
+  const layoutAllRef = useRef(null);
+  const [logoMode, setLogoMode] = useState('logo'); // interview: 'logo' | 'ecosystem'
   const fontFileRef = useRef(null);
   const userFontItemsRef = useRef([]); // every font file registered in this browser
   const userFontsRef = useRef([]);
   const [userFonts, setUserFonts] = useState([]); // the same, grouped by family
   const [fontDrop, setFontDrop] = useState(false);
   // New items are arranged for you until you move something by hand.
-  const autoLayoutRef = useRef({ on: true, id: 'center' });
-  const prevTabRef = useRef('background');
+  const autoLayoutRef = useRef({ on: !isInterview, id: 'center' });
+  const prevTabRef = useRef(isInterview ? 'layouts' : 'background');
   const applyLayoutRef = useRef(null);
 
   const [bg, setBgState] = useState(DEFAULT_BG);
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
   const [watermark, setWatermark] = useState(() => {
+    if (isInterview) return false; // interview covers carry a "Brought to you by" line instead
     try {
       return localStorage.getItem('cg_studio_watermark') !== 'off';
     } catch (e) {
@@ -334,7 +432,7 @@ export default function CoverStudio({
   const snapRef = useRef(true);
   const [guides, setGuides] = useState({ v: null, h: null });
   const [, setTick] = useState(0);
-  const [leftTab, setLeftTab] = useState('background');
+  const [leftTab, setLeftTab] = useState(isInterview ? 'layouts' : 'background');
   const [bgTab, setBgTab] = useState('templates');
   const [logoQuery, setLogoQuery] = useState('');
   const [addingLogo, setAddingLogo] = useState('');
@@ -415,6 +513,8 @@ export default function CoverStudio({
     } else if (o.studio) {
       Object.assign(p, { tint: o.studio.tint, tintColor: o.studio.tintColor });
     }
+    if (o.studio && o.studio.kind === 'shape') Object.assign(p, { width: o.width, height: o.height, rx: o.rx, ry: o.ry, fill: o.fill });
+    p.st = snapStudio(o.studio);
     return p;
   };
 
@@ -442,13 +542,20 @@ export default function CoverStudio({
       c.discardActiveObject();
       c.remove(...c.getObjects());
       h.stack[index].forEach(({ o, p }) => {
-        const { shadowOn, tint, tintColor, ...props } = p;
+        // eslint-disable-next-line no-unused-vars
+        const { shadowOn, tint, tintColor, st, ...props } = p;
         o.set(props);
         o.set('shadow', shadowOn ? softShadow() : null);
-        if (o.studio && o.studio.kind === 'logo' && (o.studio.tint !== tint || o.studio.tintColor !== tintColor)) {
-          o.studio.tint = tint;
-          o.studio.tintColor = tintColor;
-          o.setElement(paintItem(o.studio));
+        if (st && o.studio) {
+          const was = o.studio;
+          o.studio = snapStudio(st);
+          if (st.kind === 'logo' && (was.tint !== st.tint || was.tintColor !== st.tintColor || was.source !== st.source)) {
+            const el = paintItem(o.studio);
+            o.setElement(el);
+            o.set({ width: el.width, height: el.height });
+          }
+          if (st.kind === 'photo' && (photoSig(was) !== photoSig(st) || was.src !== st.src)) repaintPhoto(o);
+          if (st.kind === 'text') applyTextBox(o);
         }
         o.setCoords();
         c.add(o);
@@ -472,8 +579,8 @@ export default function CoverStudio({
     const el = document.createElement('canvas');
     host.appendChild(el);
     const c = new Canvas(el, {
-      width: COVER_W,
-      height: COVER_H,
+      width: W,
+      height: H,
       preserveObjectStacking: true,
       enableRetinaScaling: false,
       selectionColor: 'rgba(0,212,255,0.08)',
@@ -490,12 +597,12 @@ export default function CoverStudio({
 
     const bgC = bgCanvasRef.current; // the visible background layer
     const exC = document.createElement('canvas'); // background for the exported file
-    exC.width = COVER_W;
-    exC.height = COVER_H;
+    exC.width = W;
+    exC.height = H;
     exportBgRef.current = exC;
     const ovC = document.createElement('canvas');
-    ovC.width = COVER_W;
-    ovC.height = COVER_H;
+    ovC.width = W;
+    ovC.height = H;
     overlayCanvasRef.current = ovC;
 
     const fixed = { originX: 'left', originY: 'top', left: 0, top: 0, selectable: false, evented: false, objectCaching: false };
@@ -507,6 +614,8 @@ export default function CoverStudio({
     c.on('selection:created', onSel);
     c.on('selection:updated', onSel);
     c.on('selection:cleared', () => {
+      // items moved together as a group have their own positions again now
+      if (layoutAllRef.current) layoutAllRef.current();
       setLeftTab((t) => (t === 'edit' ? prevTabRef.current : t));
       bump();
     });
@@ -520,7 +629,11 @@ export default function CoverStudio({
       }
     });
     c.on('text:changed', onSel);
-    c.on('text:editing:exited', () => commit());
+    c.on('text:editing:exited', (e) => {
+      const t = e && e.target;
+      if (t && t.studio && t.studio.attach && layoutAttachedRef.current) layoutAttachedRef.current(t.studio.attach.to);
+      commit();
+    });
 
     c.on('object:modified', (e) => {
       const o = e.target;
@@ -535,10 +648,26 @@ export default function CoverStudio({
         });
         o.setCoords();
       }
+      // A shape keeps its true width and height (and its corner rounding)
+      // instead of a stretch factor.
+      if (o && o.studio && o.studio.kind === 'shape' && (o.scaleX !== 1 || o.scaleY !== 1)) {
+        const w = Math.max(4, o.width * o.scaleX);
+        const h = Math.max(4, o.height * o.scaleY);
+        const r = ((o.studio.round || 0) * Math.min(w, h)) / 2;
+        o.set({ width: w, height: h, rx: r, ry: r, scaleX: 1, scaleY: 1 });
+        o.setCoords();
+      }
+      // names, titles, label bars and captions follow the thing they belong to
+      if (o && o.studio && layoutAttachedRef.current) layoutAttachedRef.current(o.studio.attach ? o.studio.attach.to : o);
       autoLayoutRef.current.on = false;
       commit();
       bump();
     });
+    const follow = (e) => {
+      const o = e.target;
+      if (o && o.studio && !o.studio.attach && layoutAttachedRef.current) layoutAttachedRef.current(o);
+    };
+    c.on('object:scaling', follow);
 
     // Snap to the centre lines and the safe margins while dragging.
     c.on('object:moving', (e) => {
@@ -566,14 +695,14 @@ export default function CoverStudio({
         return best;
       };
       const sx = pick([
-        [COVER_W / 2 - (br.left + br.width / 2), COVER_W / 2],
+        [W / 2 - (br.left + br.width / 2), W / 2],
         [SAFE - br.left, SAFE],
-        [COVER_W - SAFE - (br.left + br.width), COVER_W - SAFE],
+        [W - SAFE - (br.left + br.width), W - SAFE],
       ]);
       const sy = pick([
-        [COVER_H / 2 - (br.top + br.height / 2), COVER_H / 2],
+        [H / 2 - (br.top + br.height / 2), H / 2],
         [SAFE - br.top, SAFE],
-        [COVER_H - SAFE - (br.top + br.height), COVER_H - SAFE],
+        [H - SAFE - (br.top + br.height), H - SAFE],
       ]);
       if (sx) o.set('left', o.left + sx[0]);
       if (sy) o.set('top', o.top + sy[0]);
@@ -583,6 +712,7 @@ export default function CoverStudio({
         return g.v === v && g.h === h ? g : { v, h };
       });
     });
+    c.on('object:moving', follow);
     c.on('mouse:up', () => setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null })));
 
     // Fit the 1800x900 canvas to the available width (CSS only: the backing
@@ -590,8 +720,8 @@ export default function CoverStudio({
     const fit = () => {
       const w = Math.floor(stageRef.current ? stageRef.current.clientWidth : 0);
       if (!w) return;
-      displayScaleRef.current = w / COVER_W;
-      c.setDimensions({ width: `${w}px`, height: `${Math.round(w / 2)}px` }, { cssOnly: true });
+      displayScaleRef.current = w / W;
+      c.setDimensions({ width: `${w}px`, height: `${Math.round((w * H) / W)}px` }, { cssOnly: true });
       c.getObjects().forEach((o) => {
         styleObject(o);
         o.setCoords();
@@ -620,8 +750,17 @@ export default function CoverStudio({
 
     ensureFont('Inter', 700);
     ensureFont('Inter', 400);
+    if (isInterview) {
+      // the interview pieces are built in these, so have them ready
+      ensureInterviewFonts();
+      loadImage(wordmarkUrl, false)
+        .then((img) => {
+          wordmarkRef.current = img;
+        })
+        .catch(() => {});
+    }
 
-    renderBackground(bgC, bgRef.current, { skipGrain: true });
+    renderBackground(bgC, bgRef.current, { skipGrain: true, ...design });
     drawOverlay();
     syncGrainView();
     c.requestRenderAll();
@@ -648,18 +787,18 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!ov || !c) return;
     const g = ov.getContext('2d');
-    g.clearRect(0, 0, COVER_W, COVER_H);
+    g.clearRect(0, 0, W, H);
     const b = bgRef.current;
     const wm = wmImgRef.current;
     if (watermarkRef.current && wm) {
       // Same locked placement as the server watermark: centred, 5px low.
       const ww = wm.naturalWidth;
       const wh = wm.naturalHeight;
-      g.drawImage(wm, Math.round((COVER_W - ww) / 2), COVER_H - wh + 5);
+      g.drawImage(wm, Math.round((W - ww) / 2), H - wh + 5);
     }
     // "Grain over logos and text too": while editing that is the grain layer
     // sitting above the canvas; in the file it is drawn here, over everything.
-    if (forExport && b.grainOnTop) drawGrain(g, COVER_W, COVER_H, b.grain, b.grainCoarse, 3);
+    if (forExport && b.grainOnTop) drawGrain(g, W, H, b.grain, b.grainCoarse, 3);
     if (overlayObjRef.current) overlayObjRef.current.dirty = true;
     if (!forExport) c.requestRenderAll();
   }, []);
@@ -698,11 +837,11 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c || !bgCanvasRef.current) return undefined;
     const id = requestAnimationFrame(() => {
-      renderBackground(bgCanvasRef.current, bg, { skipGrain: true });
+      renderBackground(bgCanvasRef.current, bg, { skipGrain: true, ...design });
       syncGrainView();
     });
     return () => cancelAnimationFrame(id);
-  }, [bg, syncGrainView]);
+  }, [bg, syncGrainView, design]);
 
   // ---------- incoming cover from the Generate tab ----------
   useEffect(() => {
@@ -745,6 +884,15 @@ export default function CoverStudio({
     (img, meta) => {
       const c = fabricRef.current;
       if (!c) return;
+      if (isInterview && !meta.seal) {
+        // a selected placeholder is filled instead of adding another logo
+        const picked = c.getActiveObjects();
+        const target = picked.length === 1 ? picked[0] : null;
+        if (target && target.studio && target.studio.kind === 'logo' && target.studio.placeholder) {
+          replaceLogo(target, img, meta);
+          return;
+        }
+      }
       const source = prepareLogo(img);
       const isSeal = !!meta.seal;
       const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal).length;
@@ -763,8 +911,8 @@ export default function CoverStudio({
       const o = new FabricImage(paintItem(studio), {
         originX: 'center',
         originY: 'center',
-        left: isSeal ? COVER_W / 2 : COVER_W / 2 + existing * 46,
-        top: isSeal ? COVER_H / 2 : COVER_H / 2 + existing * 46,
+        left: isSeal ? W / 2 : W / 2 + existing * 46,
+        top: isSeal ? H / 2 : H / 2 + existing * 46,
         opacity: isSeal ? 0.22 : 1,
         objectCaching: false,
       });
@@ -778,6 +926,18 @@ export default function CoverStudio({
         o.set({ scaleX: sc, scaleY: sc });
         o.setCoords();
         c.sendObjectToBack(o);
+      } else if (isInterview && meta.slot === 'ecosystem') {
+        // top left, with the small spaced "ECOSYSTEM" label under it
+        const sc = Math.min(320 / o.width, 100 / o.height);
+        o.set({ scaleX: sc, scaleY: sc });
+        o.set({ left: 80 + (o.width * sc) / 2, top: 70 + (o.height * sc) / 2 });
+        o.studio.slot = 'ecosystem';
+        o.studio.anchor = 'lt';
+        o.setCoords();
+        makeAttachedText(o, 'caption', 'ECOSYSTEM');
+        layoutAttached(o);
+      } else if (isInterview) {
+        fitLogo(o, 520, 200);
       } else {
         fitLogo(o, 640, 320);
         if (autoLayoutRef.current.on && applyLayoutRef.current) applyLayoutRef.current(autoLayoutRef.current.id, true);
@@ -796,14 +956,14 @@ export default function CoverStudio({
       setAddingLogo(entry.symbol);
       try {
         const img = await loadImage(corsUrl(`${apiBase}/api/cover-generator/logo-preview/${encodeURIComponent(entry.symbol)}`));
-        addLogoFromImage(img, entry);
+        addLogoFromImage(img, { ...entry, slot: logoMode === 'ecosystem' ? 'ecosystem' : undefined });
       } catch (e) {
         toast.error(`No logo file found for ${entry.name || entry.symbol}. Upload it in the logo manager first.`);
       } finally {
         setAddingLogo('');
       }
     },
-    [addLogoFromImage, addingLogo, apiBase]
+    [addLogoFromImage, addingLogo, apiBase, logoMode]
   );
 
   const addSeal = useCallback(
@@ -830,7 +990,14 @@ export default function CoverStudio({
     if (!file) return;
     readFileAsDataUrl(file)
       .then((url) => loadImage(url, false))
-      .then((img) => addLogoFromImage(img, { symbol: '', name: file.name.replace(/\.[^.]+$/, '') }))
+      .then((img) => {
+        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, '') };
+        const target = logoTargetRef.current;
+        logoTargetRef.current = null;
+        const c = fabricRef.current;
+        if (target && c && c.getObjects().includes(target)) replaceLogo(target, img, meta);
+        else addLogoFromImage(img, { ...meta, slot: logoMode === 'ecosystem' ? 'ecosystem' : undefined });
+      })
       .catch(() => toast.error('Could not read that image.'));
   };
 
@@ -848,11 +1015,11 @@ export default function CoverStudio({
       await ensureFont('Inter', p.fontWeight);
       const dark = backgroundIsLight();
       const fill = role === 'label' && bgRef.current.kind === 'template' ? bgRef.current.palette[dark ? 'a1' : 'a2'] : dark ? '#0f172a' : '#ffffff';
-      const y = { headline: COVER_H / 2, subhead: COVER_H / 2 + 150, label: COVER_H / 2 - 150 }[role];
+      const y = { headline: H / 2, subhead: H / 2 + 150, label: H / 2 - 150 }[role];
       const o = new Textbox(p.text, {
         originX: 'center',
         originY: 'center',
-        left: COVER_W / 2,
+        left: W / 2,
         top: y,
         width: p.width,
         fontFamily: 'Inter',
@@ -881,6 +1048,594 @@ export default function CoverStudio({
     [bump, commit, styleObject]
   );
 
+  // ---------- interview pieces ----------
+  const paletteColor = (v, fallback) => {
+    const pal = bgRef.current.palette;
+    return v === 'a1' ? pal.a1 : v === 'a2' ? pal.a2 : v === 'base' ? pal.base : v || fallback;
+  };
+  // Names are set in a wide bold face: the person's own Pilat Wide when they
+  // have added it, otherwise the built-in wide cut.
+  const nameFontChoice = () =>
+    userFontsRef.current.some((f) => f.family === 'Pilat Wide' && f.weights.includes(700)) ? ['Pilat Wide', 700] : ['CMG Sans Wide', 800];
+  const ensureInterviewFonts = () => {
+    const [nf, nw] = nameFontChoice();
+    return Promise.all([
+      ensureFont('Montserrat', 800),
+      ensureFont('Montserrat', 700),
+      ensureFont('Montserrat', 600),
+      ensureFont('Montserrat', 500),
+      ensureFont('Montserrat', 400),
+      ensureFont('Instrument Serif', 400, true),
+      ensureFont(nf, nw),
+    ]);
+  };
+
+  const kidsOf = (frame) => {
+    const c = fabricRef.current;
+    return c ? c.getObjects().filter((o) => o.studio && o.studio.attach && o.studio.attach.to === frame) : [];
+  };
+
+  // Anything the person did to an attached text by hand since the last layout
+  // (dragged it, resized it) is kept as its own offset and size.
+  const takeHandEdits = (t, frame, fw) => {
+    const a = t.studio.attach;
+    const base = a.lastFw || fw;
+    if (a.lastLeft != null) {
+      const mx = t.left - a.lastLeft;
+      const my = t.top - a.lastTop;
+      // Moved by exactly as much as its photo: the two were dragged together
+      // as a group, which is not a hand edit of the text.
+      const together = Math.abs(mx - (frame.left - a.lastFrameLeft)) < 0.75 && Math.abs(my - (frame.top - a.lastFrameTop)) < 0.75;
+      if (!together) {
+        a.dx += mx / base;
+        a.dy += my / base;
+      }
+    }
+    if (a.lastSize != null && Math.abs(t.fontSize * (t.scaleY || 1) - a.lastSize) > 0.5) a.rel = (t.fontSize * (t.scaleY || 1)) / base;
+  };
+  const noteLayout = (t, frame, fw) => {
+    const a = t.studio.attach;
+    a.lastLeft = t.left;
+    a.lastTop = t.top;
+    a.lastSize = t.fontSize;
+    a.lastFw = fw;
+    a.lastFrameLeft = frame.left;
+    a.lastFrameTop = frame.top;
+  };
+
+  // Place a guest's name, title and label bar under its photo (or a caption
+  // under a logo). The name is the larger line; neither line is ever wider
+  // than the mask: the type is scaled down to fit before it is allowed to wrap.
+  const layoutAttached = (frame) => {
+    const c = fabricRef.current;
+    if (!c || !frame || frame.group || !frame.studio) return;
+    const kids = kidsOf(frame).filter((k) => !k.group);
+    if (!kids.length) return;
+    const fw = frame.getScaledWidth();
+    const fh = frame.getScaledHeight();
+    const cx = frame.left;
+    const bottom = frame.top + fh / 2;
+    const role = (r) => kids.find((k) => k.studio.attach.role === r);
+
+    const cap = role('caption');
+    if (cap) {
+      takeHandEdits(cap, frame, fw);
+      const a = cap.studio.attach;
+      const size = Math.max(9, a.rel * fw);
+      cap.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: size, charSpacing: 0, width: 6000, textAlign: 'center' });
+      cap.initDimensions();
+      const n = String(cap.text || '').length;
+      const w0 = cap.getLineWidth(0);
+      // spread the letters so the word is exactly as wide as the logo
+      const spacing = n > 1 ? Math.max(0, Math.min(2500, ((fw - w0) * 1000) / ((n - 1) * size))) : 0;
+      cap.set({ charSpacing: spacing, width: fw + size * 2 });
+      cap.initDimensions();
+      cap.set({ left: cx + a.dx * fw, top: bottom + fw * 0.075 + cap.height / 2 + a.dy * fw });
+      cap.setCoords();
+      noteLayout(cap, frame, fw);
+    }
+
+    const bar = role('bar');
+    const texts = [role('name'), role('title')].filter(Boolean);
+    if (!texts.length && !bar) return;
+    const align = frame.studio.textAlign || 'center';
+    const padX = bar ? fw * 0.06 : 0;
+    const padY = bar ? fw * 0.05 : fw * 0.045;
+    const tw = Math.max(30, fw - padX * 2);
+    let y = bottom + padY;
+    let nameSize = null;
+    texts.forEach((t) => {
+      takeHandEdits(t, frame, fw);
+      const a = t.studio.attach;
+      const want = Math.max(8, a.rel * fw);
+      t.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: want, width: 6000, textAlign: align });
+      t.initDimensions();
+      let widest = 1;
+      for (let i = 0; i < t._textLines.length; i += 1) widest = Math.max(widest, t.getLineWidth(i));
+      let size = widest > tw ? Math.max(want * 0.45, (want * tw) / widest) * 0.995 : want;
+      if (a.role === 'title' && nameSize) size = Math.min(size, nameSize * 0.82);
+      t.set({ fontSize: size, width: tw });
+      t.initDimensions();
+      if (a.role === 'name') nameSize = size;
+      t.set({ left: cx + a.dx * fw, top: y + t.height / 2 + a.dy * fw });
+      t.setCoords();
+      noteLayout(t, frame, fw);
+      y += t.height + fw * 0.012;
+    });
+    if (bar) {
+      const hgt = Math.max(fw * 0.14, y - fw * 0.012 - bottom + padY);
+      bar.set({ width: fw, height: hgt, rx: 0, ry: 0, scaleX: 1, scaleY: 1, angle: 0, left: cx, top: bottom + hgt / 2 - 0.5 });
+      bar.setCoords();
+    }
+  };
+  layoutAttachedRef.current = layoutAttached;
+  layoutAllRef.current = () => {
+    const c = fabricRef.current;
+    if (!c) return;
+    c.getObjects()
+      .filter((o) => o.studio && !o.studio.attach && (o.studio.kind === 'photo' || o.studio.kind === 'logo'))
+      .forEach(layoutAttached);
+    c.requestRenderAll();
+  };
+
+  const makeAttachedText = (frame, role, text) => {
+    const c = fabricRef.current;
+    const [nf, nw] = nameFontChoice();
+    const isName = role === 'name';
+    const t = new Textbox(text, {
+      originX: 'center',
+      originY: 'center',
+      left: frame.left,
+      top: frame.top,
+      width: 400,
+      fontFamily: isName ? nf : 'Montserrat',
+      fontWeight: isName ? nw : role === 'caption' ? 600 : 500,
+      fontSize: 30,
+      fill: '#ffffff',
+      lineHeight: 1.08,
+      textAlign: 'center',
+      editable: true,
+    });
+    t.studio = { kind: 'text', role: `guest-${role}`, attach: { to: frame, role, rel: isName ? 0.105 : role === 'title' ? 0.06 : 0.062, dx: 0, dy: 0 } };
+    t.setControlsVisibility({ mt: false, mb: false });
+    styleObject(t);
+    c.add(t);
+    return t;
+  };
+
+  const makeBar = (frame, fill) => {
+    const c = fabricRef.current;
+    const r = new Rect({ originX: 'center', originY: 'center', left: frame.left, top: frame.top, width: 100, height: 40, fill, strokeWidth: 0, objectCaching: false });
+    r.studio = { kind: 'shape', name: 'Label bar', round: 0, attach: { to: frame, role: 'bar' } };
+    r.set({ lockMovementX: true, lockMovementY: true, hasControls: false });
+    styleObject(r);
+    c.insertAt(c.getObjects().indexOf(frame) + 1, r);
+    return r;
+  };
+
+  const makePhoto = (opt = {}) => {
+    const c = fabricRef.current;
+    const studio = {
+      kind: 'photo',
+      name: 'Guest',
+      ...DEFAULT_PHOTO,
+      shape: opt.shape || 'circle',
+      sides: opt.sides || 6,
+      rounding: opt.rounding || 0,
+      aspect: opt.aspect || 1,
+      ring: opt.ring || 0,
+      ringColor: paletteColor(opt.ringColor, '#ffffff'),
+      tintColor: bgRef.current.palette.a1,
+      src: opt.src || null,
+      textStyle: opt.style || 'below', // below | bar | none
+      textAlign: opt.align || 'center',
+      barFill: paletteColor(opt.barFill, '#141414'),
+    };
+    const o = new FabricImage(paintPhoto(studio), { originX: 'center', originY: 'center', left: opt.cx == null ? W / 2 : opt.cx, top: opt.cy == null ? H / 2 : opt.cy, objectCaching: false });
+    o.studio = studio;
+    const sc = (opt.size || 360) / PHOTO_BASE;
+    o.set({ scaleX: sc, scaleY: sc });
+    o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    styleObject(o);
+    c.add(o);
+    if (studio.textStyle === 'bar') makeBar(o, studio.barFill);
+    if (studio.textStyle !== 'none') {
+      makeAttachedText(o, 'name', opt.upper ? 'GUEST NAME' : 'Guest Name');
+      makeAttachedText(o, 'title', opt.upper ? 'TITLE AT COMPANY' : 'Title at Company');
+    }
+    layoutAttached(o);
+    return o;
+  };
+
+  const makeShape = (opt = {}) => {
+    const c = fabricRef.current;
+    const w = opt.w || 420;
+    const h = opt.h || 240;
+    const round = opt.round || 0;
+    const r = new Rect({
+      originX: 'center',
+      originY: 'center',
+      left: (opt.x == null ? W / 2 - w / 2 : opt.x) + w / 2,
+      top: (opt.y == null ? H / 2 - h / 2 : opt.y) + h / 2,
+      width: w,
+      height: h,
+      rx: (round * Math.min(w, h)) / 2,
+      ry: (round * Math.min(w, h)) / 2,
+      fill: paletteColor(opt.fill, bgRef.current.palette.a1),
+      strokeWidth: 0,
+      objectCaching: false,
+    });
+    r.studio = { kind: 'shape', name: opt.name || 'Shape', round };
+    styleObject(r);
+    c.add(r);
+    return r;
+  };
+
+  // opt: text, size, weight, font ('serif'), italic, align, fill, box,
+  // and either x / y / w (top-left of the text block) or cx / cy (its centre).
+  const makeText = (opt = {}) => {
+    const c = fabricRef.current;
+    const w = opt.w || 700;
+    const t = new Textbox(opt.text || 'Text', {
+      originX: 'center',
+      originY: 'center',
+      left: 0,
+      top: 0,
+      width: w,
+      fontFamily: opt.font === 'serif' ? 'Instrument Serif' : opt.family || 'Montserrat',
+      fontWeight: opt.weight || 700,
+      fontStyle: opt.italic ? 'italic' : 'normal',
+      fontSize: opt.size || 60,
+      fill: opt.fill || '#ffffff',
+      charSpacing: opt.spacing || 0,
+      lineHeight: opt.lineHeight || 1.1,
+      textAlign: opt.align || 'left',
+      editable: true,
+    });
+    t.studio = { kind: 'text', role: opt.role || 'text' };
+    if (opt.box) {
+      t.studio.box = { on: true, color: paletteColor(opt.box.color, bgRef.current.palette.a1), padX: opt.box.padX || 0, padY: opt.box.padY || 0, radius: opt.box.radius || 0 };
+      applyTextBox(t);
+    }
+    t.initDimensions();
+    t.set({ left: opt.cx == null ? (opt.x || 0) + w / 2 : opt.cx, top: opt.cy == null ? (opt.y || 0) + t.height / 2 : opt.cy });
+    t.setControlsVisibility({ mt: false, mb: false });
+    styleObject(t);
+    c.add(t);
+    return t;
+  };
+
+  const makePill = (opt = {}) => {
+    const size = opt.size || 54;
+    return makeText({ text: 'Interview', cx: opt.cx, cy: opt.cy, w: size * 8, size, weight: 700, align: 'center', role: 'pill', box: { color: 'a1', padX: size * 0.8, padY: size * 0.3, radius: 999 } });
+  };
+
+  const logoObject = (studio) => {
+    const o = new FabricImage(paintItem(studio), { originX: 'center', originY: 'center', left: W / 2, top: H / 2, objectCaching: false });
+    o.studio = studio;
+    o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    styleObject(o);
+    return o;
+  };
+
+  // An empty, clearly marked spot for a logo, sized to the box it should fill.
+  const makeLogoSlot = (opt = {}) => {
+    const c = fabricRef.current;
+    const eco = opt.slot === 'ecosystem';
+    const source = placeholderLogo(eco ? 'NETWORK LOGO' : 'COMPANY LOGO');
+    const o = logoObject({
+      kind: 'logo',
+      seal: false,
+      symbol: '',
+      name: eco ? 'Ecosystem logo' : 'Company logo',
+      tint: 'original',
+      tintColor: '#ffffff',
+      source,
+      colors: [],
+      placeholder: true,
+      slot: opt.slot,
+      slotBox: { w: opt.w, h: opt.h },
+      anchor: opt.cx == null ? 'lt' : 'c',
+    });
+    const sc = Math.min(opt.w / source.width, opt.h / source.height);
+    o.set({ scaleX: sc, scaleY: sc });
+    o.set({ left: opt.cx == null ? opt.x + (source.width * sc) / 2 : opt.cx, top: opt.cy == null ? opt.y + (source.height * sc) / 2 : opt.cy });
+    c.add(o);
+    if (opt.caption) makeAttachedText(o, 'caption', 'ECOSYSTEM');
+    layoutAttached(o);
+    return o;
+  };
+
+  // "Brought to you by" plus the Genfinity wordmark: two ordinary items placed
+  // side by side (or stacked), so each can still be moved or restyled.
+  const makeBrought = (opt = {}) => {
+    const c = fabricRef.current;
+    const size = opt.size || 34;
+    const t = makeText({ text: 'Brought to you by', x: 0, y: 0, w: 3000, size, weight: 500, align: 'left', role: 'brought' });
+    const tw = t.getLineWidth(0) + 6;
+    t.set({ width: tw });
+    t.initDimensions();
+    let lw = 0;
+    let logo = null;
+    if (wordmarkRef.current) {
+      const source = prepareLogo(wordmarkRef.current);
+      logo = logoObject({ kind: 'logo', seal: false, symbol: '', name: 'Genfinity', tint: 'original', tintColor: '#ffffff', source, colors: [] });
+      const sc = (size * 0.98) / source.height;
+      logo.set({ scaleX: sc, scaleY: sc });
+      lw = source.width * sc;
+      c.add(logo);
+    }
+    const cy = opt.cy == null ? H - 120 : opt.cy;
+    const x = opt.x == null ? W / 2 : opt.x;
+    if (opt.stacked) {
+      t.set({ left: x + tw / 2, top: cy });
+      if (logo) logo.set({ left: x + lw / 2, top: cy + size * 1.75 });
+    } else {
+      const gap = size * 0.62;
+      const total = tw + (logo ? gap + lw : 0);
+      const x0 = opt.anchor === 'right' ? x - total : opt.anchor === 'left' ? x : x - total / 2;
+      t.set({ left: x0 + tw / 2, top: cy });
+      if (logo) logo.set({ left: x0 + tw + gap + lw / 2, top: cy + size * 0.03 });
+    }
+    t.setCoords();
+    if (logo) logo.setCoords();
+    return [t, logo];
+  };
+
+  const finishAdd = (o, tab) => {
+    const c = fabricRef.current;
+    if (o) c.setActiveObject(o);
+    c.requestRenderAll();
+    commit();
+    bump();
+    if (tab) {
+      prevTabRef.current = tab;
+      setLeftTab('edit');
+    }
+  };
+
+  const applyInterviewLayout = async (layout) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    await ensureInterviewFonts();
+    c.discardActiveObject();
+    c.remove(...c.getObjects());
+    layout.items.forEach((it) => {
+      if (it.t === 'shape') makeShape(it);
+      else if (it.t === 'guest') makePhoto(it);
+      else if (it.t === 'logo') makeLogoSlot(it);
+      else if (it.t === 'pill') makePill(it);
+      else if (it.t === 'text') makeText(it);
+      else if (it.t === 'brought') makeBrought(it);
+    });
+    c.requestRenderAll();
+    commit();
+    bump();
+    toast.success('Layout added. Click any part to change it. Undo brings back what was there before.');
+  };
+
+  const addGuest = async (shape, src) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    await ensureInterviewFonts();
+    const n = c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo').length;
+    const o = makePhoto({ shape, aspect: shape === 'rect' ? 0.9 : 1, src: src || null, size: 360, cx: W / 2 + (n % 5) * 44, cy: H / 2 - 40 + (n % 5) * 30 });
+    finishAdd(o, 'guests');
+  };
+
+  const pickGuestPhoto = (target) => {
+    guestTargetRef.current = target || null;
+    if (guestFileRef.current) guestFileRef.current.click();
+  };
+
+  const onGuestFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    const target = guestTargetRef.current;
+    guestTargetRef.current = null;
+    if (!file) return;
+    readFileAsDataUrl(file)
+      .then((url) => loadImage(url, false))
+      .then((img) => {
+        const src = preparePhoto(img);
+        const c = fabricRef.current;
+        if (target && c && c.getObjects().includes(target)) {
+          Object.assign(target.studio, { src, zoom: 1, panX: 0, panY: 0 });
+          repaintPhoto(target);
+          layoutAttached(target);
+          finishAdd(target);
+        } else {
+          addGuest('circle', src);
+        }
+      })
+      .catch(() => toast.error('Could not read that image.'));
+  };
+
+  const setPhoto = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo') return;
+    Object.assign(o.studio, patch);
+    repaintPhoto(o);
+    layoutAttached(o);
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const guestText = (frame, role) => kidsOf(frame).find((k) => k.studio.attach.role === role) || null;
+
+  const setGuestText = (role, value) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o) return;
+    let t = guestText(o, role);
+    if (!t && value) t = makeAttachedText(o, role, value);
+    if (t) t.set('text', value);
+    layoutAttached(o);
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const setGuestStyle = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo') return;
+    Object.assign(o.studio, patch);
+    const st = o.studio;
+    const bar = guestText(o, 'bar');
+    if (st.textStyle === 'bar' && !bar) makeBar(o, st.barFill);
+    if (st.textStyle !== 'bar' && bar) c.remove(bar);
+    if (st.textStyle === 'bar' && bar) bar.set('fill', st.barFill);
+    if (st.textStyle === 'none') {
+      ['name', 'title'].forEach((r) => {
+        const t = guestText(o, r);
+        if (t) c.remove(t);
+      });
+    } else {
+      if (!guestText(o, 'name')) makeAttachedText(o, 'name', 'Guest Name');
+      if (!guestText(o, 'title')) makeAttachedText(o, 'title', 'Title at Company');
+    }
+    layoutAttached(o);
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const addShapePreset = (kind) => {
+    const presets = {
+      rect: { w: 520, h: 300, round: 0, name: 'Rectangle' },
+      rounded: { w: 520, h: 300, round: 0.25, name: 'Rounded rectangle' },
+      pill: { w: 440, h: 110, round: 1, name: 'Pill' },
+      circle: { w: 300, h: 300, round: 1, name: 'Circle' },
+      panelRight: { x: W - 460, y: 0, w: 460, h: H, round: 0, name: 'Side panel' },
+      panelLeft: { x: 0, y: 0, w: 460, h: H, round: 0, name: 'Side panel' },
+      bar: { x: 0, y: H - 150, w: W, h: 150, round: 0, name: 'Bottom band' },
+    };
+    const o = makeShape(presets[kind]);
+    const c = fabricRef.current;
+    if (kind === 'panelRight' || kind === 'panelLeft' || kind === 'bar') c.sendObjectToBack(o);
+    finishAdd(o, 'shapes');
+  };
+
+  const setShape = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
+    if (patch.round != null) o.studio.round = patch.round;
+    if (patch.width != null) o.set('width', patch.width);
+    if (patch.height != null) o.set('height', patch.height);
+    if (patch.fill) {
+      o.set('fill', patch.fill);
+      if (o.studio.attach && o.studio.attach.to && o.studio.attach.to.studio) o.studio.attach.to.studio.barFill = patch.fill;
+    }
+    const r = ((o.studio.round || 0) * Math.min(o.width, o.height)) / 2;
+    o.set({ rx: r, ry: r });
+    o.setCoords();
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const addInterviewText = async (kind) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    await ensureInterviewFonts();
+    let o = null;
+    if (kind === 'pill') o = makePill({ cx: W / 2, cy: H / 2 - 220 });
+    if (kind === 'highlight') o = makeText({ text: 'Highlighted words', cx: W / 2, cy: H / 2 + 160, w: 1100, size: 70, weight: 700, align: 'center', role: 'highlight', box: { color: 'a1', padX: 30, padY: 10, radius: 0 } });
+    if (kind === 'brought') [o] = makeBrought({ anchor: 'center', x: W / 2, cy: H - 110 });
+    finishAdd(o, 'text');
+  };
+
+  const setTextBox = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'text') return;
+    const size = o.fontSize || 40;
+    o.studio.box = { on: false, color: bgRef.current.palette.a1, padX: Math.round(size * 0.5), padY: Math.round(size * 0.18), radius: 0, ...(o.studio.box || {}), ...patch };
+    applyTextBox(o);
+    o.dirty = true;
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const detachText = () => {
+    const o = active1();
+    if (!o || !o.studio || !o.studio.attach) return;
+    delete o.studio.attach;
+    o.set({ lockMovementX: false, lockMovementY: false });
+    commit();
+    bump();
+  };
+
+  // Put a new picture into an existing logo, keeping its place on the cover.
+  const replaceLogo = (o, img, meta = {}) => {
+    const c = fabricRef.current;
+    const st = o.studio;
+    const oldW = o.getScaledWidth();
+    const oldH = o.getScaledHeight();
+    const box = st.placeholder && st.slotBox ? st.slotBox : { w: oldW, h: oldH };
+    const leftEdge = o.left - oldW / 2;
+    const topEdge = o.top - oldH / 2;
+    const source = prepareLogo(img);
+    Object.assign(st, { source, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
+    const el = paintItem(st);
+    o.setElement(el);
+    const sc = Math.min(box.w / el.width, box.h / el.height);
+    o.set({ width: el.width, height: el.height, scaleX: sc, scaleY: sc });
+    if (st.anchor === 'lt') o.set({ left: leftEdge + (el.width * sc) / 2, top: topEdge + (el.height * sc) / 2 });
+    o.setCoords();
+    layoutAttached(o);
+    c.setActiveObject(o);
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
+  const pickReplaceLogo = (target) => {
+    logoTargetRef.current = target || null;
+    if (logoFileRef.current) logoFileRef.current.click();
+  };
+
+  const removeLogoBackground = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'logo') return;
+    const cut = removePlainBackground(o.studio.source);
+    if (!cut) {
+      toast.info('This logo does not have a plain single-colour background to remove.');
+      return;
+    }
+    const source = prepareLogo(cut); // also trims the empty margin that is left
+    o.studio.source = source;
+    o.studio.colors = extractLogoColors(source);
+    const el = paintItem(o.studio);
+    o.setElement(el);
+    o.set({ width: el.width, height: el.height });
+    o.setCoords();
+    layoutAttached(o);
+    c.requestRenderAll();
+    commit();
+    bump();
+    toast.success('Background removed. Undo brings it back.');
+  };
+
+  const toggleCaption = (on) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o) return;
+    const cap = guestText(o, 'caption');
+    if (on && !cap) makeAttachedText(o, 'caption', 'ECOSYSTEM');
+    if (!on && cap) c.remove(cap);
+    layoutAttached(o);
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
   // ---------- selection actions ----------
   const active1 = () => {
     const c = fabricRef.current;
@@ -895,6 +1650,7 @@ export default function CoverStudio({
     if (!c || !o) return;
     o.set(props);
     o.setCoords();
+    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
     c.requestRenderAll();
     commitSoon();
     bump();
@@ -906,23 +1662,54 @@ export default function CoverStudio({
     const list = c.getActiveObjects();
     if (!list.length) return;
     c.discardActiveObject();
+    // a guest or logo takes its name, title, label bar and caption with it
+    list.slice().forEach((o) => {
+      if (o.studio && !o.studio.attach) {
+        c.getObjects().forEach((k) => {
+          if (k.studio && k.studio.attach && k.studio.attach.to === o && !list.includes(k)) list.push(k);
+        });
+      }
+    });
     c.remove(...list);
     c.requestRenderAll();
     commit();
     bump();
   }, [bump, commit]);
 
+  const cloneItem = async (o) => {
+    const cl = await o.clone();
+    cl.studio = snapStudio(o.studio);
+    cl.set({ left: o.left + 40, top: o.top + 40, originX: 'center', originY: 'center' });
+    const k = o.studio.kind;
+    if (k === 'logo' || k === 'photo') cl.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    else if (k === 'text') cl.setControlsVisibility({ mt: false, mb: false });
+    if (k === 'photo' || k === 'shape') cl.set({ objectCaching: false });
+    if (k === 'photo') repaintPhoto(cl);
+    if (k === 'text') applyTextBox(cl);
+    if (o.lockMovementX) cl.set({ lockMovementX: true, lockMovementY: true, hasControls: false });
+    styleObject(cl);
+    return cl;
+  };
+
   const duplicate = useCallback(async () => {
     const c = fabricRef.current;
     const o = active1();
-    if (!c || !o) return;
-    const cl = await o.clone();
-    cl.studio = { ...o.studio };
-    cl.set({ left: o.left + 40, top: o.top + 40, originX: 'center', originY: 'center' });
-    if (o.studio.kind === 'logo') cl.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
-    else cl.setControlsVisibility({ mt: false, mb: false });
-    styleObject(cl);
+    if (!c || !o || !o.studio) return;
+    const cl = await cloneItem(o);
+    // a copied name or caption becomes a free text block
+    if (cl.studio.attach) {
+      delete cl.studio.attach;
+      cl.set({ lockMovementX: false, lockMovementY: false, hasControls: true });
+    }
     c.add(cl);
+    // a copied guest or logo brings copies of its name, title, bar and caption
+    const kids = c.getObjects().filter((k) => k.studio && k.studio.attach && k.studio.attach.to === o);
+    for (const k of kids) {
+      const kc = await cloneItem(k);
+      kc.studio.attach = { ...k.studio.attach, to: cl };
+      c.add(kc);
+    }
+    if (kids.length) layoutAttached(cl);
     c.setActiveObject(cl);
     c.requestRenderAll();
     commit();
@@ -933,7 +1720,13 @@ export default function CoverStudio({
   const reorder = (o, how) => {
     const c = fabricRef.current;
     if (!c || !o) return;
-    if (how === 'front') c.bringObjectToFront(o);
+    if (how === 'front') {
+      c.bringObjectToFront(o);
+      // keep a guest's label bar, name and title in front of its photo
+      c.getObjects()
+        .filter((k) => k.studio && k.studio.attach && k.studio.attach.to === o)
+        .forEach((k) => c.bringObjectToFront(k));
+    }
     if (how === 'back') c.sendObjectToBack(o);
     if (how === 'up') c.bringObjectForward(o);
     if (how === 'down') c.sendObjectBackwards(o);
@@ -949,13 +1742,14 @@ export default function CoverStudio({
     const br = o.getBoundingRect();
     const d = { x: 0, y: 0 };
     if (where === 'left') d.x = SAFE - br.left;
-    if (where === 'hcenter') d.x = COVER_W / 2 - (br.left + br.width / 2);
-    if (where === 'right') d.x = COVER_W - SAFE - (br.left + br.width);
+    if (where === 'hcenter') d.x = W / 2 - (br.left + br.width / 2);
+    if (where === 'right') d.x = W - SAFE - (br.left + br.width);
     if (where === 'top') d.y = SAFE - br.top;
-    if (where === 'vcenter') d.y = COVER_H / 2 - (br.top + br.height / 2);
-    if (where === 'bottom') d.y = COVER_H - SAFE - (br.top + br.height);
+    if (where === 'vcenter') d.y = H / 2 - (br.top + br.height / 2);
+    if (where === 'bottom') d.y = H - SAFE - (br.top + br.height);
     o.set({ left: o.left + d.x, top: o.top + d.y });
     o.setCoords();
+    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
     c.requestRenderAll();
     commit();
     bump();
@@ -1125,24 +1919,24 @@ export default function CoverStudio({
     };
 
     // The watermark sits bottom-centre; keep centred and low content clear of it.
-    const floor = watermarkRef.current ? 735 : COVER_H - SAFE;
+    const floor = watermarkRef.current ? 735 : H - SAFE;
     const textHeight = () => texts.reduce((s, t) => s + t.height, 0) + 26 * Math.max(0, texts.length - 1);
     if (id === 'center') {
       if (!texts.length) {
-        rowLogos(COVER_W / 2, watermarkRef.current ? 410 : COVER_H / 2, 1200, 340);
+        rowLogos(W / 2, watermarkRef.current ? 410 : H / 2, 1200, 340);
       } else {
         // Measure the text first, then centre logo + text as one block.
-        stackText(COVER_W / 2, 1400, 'center', 'top', 0);
+        stackText(W / 2, 1400, 'center', 'top', 0);
         const logoH = logos.length ? 210 : 0;
         const gapLT = logos.length ? 64 : 0;
         const block = logoH + gapLT + textHeight();
         const top = Math.max(SAFE - 20, (SAFE + floor) / 2 - block / 2);
-        rowLogos(COVER_W / 2, top + logoH / 2, 1200, logoH || 1);
-        stackText(COVER_W / 2, 1400, 'center', 'top', top + logoH + gapLT);
+        rowLogos(W / 2, top + logoH / 2, 1200, logoH || 1);
+        stackText(W / 2, 1400, 'center', 'top', top + logoH + gapLT);
       }
     } else if (id === 'left') {
-      rowLogos(COVER_W * 0.22, COVER_H / 2, 520, 340);
-      stackText(COVER_W * 0.44, COVER_W * 0.5, 'left', 'center', COVER_H / 2);
+      rowLogos(W * 0.22, H / 2, 520, 340);
+      stackText(W * 0.44, W * 0.5, 'left', 'center', H / 2);
     } else if (id === 'bottom') {
       rowLogos(SAFE + 20, SAFE + 80, 900, 120, 'left');
       stackText(SAFE + 20, 1250, 'left', 'bottom', floor);
@@ -1185,6 +1979,7 @@ export default function CoverStudio({
         const d = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step] }[key];
         o.set({ left: o.left + d[0], top: o.top + d[1] });
         o.setCoords();
+        if (o.studio && layoutAttachedRef.current) layoutAttachedRef.current(o.studio.attach ? o.studio.attach.to : o);
         c.requestRenderAll();
         commitSoon();
       }
@@ -1285,7 +2080,7 @@ export default function CoverStudio({
     // Compose the real file: background with its grain baked in at 1800x900,
     // then logos and text, then the watermark (and top grain if chosen).
     const b = bgRef.current;
-    renderBackground(exportBgRef.current, b, { skipGrain: b.grainOnTop });
+    renderBackground(exportBgRef.current, b, { skipGrain: b.grainOnTop, ...design });
     bgObjRef.current.dirty = true;
     c.backgroundImage = bgObjRef.current;
     drawOverlay(true);
@@ -1305,6 +2100,7 @@ export default function CoverStudio({
   const exportLabel = () => {
     const c = fabricRef.current;
     const logo = c && c.getObjects().find((o) => o.studio && o.studio.kind === 'logo' && o.studio.symbol);
+    if (isInterview) return 'INTERVIEW';
     return logo ? logo.studio.symbol : 'STUDIO';
   };
 
@@ -1320,6 +2116,9 @@ export default function CoverStudio({
     const a = document.createElement('a');
     a.href = url;
     a.download = `${exportLabel().toLowerCase()}-cover-${Date.now()}.png`;
+    if (isInterview && c && c.getObjects().some((o) => o.studio && (o.studio.placeholder || (o.studio.kind === 'photo' && !o.studio.src)))) {
+      toast.warning('This cover still has placeholder logos or empty guest photos in it.');
+    }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1391,29 +2190,138 @@ export default function CoverStudio({
   const applyPalette = (p) => setBg({ paletteId: p.id, palette: { base: p.base, a1: p.a1, a2: p.a2 } });
   const setColor = (key, value) => setBg((prev) => ({ paletteId: 'custom', palette: { ...prev.palette, [key]: value } }));
   const selFont = selKind === 'text' ? findFont(sel.fontFamily, userFonts) : null;
-  const layerName = (o) =>
-    o.studio && o.studio.kind === 'text'
-      ? String(o.text || '').replace(/\s+/g, ' ').slice(0, 26) || 'Text'
-      : (o.studio && o.studio.name) || 'Logo';
+  const kindLabel = (o) => {
+    const k = o.studio && o.studio.kind;
+    if (k === 'text') return 'Text';
+    if (k === 'photo') return 'Guest';
+    if (k === 'shape') return 'Shape';
+    return o.studio && o.studio.seal ? 'Seal' : 'Logo';
+  };
+  const layerName = (o) => {
+    const k = o.studio && o.studio.kind;
+    if (k === 'text') return String(o.text || '').replace(/\s+/g, ' ').slice(0, 26) || 'Text';
+    if (k === 'photo') {
+      const nm = guestText(o, 'name');
+      return (nm && String(nm.text || '').replace(/\s+/g, ' ').slice(0, 26)) || 'Guest';
+    }
+    return (o.studio && o.studio.name) || 'Logo';
+  };
+  const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
+  const selPhoto = selKind === 'photo' ? sel.studio : null;
+  const selBox = selKind === 'text' && sel.studio.box && sel.studio.box.on ? sel.studio.box : null;
+  const paletteSwatches = [bg.palette.a1, bg.palette.a2, '#141414', '#ffffff'];
 
   return (
     <Wrap>
       {/* ------------------------------ left panel ------------------------------ */}
       <Panel>
-        <Tabs>
-          {[
-            ['background', 'Background'],
-            ['logos', 'Logos'],
-            ['seals', 'Seals'],
-            ['text', 'Text'],
-            ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
-            ['edit', 'Edit'],
-          ].map(([id, label]) => (
-            <Tab key={id} $on={leftTab === id} $dim={id === 'edit' && selection.length === 0} onClick={() => setLeftTab(id)}>
+        <Tabs $wrap={isInterview}>
+          {(isInterview
+            ? [
+                ['layouts', 'Layouts'],
+                ['background', 'Background'],
+                ['guests', 'Guests'],
+                ['logos', 'Logos'],
+                ['text', 'Text'],
+                ['shapes', 'Shapes'],
+                ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
+                ['edit', 'Edit'],
+              ]
+            : [
+                ['background', 'Background'],
+                ['logos', 'Logos'],
+                ['seals', 'Seals'],
+                ['text', 'Text'],
+                ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
+                ['edit', 'Edit'],
+              ]
+          ).map(([id, label]) => (
+            <Tab key={id} $on={leftTab === id} $quarter={isInterview} $dim={id === 'edit' && selection.length === 0} onClick={() => setLeftTab(id)}>
               {label}
             </Tab>
           ))}
         </Tabs>
+
+        {leftTab === 'layouts' && (
+          <PanelBody>
+            <Hint>
+              Pick a starting layout. It fills the cover with placeholder guests, logos and text; then click any part to change it, move it or delete it. Colours come from the Background tab.
+            </Hint>
+            <TemplateGrid>
+              {INTERVIEW_LAYOUTS.map((l) => (
+                <TemplateTile key={l.id} title={l.note} onClick={() => applyInterviewLayout(l)}>
+                  <LayoutThumb layout={l} palette={bg.palette} />
+                  <span>{l.name}</span>
+                </TemplateTile>
+              ))}
+            </TemplateGrid>
+            <Hint>Applying a layout replaces what is on the cover. Undo brings it back.</Hint>
+          </PanelBody>
+        )}
+
+        {leftTab === 'guests' && (
+          <PanelBody>
+            <Hint>Add a guest, then click it on the cover to change the photo, the mask shape, and the name and title under it.</Hint>
+            <AddText onClick={() => pickGuestPhoto(null)}>
+              <b style={{ fontSize: 17 }}>Add a guest from a photo</b>
+              <small>Choose a picture; it is placed in a round mask you can change</small>
+            </AddText>
+            <FieldLabel>Or add an empty guest slot</FieldLabel>
+            <Seg>
+              <SegBtn onClick={() => addGuest('circle')}>Circle</SegBtn>
+              <SegBtn onClick={() => addGuest('rect')}>Rectangle</SegBtn>
+              <SegBtn onClick={() => addGuest('polygon')}>Polygon</SegBtn>
+            </Seg>
+            {guestList.length > 0 && <FieldLabel>Guests on this cover</FieldLabel>}
+            {guestList.map((o, i) => (
+              <LayerRow
+                key={i}
+                $on={selection.includes(o)}
+                onClick={() => {
+                  c.setActiveObject(o);
+                  c.requestRenderAll();
+                  prevTabRef.current = 'guests';
+                  setLeftTab('edit');
+                  bump();
+                }}
+              >
+                <em>Guest</em>
+                <span>{layerName(o)}</span>
+                <button type="button" onClick={(e) => { e.stopPropagation(); pickGuestPhoto(o); }}>{o.studio.src ? 'Replace photo' : 'Choose photo'}</button>
+              </LayerRow>
+            ))}
+          </PanelBody>
+        )}
+
+        {leftTab === 'shapes' && (
+          <PanelBody>
+            <Hint>Flat shapes for side panels, bands and badges. Every shape can be recoloured, resized and rounded in the Edit tab.</Hint>
+            <AddText onClick={() => addShapePreset('rect')}>
+              <b style={{ fontSize: 15 }}>Rectangle</b>
+              <small>A plain block of colour</small>
+            </AddText>
+            <AddText onClick={() => addShapePreset('rounded')}>
+              <b style={{ fontSize: 15 }}>Rounded rectangle</b>
+              <small>A block with soft corners</small>
+            </AddText>
+            <AddText onClick={() => addShapePreset('pill')}>
+              <b style={{ fontSize: 15 }}>Pill</b>
+              <small>Fully rounded ends</small>
+            </AddText>
+            <AddText onClick={() => addShapePreset('circle')}>
+              <b style={{ fontSize: 15 }}>Circle</b>
+              <small>A round disc</small>
+            </AddText>
+            <FieldLabel>Panels</FieldLabel>
+            <Seg>
+              <SegBtn onClick={() => addShapePreset('panelLeft')}>Left column</SegBtn>
+              <SegBtn onClick={() => addShapePreset('panelRight')}>Right column</SegBtn>
+              <SegBtn onClick={() => addShapePreset('bar')}>Bottom band</SegBtn>
+            </Seg>
+            <Hint>Panels are placed behind everything else.</Hint>
+          </PanelBody>
+        )}
+        <input ref={guestFileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onGuestFile} />
 
         {leftTab === 'background' && (
           <PanelBody>
@@ -1440,7 +2348,7 @@ export default function CoverStudio({
                       title={t.note}
                       onClick={() => setBg({ kind: 'template', templateId: t.id })}
                     >
-                      <TemplateThumb templateId={t.id} palette={bg.palette} seed={bg.seed} />
+                      <TemplateThumb templateId={t.id} palette={bg.palette} seed={bg.seed} wide={isInterview} />
                       <span>{t.name}</span>
                     </TemplateTile>
                   ))}
@@ -1611,6 +2519,22 @@ export default function CoverStudio({
         {leftTab === 'logos' && (
           <PanelBody>
             <>
+                {isInterview && (
+                  <>
+                    <FieldLabel>Add the next logo as</FieldLabel>
+                    <Seg>
+                      <SegBtn $on={logoMode === 'logo'} onClick={() => setLogoMode('logo')}>A logo</SegBtn>
+                      <SegBtn $on={logoMode === 'ecosystem'} onClick={() => setLogoMode('ecosystem')}>Ecosystem (top left)</SegBtn>
+                    </Seg>
+                    <Hint>
+                      {sel && selKind === 'logo' && sel.studio.placeholder
+                        ? 'A placeholder is selected: the logo you click or upload fills it.'
+                        : logoMode === 'ecosystem'
+                        ? 'The logo goes top left with a small, widely spaced ECOSYSTEM label under it.'
+                        : 'Select a placeholder on the cover first to fill it, or just click a logo to add it.'}
+                    </Hint>
+                  </>
+                )}
                 <Hint>Click a logo to drop it on the cover. Add as many as you need, then drag and scale them. Hold Shift while scaling to grow or shrink from the centre.</Hint>
                 <Input placeholder="Search networks and companies" value={logoQuery} onChange={(e) => setLogoQuery(e.target.value)} />
                 <LogoGrid>
@@ -1673,6 +2597,22 @@ export default function CoverStudio({
               <b style={{ fontSize: 12, letterSpacing: 2 }}>ADD A LABEL</b>
               <small>Small spaced caps above the title</small>
             </AddText>
+            {isInterview && (
+              <>
+                <AddText onClick={() => addInterviewText('pill')}>
+                  <b style={{ fontSize: 15 }}>Add an "Interview" pill</b>
+                  <small>Text in a rounded colour badge</small>
+                </AddText>
+                <AddText onClick={() => addInterviewText('highlight')}>
+                  <b style={{ fontSize: 15 }}>Add a highlighted line</b>
+                  <small>Text on a colour bar</small>
+                </AddText>
+                <AddText onClick={() => addInterviewText('brought')}>
+                  <b style={{ fontSize: 15 }}>Add "Brought to you by Genfinity"</b>
+                  <small>The line and the Genfinity wordmark</small>
+                </AddText>
+              </>
+            )}
 
             <FieldLabel>Your own fonts</FieldLabel>
             <Hint>
@@ -1722,7 +2662,7 @@ export default function CoverStudio({
                   bump();
                 }}
               >
-                <em>{o.studio && o.studio.kind === 'text' ? 'Text' : o.studio && o.studio.seal ? 'Seal' : 'Logo'}</em>
+                <em>{kindLabel(o)}</em>
                 <span>{layerName(o)}</span>
                 <button type="button" title="Bring forward" onClick={(e) => { e.stopPropagation(); reorder(o, 'up'); }}>Up</button>
                 <button type="button" title="Send backward" onClick={(e) => { e.stopPropagation(); reorder(o, 'down'); }}>Down</button>
@@ -1747,7 +2687,7 @@ export default function CoverStudio({
           {sel && (
             <>
               <InsHead>
-                <strong>{selKind === 'text' ? 'Text' : sel.studio.seal ? 'Seal' : 'Logo'}: {layerName(sel)}</strong>
+                <strong>{kindLabel(sel)}: {layerName(sel)}</strong>
                 <Group>
                   <Tool onClick={duplicate}>Duplicate</Tool>
                   <Tool onClick={() => reorder(sel, 'front')}>To front</Tool>
@@ -1816,6 +2756,162 @@ export default function CoverStudio({
                         <Ghost onClick={() => change({ text: String(sel.text || '').toUpperCase() })}>Make uppercase</Ghost>
                       </Row>
                     </InsCell>
+                    {isInterview && (
+                      <InsCell>
+                        <FieldLabel>Box behind the text</FieldLabel>
+                        <Check>
+                          <input type="checkbox" checked={!!selBox} onChange={(e) => setTextBox({ on: e.target.checked })} />
+                          Show a filled box (pill or highlight bar)
+                        </Check>
+                        {selBox && (
+                          <>
+                            <SwatchRow style={{ marginTop: 8 }}>
+                              <input type="color" value={normHex(selBox.color, '#000000')} onChange={(e) => setTextBox({ color: e.target.value })} />
+                              {paletteSwatches.map((col, i) => (
+                                <Swatch key={i} style={{ background: col }} onClick={() => setTextBox({ color: col })} title={col} />
+                              ))}
+                            </SwatchRow>
+                            <Slider label="Side padding" min={0} max={160} step={1} value={selBox.padX} onChange={(v) => setTextBox({ padX: v })} fmt={(v) => `${Math.round(v)}px`} />
+                            <Slider label="Top and bottom padding" min={0} max={100} step={1} value={selBox.padY} onChange={(v) => setTextBox({ padY: v })} fmt={(v) => `${Math.round(v)}px`} />
+                            <Slider label="Corner rounding" min={0} max={160} step={1} value={Math.min(160, selBox.radius)} onChange={(v) => setTextBox({ radius: v >= 160 ? 999 : v })} fmt={(v) => (v >= 160 ? 'Pill' : `${Math.round(v)}px`)} />
+                          </>
+                        )}
+                        {sel.studio.attach && (
+                          <>
+                            <Muted style={{ marginTop: 8 }}>This text follows its photo or logo and is sized to fit its width.</Muted>
+                            <Row style={{ marginTop: 6 }}>
+                              <Ghost onClick={detachText}>Detach it</Ghost>
+                            </Row>
+                          </>
+                        )}
+                      </InsCell>
+                    )}
+                  </>
+                )}
+
+                {selKind === 'photo' && (
+                  <>
+                    <InsCell>
+                      <FieldLabel>Photo</FieldLabel>
+                      <Row>
+                        <Ghost onClick={() => pickGuestPhoto(sel)}>{selPhoto.src ? 'Replace photo' : 'Choose photo'}</Ghost>
+                        {selPhoto.src && <Ghost onClick={() => setPhoto({ src: null })}>Remove photo</Ghost>}
+                      </Row>
+                      <FieldLabel style={{ marginTop: 10 }}>Photo look</FieldLabel>
+                      <Seg>
+                        {[['color', 'Colour'], ['bw', 'Black and white'], ['tint', 'Tint']].map(([id, label]) => (
+                          <SegBtn key={id} $on={selPhoto.treatment === id} onClick={() => setPhoto({ treatment: id })}>{label}</SegBtn>
+                        ))}
+                      </Seg>
+                      {selPhoto.treatment === 'tint' && (
+                        <SwatchRow style={{ marginTop: 8 }}>
+                          <input type="color" value={normHex(selPhoto.tintColor)} onChange={(e) => setPhoto({ tintColor: e.target.value })} />
+                          {[bg.palette.a1, bg.palette.a2].map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ tintColor: col })} />
+                          ))}
+                        </SwatchRow>
+                      )}
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Mask shape</FieldLabel>
+                      <Seg>
+                        {[['circle', 'Circle'], ['rect', 'Rectangle'], ['polygon', 'Polygon']].map(([id, label]) => (
+                          <SegBtn key={id} $on={selPhoto.shape === id} onClick={() => setPhoto({ shape: id })}>{label}</SegBtn>
+                        ))}
+                      </Seg>
+                      {selPhoto.shape === 'polygon' && (
+                        <Slider label="Sides" min={3} max={10} step={1} value={selPhoto.sides} onChange={(v) => setPhoto({ sides: v })} fmt={(v) => `${Math.round(v)}`} />
+                      )}
+                      {selPhoto.shape === 'rect' && (
+                        <Slider label="Proportion (tall to wide)" min={0.5} max={2} step={0.01} value={selPhoto.aspect} onChange={(v) => setPhoto({ aspect: v })} fmt={(v) => (Math.abs(v - 1) < 0.01 ? 'Square' : v < 1 ? 'Tall' : 'Wide')} />
+                      )}
+                      {selPhoto.shape !== 'circle' && (
+                        <>
+                          <Slider label="Rounded corners" min={0} max={1} step={0.01} value={selPhoto.rounding} onChange={(v) => setPhoto({ rounding: v })} />
+                          <Slider label="Turn the mask (the photo stays upright)" min={-180} max={180} step={1} value={selPhoto.maskAngle} onChange={(v) => setPhoto({ maskAngle: v })} fmt={(v) => `${Math.round(v)} deg`} />
+                        </>
+                      )}
+                      <Slider label="Size" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => change({ scaleX: v / sel.width, scaleY: v / sel.width })} fmt={(v) => `${Math.round(v)}px wide`} />
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Photo inside the mask</FieldLabel>
+                      <Slider label="Zoom" min={0.5} max={4} step={0.01} value={selPhoto.zoom} onChange={(v) => setPhoto({ zoom: v })} fmt={(v) => `${v.toFixed(2)}x`} />
+                      <Slider label="Move left or right" min={-1} max={1} step={0.01} value={selPhoto.panX} onChange={(v) => setPhoto({ panX: v })} fmt={(v) => (Math.abs(v) < 0.01 ? 'Centre' : v < 0 ? 'Left' : 'Right')} />
+                      <Slider label="Move up or down" min={-1} max={1} step={0.01} value={selPhoto.panY} onChange={(v) => setPhoto({ panY: v })} fmt={(v) => (Math.abs(v) < 0.01 ? 'Centre' : v < 0 ? 'Up' : 'Down')} />
+                      <Muted>Zoom in a little to get room to move the photo.</Muted>
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Border</FieldLabel>
+                      <Slider label="Border width" min={0} max={90} step={1} value={selPhoto.ring} onChange={(v) => setPhoto({ ring: v })} fmt={(v) => (v < 1 ? 'None' : `${Math.round(v)}`)} />
+                      {selPhoto.ring > 0 && (
+                        <SwatchRow>
+                          <input type="color" value={normHex(selPhoto.ringColor)} onChange={(e) => setPhoto({ ringColor: e.target.value })} />
+                          {paletteSwatches.map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ ringColor: col })} />
+                          ))}
+                        </SwatchRow>
+                      )}
+                      <FieldLabel style={{ marginTop: 10 }}>Colour behind a cut-out photo</FieldLabel>
+                      <SwatchRow>
+                        <Ghost onClick={() => setPhoto({ backdrop: '' })}>None</Ghost>
+                        <input type="color" value={normHex(selPhoto.backdrop, '#141414')} onChange={(e) => setPhoto({ backdrop: e.target.value })} />
+                        {paletteSwatches.map((col, i) => (
+                          <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ backdrop: col })} />
+                        ))}
+                      </SwatchRow>
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Name and title</FieldLabel>
+                      <Input placeholder="Name" value={(guestText(sel, 'name') || {}).text || ''} onChange={(e) => setGuestText('name', e.target.value)} disabled={selPhoto.textStyle === 'none'} />
+                      <Input placeholder="Title" style={{ marginTop: 6 }} value={(guestText(sel, 'title') || {}).text || ''} onChange={(e) => setGuestText('title', e.target.value)} disabled={selPhoto.textStyle === 'none'} />
+                      <FieldLabel style={{ marginTop: 10 }}>Style</FieldLabel>
+                      <Seg>
+                        {[['below', 'Under photo'], ['bar', 'Label bar'], ['none', 'None']].map(([id, label]) => (
+                          <SegBtn key={id} $on={selPhoto.textStyle === id} onClick={() => setGuestStyle({ textStyle: id })}>{label}</SegBtn>
+                        ))}
+                      </Seg>
+                      {selPhoto.textStyle !== 'none' && (
+                        <Seg style={{ marginTop: 6 }}>
+                          {[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']].map(([id, label]) => (
+                            <SegBtn key={id} $on={selPhoto.textAlign === id} onClick={() => setGuestStyle({ textAlign: id })}>{label}</SegBtn>
+                          ))}
+                        </Seg>
+                      )}
+                      {selPhoto.textStyle === 'bar' && (
+                        <SwatchRow style={{ marginTop: 8 }}>
+                          <input type="color" value={normHex(selPhoto.barFill, '#141414')} onChange={(e) => setGuestStyle({ barFill: e.target.value })} />
+                          {paletteSwatches.map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setGuestStyle({ barFill: col })} />
+                          ))}
+                        </SwatchRow>
+                      )}
+                      <Muted style={{ marginTop: 6 }}>The name and title shrink to stay inside the photo's width. Click either one on the cover to change its font or colour.</Muted>
+                    </InsCell>
+                  </>
+                )}
+
+                {selKind === 'shape' && (
+                  <>
+                    <InsCell>
+                      <FieldLabel>Fill colour</FieldLabel>
+                      <SwatchRow>
+                        <input type="color" value={normHex(sel.fill, '#000000')} onChange={(e) => setShape({ fill: e.target.value })} />
+                        {paletteSwatches.map((col, i) => (
+                          <Swatch key={i} style={{ background: col }} onClick={() => setShape({ fill: col })} title={col} />
+                        ))}
+                      </SwatchRow>
+                    </InsCell>
+                    {sel.studio.attach ? (
+                      <InsCell>
+                        <Muted>This bar belongs to a guest and sizes itself to the name and title. Change its style from the guest photo.</Muted>
+                      </InsCell>
+                    ) : (
+                      <InsCell>
+                        <Slider label="Width" min={10} max={W} step={2} value={sel.width} onChange={(v) => setShape({ width: v })} fmt={(v) => `${Math.round(v)}px`} />
+                        <Slider label="Height" min={10} max={H} step={2} value={sel.height} onChange={(v) => setShape({ height: v })} fmt={(v) => `${Math.round(v)}px`} />
+                        <Slider label="Rounded corners" min={0} max={1} step={0.01} value={sel.studio.round || 0} onChange={(v) => setShape({ round: v })} />
+                      </InsCell>
+                    )}
                   </>
                 )}
 
@@ -1848,6 +2944,20 @@ export default function CoverStudio({
                         fmt={(v) => `${Math.round(v)}px wide`}
                       />
                     </InsCell>
+                    {isInterview && !sel.studio.seal && (
+                      <InsCell>
+                        <FieldLabel>Logo file</FieldLabel>
+                        <Row>
+                          <Ghost onClick={() => pickReplaceLogo(sel)}>{sel.studio.placeholder ? 'Choose a file' : 'Replace logo'}</Ghost>
+                          {!sel.studio.placeholder && <Ghost onClick={removeLogoBackground}>Remove plain background</Ghost>}
+                        </Row>
+                        {sel.studio.placeholder && <Muted style={{ marginTop: 6 }}>This is a placeholder. Open the Logos tab and click a logo to fill it, or choose a file.</Muted>}
+                        <Check style={{ marginTop: 8 }}>
+                          <input type="checkbox" checked={!!guestText(sel, 'caption')} onChange={(e) => toggleCaption(e.target.checked)} />
+                          Small "ECOSYSTEM" label under this logo
+                        </Check>
+                      </InsCell>
+                    )}
                     {sel.studio.colors && sel.studio.colors.length > 0 && bg.kind === 'template' && (
                       <InsCell>
                         <FieldLabel>Match the background to this logo</FieldLabel>
@@ -1896,12 +3006,14 @@ export default function CoverStudio({
             <Tool disabled={hist.index <= 0} onClick={undo} title="Undo (Cmd/Ctrl+Z)">Undo</Tool>
             <Tool disabled={hist.index >= hist.stack.length - 1} onClick={redo} title="Redo (Shift+Cmd/Ctrl+Z)">Redo</Tool>
           </Group>
+          {!isInterview && (
           <Group>
             <ToolLabel>Layout</ToolLabel>
             <Tool onClick={() => applyLayout('center')} title="Logo centred, text centred below">Centred</Tool>
             <Tool onClick={() => applyLayout('left')} title="Logo left, text right">Logo left</Tool>
             <Tool onClick={() => applyLayout('bottom')} title="Small logo top-left, headline bottom-left">Headline low</Tool>
           </Group>
+          )}
           <Group>
             <ToolCheck>
               <input type="checkbox" checked={showGuides} onChange={(e) => setShowGuides(e.target.checked)} /> Safe area
@@ -1910,6 +3022,7 @@ export default function CoverStudio({
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap
             </ToolCheck>
           </Group>
+          {!isInterview && (
           <Group>
             <ToolLabel>Watermark</ToolLabel>
             <Seg>
@@ -1921,15 +3034,16 @@ export default function CoverStudio({
               </SegBtn>
             </Seg>
           </Group>
+          )}
           <Spacer />
           <Group>
             <Tool onClick={download}>Download PNG</Tool>
-            <SaveBtn onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save to profile'}</SaveBtn>
+            {!isInterview && <SaveBtn onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save to profile'}</SaveBtn>}
           </Group>
         </Toolbar>
 
-        <Stage ref={stageRef}>
-          <BgLayer ref={bgCanvasRef} width={COVER_W} height={COVER_H} />
+        <Stage ref={stageRef} $ratio={`${W} / ${H}`}>
+          <BgLayer ref={bgCanvasRef} width={W} height={H} />
           <GrainLayer
             ref={grainViewRef}
             style={{
@@ -1939,13 +3053,13 @@ export default function CoverStudio({
             }}
           />
           <CanvasHost ref={hostRef} />
-          {showGuides && <SafeBox />}
-          {guides.v !== null && <GuideV style={{ left: `${(guides.v / COVER_W) * 100}%` }} />}
-          {guides.h !== null && <GuideH style={{ top: `${(guides.h / COVER_H) * 100}%` }} />}
+          {showGuides && <SafeBox $w={W} $h={H} />}
+          {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
+          {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
           {objectCount === 0 && (
             <EmptyHint>
-              <b>Start with a background, then add a logo and a headline.</b>
-              <span>Everything you add can be dragged, scaled and restyled. Exports at 1800 x 900.</span>
+              <b>{isInterview ? 'Pick a layout to start, or add guests, logos and text yourself.' : 'Start with a background, then add a logo and a headline.'}</b>
+              <span>Everything you add can be dragged, scaled and restyled. Exports at {W} x {H}.</span>
             </EmptyHint>
           )}
         </Stage>
@@ -2004,12 +3118,13 @@ const Panel = styled.div`
 
 const Tabs = styled.div`
   display: flex;
+  flex-wrap: ${(p) => (p.$wrap ? 'wrap' : 'nowrap')};
   border-bottom: 1px solid #222222;
   flex-shrink: 0;
 `;
 
 const Tab = styled.button`
-  flex: 1 1 auto;
+  flex: ${(p) => (p.$quarter ? '1 1 25%' : '1 1 auto')};
   background: ${(p) => (p.$on ? '#161616' : 'transparent')};
   color: ${(p) => (p.$on ? '#e6edf3' : '#8b949e')};
   opacity: ${(p) => (p.$dim && !p.$on ? 0.45 : 1)};
@@ -2673,7 +3788,7 @@ const Danger = styled.button`
 const Stage = styled.div`
   position: relative;
   width: 100%;
-  aspect-ratio: 2 / 1;
+  aspect-ratio: ${(p) => p.$ratio || '2 / 1'};
   background: #050505;
   border: 1px solid #222222;
   border-radius: 10px;
@@ -2711,10 +3826,10 @@ const CanvasHost = styled.div`
 const SafeBox = styled.div`
   position: absolute;
   z-index: 4;
-  left: ${(SAFE / COVER_W) * 100}%;
-  right: ${(SAFE / COVER_W) * 100}%;
-  top: ${(SAFE / COVER_H) * 100}%;
-  bottom: ${(SAFE / COVER_H) * 100}%;
+  left: ${(p) => (SAFE / p.$w) * 100}%;
+  right: ${(p) => (SAFE / p.$w) * 100}%;
+  top: ${(p) => (SAFE / p.$h) * 100}%;
+  bottom: ${(p) => (SAFE / p.$h) * 100}%;
   border: 1px dashed rgba(0, 212, 255, 0.55);
   pointer-events: none;
 `;

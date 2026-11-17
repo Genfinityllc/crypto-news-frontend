@@ -31,6 +31,8 @@ const Subtitle = styled.p`
 
 const ModeTabs = styled.div`
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 0.5rem;
   padding: 0.35rem;
   margin-bottom: 1.25rem;
@@ -1108,6 +1110,7 @@ export default function CoverGenerator() {
   };
   // 'generate' = AI generation (this page), 'studio' = hand-composed covers.
   const [mode, setMode] = useState('generate');
+  const [interviewOpened, setInterviewOpened] = useState(false); // same idea, for the interview editor
   const [studioOpened, setStudioOpened] = useState(false); // mount on first open, then keep the work alive
   const [studioIncoming, setStudioIncoming] = useState(null); // cover handed to the Studio as its background
   const [copySpace, setCopySpace] = useState('center'); // background-only: where to leave clear space
@@ -1984,6 +1987,10 @@ export default function CoverGenerator() {
         <ModeTab type="button" $active={mode === 'studio'} onClick={() => { setStudioOpened(true); setMode('studio'); }}>
           Design Studio
           <small>Place logos and text on any background</small>
+        </ModeTab>
+        <ModeTab type="button" $active={mode === 'interview'} onClick={() => { setInterviewOpened(true); setMode('interview'); }}>
+          Interview Cover Studio
+          <small>Guests, names and titles at 1920 x 1080</small>
         </ModeTab>
       </ModeTabs>
 
@@ -3093,6 +3100,21 @@ export default function CoverGenerator() {
             incoming={studioIncoming}
             active={mode === 'studio'}
             onSaved={(imageUrl, label) => setHistory(prev => [{ imageUrl, network: label, timestamp: new Date().toISOString(), saved: true }, ...prev])}
+          />
+        </div>
+      )}
+
+      {interviewOpened && (
+        <div style={{ display: mode === 'interview' ? 'block' : 'none' }}>
+          <CoverStudio
+            profile="interview"
+            apiBase={API_BASE}
+            networks={networks}
+            companies={companies}
+            styles={styles}
+            seals={sealOptions}
+            currentUser={currentUser}
+            active={mode === 'interview'}
           />
         </div>
       )}

@@ -92,10 +92,10 @@ function fillBase(ctx, w, h, p, deep = 0) {
 
 // Off-screen layer in template units (1800x900), rendered at quality q so
 // thumbnails stay cheap. Draw it back with ctx.drawImage(l.c, 0, 0, w, h).
-function layer(q) {
+function layer(q, w = COVER_W, h = COVER_H) {
   const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(COVER_W * q));
-  c.height = Math.max(1, Math.round(COVER_H * q));
+  c.width = Math.max(1, Math.round(w * q));
+  c.height = Math.max(1, Math.round(h * q));
   const g = c.getContext('2d');
   g.scale(q, q);
   return { c, g };
@@ -263,7 +263,7 @@ export const TEMPLATES = [
     note: 'Colour seen through ribbed glass',
     draw(ctx, w, h, p, k, rand, q) {
       // the scene behind the glass
-      const src = layer(q);
+      const src = layer(q, w, h);
       fillBase(src.g, w, h, p, 0.2);
       src.g.globalCompositeOperation = 'screen';
       field(src.g, w * (0.12 + rand() * 0.2), h * (0.2 + rand() * 0.3), h * 1.05, p.a1, 0.95 * k);
@@ -302,7 +302,7 @@ export const TEMPLATES = [
       const p1 = rand() * TAU;
       const p2 = rand() * TAU;
       const p3 = rand() * TAU;
-      const l = layer(q);
+      const l = layer(q, w, h);
       for (let i = 1; i <= 24; i++) {
         const r0 = h * 0.062 * i;
         l.g.beginPath();
@@ -362,7 +362,7 @@ export const TEMPLATES = [
       ctx.globalCompositeOperation = 'screen';
       field(ctx, cx, cy, h * 1.0, p.a1, 0.5 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const l = layer(q);
+      const l = layer(q, w, h);
       const step = w / 30;
       for (let i = 0, x = 0; x <= w; x += step, i++) {
         l.g.fillStyle = rgba(p.a2, i % 5 === 0 ? 0.5 : 0.22);
@@ -389,7 +389,7 @@ export const TEMPLATES = [
       ctx.globalCompositeOperation = 'screen';
       field(ctx, cx, cy, h * 1.1, p.a1, 0.5 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const l = layer(q);
+      const l = layer(q, w, h);
       l.g.save();
       l.g.translate(w / 2, h / 2);
       l.g.rotate((-38 * Math.PI) / 180);
@@ -416,7 +416,7 @@ export const TEMPLATES = [
       ctx.globalCompositeOperation = 'screen';
       field(ctx, cx, h * 0.95, h * 1.1, p.a1, 0.5 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const l = layer(q);
+      const l = layer(q, w, h);
       const step = h / 22;
       for (let j = 1; j < 22; j++) {
         l.g.fillStyle = rgba(p.a2, j % 5 === 0 ? 0.52 : 0.24);
@@ -697,12 +697,15 @@ export function renderBackground(canvas, spec, opts = {}) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, w, h);
 
-  // Templates are authored at 1800x900; scale so thumbnails match exactly.
-  const s = w / COVER_W;
+  // Templates are drawn in "design units": 1800x900 for article covers, or the
+  // size passed in (1920x1080 for interview covers). Scaled so thumbnails match.
+  const DW = opts.designW || COVER_W;
+  const DH = opts.designH || COVER_H;
+  const s = w / DW;
   ctx.save();
   ctx.scale(s, s);
   if (spec.flip) {
-    ctx.translate(COVER_W, 0);
+    ctx.translate(DW, 0);
     ctx.scale(-1, 1);
   }
 
@@ -710,20 +713,20 @@ export function renderBackground(canvas, spec, opts = {}) {
     const img = spec.image;
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
-    const scale = Math.max(COVER_W / iw, COVER_H / ih);
+    const scale = Math.max(DW / iw, DH / ih);
     const dw = iw * scale;
     const dh = ih * scale;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, (COVER_W - dw) / 2, (COVER_H - dh) / 2, dw, dh);
+    ctx.drawImage(img, (DW - dw) / 2, (DH - dh) / 2, dw, dh);
     if (spec.dim > 0) {
       ctx.fillStyle = `rgba(0,0,0,${Math.min(0.9, spec.dim)})`;
-      ctx.fillRect(0, 0, COVER_W, COVER_H);
+      ctx.fillRect(0, 0, DW, DH);
     }
   } else {
     const tpl = getTemplate(spec.templateId);
     const p = spec.palette || DEFAULT_PALETTE;
     const k = spec.intensity == null ? 1 : spec.intensity;
-    tpl.draw(ctx, COVER_W, COVER_H, p, k, rng(spec.seed || 1), s);
+    tpl.draw(ctx, DW, DH, p, k, rng(spec.seed || 1), s);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
