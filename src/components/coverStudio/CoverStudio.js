@@ -273,6 +273,9 @@ const DEFAULT_BG = {
   centerVignette: 0,
   contrast: 0,
   dim: 0,
+  zoom: 1,
+  shiftX: 0,
+  shiftY: 0,
   image: null,
   imageLabel: '',
 };
@@ -411,6 +414,7 @@ export default function CoverStudio({
   const applyLayoutRef = useRef(null);
 
   const [bg, setBgState] = useState(DEFAULT_BG);
+  const [bgNote, setBgNote] = useState('');
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
   const [watermark, setWatermark] = useState(() => {
@@ -2290,6 +2294,80 @@ export default function CoverStudio({
     return list.slice(0, 45);
   }, [allLogos, swapQuery]);
 
+  // ---------- background size and position ----------
+  // The part of the cover the background is actually seen in: the whole cover
+  // minus any solid panel (or stack of framed photos) sitting against an edge.
+  const openArea = () => {
+    const c = fabricRef.current;
+    const area = { x0: 0, y0: 0, x1: W, y1: H };
+    if (!c) return area;
+    const rects = c
+      .getObjects()
+      .filter(
+        (o) =>
+          o.visible !== false &&
+          (o.opacity == null || o.opacity > 0.85) &&
+          o.studio &&
+          (o.studio.kind === 'shape' || (o.studio.kind === 'photo' && o.studio.shape === 'rect'))
+      )
+      .map((o) => {
+        const b = o.getBoundingRect();
+        return { l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height };
+      });
+    // how much of a side the pieces against it cover, overlaps counted once
+    const span = (list, hi) => {
+      let end = 0;
+      let sum = 0;
+      list
+        .slice()
+        .sort((p, q) => p[0] - q[0])
+        .forEach(([from, to]) => {
+          const a = Math.max(from, end);
+          const b = Math.min(to, hi);
+          if (b > a) {
+            sum += b - a;
+            end = b;
+          }
+        });
+      return sum;
+    };
+    const edge = 6;
+    const right = rects.filter((r) => r.r >= W - edge && r.l > W * 0.45);
+    if (span(right.map((r) => [r.t, r.b]), H) >= H * 0.6) area.x1 = Math.min(...right.map((r) => r.l));
+    const left = rects.filter((r) => r.l <= edge && r.r < W * 0.55);
+    if (span(left.map((r) => [r.t, r.b]), H) >= H * 0.6) area.x0 = Math.max(...left.map((r) => r.r));
+    const top = rects.filter((r) => r.t <= edge && r.b < H * 0.55);
+    if (span(top.map((r) => [r.l, r.r]), W) >= W * 0.6) area.y0 = Math.max(...top.map((r) => r.b));
+    const bottom = rects.filter((r) => r.b >= H - edge && r.t > H * 0.45);
+    if (span(bottom.map((r) => [r.l, r.r]), W) >= W * 0.6) area.y1 = Math.min(...bottom.map((r) => r.t));
+    return area;
+  };
+
+  // Move the middle of the background to the middle of the open area, and
+  // enlarge it only as far as needed so it still reaches every edge.
+  const centreBackground = () => {
+    const a = openArea();
+    const ox = (a.x0 + a.x1) / 2 - W / 2;
+    const oy = (a.y0 + a.y1) / 2 - H / 2;
+    const b = bgRef.current;
+    let dw = W;
+    let dh = H;
+    if (b.kind === 'image' && b.image) {
+      const iw = b.image.naturalWidth || b.image.width;
+      const ih = b.image.naturalHeight || b.image.height;
+      const sc = Math.max(W / iw, H / ih);
+      dw = iw * sc;
+      dh = ih * sc;
+    }
+    const zoom = Math.ceil(Math.max((W + 2 * Math.abs(ox)) / dw, (H + 2 * Math.abs(oy)) / dh) * 100) / 100;
+    setBg({ zoom, shiftX: ox / W, shiftY: oy / H });
+    setBgNote(ox === 0 && oy === 0 ? 'No side panel found, so the background is centred on the whole cover.' : '');
+  };
+  const resetBackgroundPlace = () => {
+    setBg({ zoom: 1, shiftX: 0, shiftY: 0 });
+    setBgNote('');
+  };
+
   const applyPalette = (p) => setBg({ paletteId: p.id, palette: { base: p.base, a1: p.a1, a2: p.a2 } });
   const setColor = (key, value) => setBg((prev) => ({ paletteId: 'custom', palette: { ...prev.palette, [key]: value } }));
   const selFont = selKind === 'text' ? findFont(sel.fontFamily, userFonts) : null;
@@ -2603,6 +2681,36 @@ export default function CoverStudio({
                 </ColorRow>
               </>
             )}
+
+            <FieldLabel>Size and position</FieldLabel>
+            <Hint>
+              The background is never selected by clicking on the cover. Size it and move it here, for example to bring its
+              focus into the part of the cover that is not hidden behind a panel.
+            </Hint>
+            <Slider label="Size" min={0.5} max={3} step={0.01} value={bg.zoom} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => setBg({ zoom: v })} />
+            <Slider
+              label="Left / right"
+              min={-0.5}
+              max={0.5}
+              step={0.005}
+              value={bg.shiftX}
+              fmt={(v) => (Math.round(v * W) === 0 ? 'Centre' : `${Math.abs(Math.round(v * W))} px ${v < 0 ? 'left' : 'right'}`)}
+              onChange={(v) => setBg({ shiftX: v })}
+            />
+            <Slider
+              label="Up / down"
+              min={-0.5}
+              max={0.5}
+              step={0.005}
+              value={bg.shiftY}
+              fmt={(v) => (Math.round(v * H) === 0 ? 'Centre' : `${Math.abs(Math.round(v * H))} px ${v < 0 ? 'up' : 'down'}`)}
+              onChange={(v) => setBg({ shiftY: v })}
+            />
+            <Row>
+              <Ghost onClick={centreBackground}>Centre on the open area</Ghost>
+              <Ghost onClick={resetBackgroundPlace}>Reset</Ghost>
+            </Row>
+            {bgNote && <Hint>{bgNote}</Hint>}
 
             <FieldLabel>Finish</FieldLabel>
             {bg.kind === 'template' && (

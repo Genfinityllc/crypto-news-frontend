@@ -686,6 +686,7 @@ export function drawCenterVignette(ctx, w, h, amount) {
 //   kind: 'template' | 'image',
 //   templateId, palette:{base,a1,a2}, intensity, seed, flip,
 //   image (HTMLImageElement|canvas), dim (0..1), tint,
+//   zoom (1 = fills the cover), shiftX / shiftY (share of width / height),
 //   grain (0..1), grainCoarse, vignette (0..1), centerVignette (0..1)
 // }
 export function renderBackground(canvas, spec, opts = {}) {
@@ -704,6 +705,26 @@ export function renderBackground(canvas, spec, opts = {}) {
   const s = w / DW;
   ctx.save();
   ctx.scale(s, s);
+  // Size and position of the whole picture (image or template). Shifts are a
+  // share of the cover's width and height, so they mean the same at any size.
+  // Whatever the picture no longer reaches is filled with the base colour.
+  const z = Math.min(4, Math.max(0.2, Number(spec.zoom) || 1));
+  const ox = (Number(spec.shiftX) || 0) * DW;
+  const oy = (Number(spec.shiftY) || 0) * DH;
+  const placed = z !== 1 || ox !== 0 || oy !== 0;
+  if (placed) {
+    ctx.fillStyle = (spec.palette || DEFAULT_PALETTE).base || '#000000';
+    ctx.fillRect(0, 0, DW, DH);
+    ctx.translate(DW / 2 + ox, DH / 2 + oy);
+    ctx.scale(z, z);
+    ctx.translate(-DW / 2, -DH / 2);
+    if (spec.kind !== 'image') {
+      // a template may paint past its own frame; keep it inside when moved
+      ctx.beginPath();
+      ctx.rect(0, 0, DW, DH);
+      ctx.clip();
+    }
+  }
   if (spec.flip) {
     ctx.translate(DW, 0);
     ctx.scale(-1, 1);
@@ -720,13 +741,13 @@ export function renderBackground(canvas, spec, opts = {}) {
     ctx.drawImage(img, (DW - dw) / 2, (DH - dh) / 2, dw, dh);
     if (spec.dim > 0) {
       ctx.fillStyle = `rgba(0,0,0,${Math.min(0.9, spec.dim)})`;
-      ctx.fillRect(0, 0, DW, DH);
+      ctx.fillRect((DW - dw) / 2, (DH - dh) / 2, dw, dh);
     }
   } else {
     const tpl = getTemplate(spec.templateId);
     const p = spec.palette || DEFAULT_PALETTE;
     const k = spec.intensity == null ? 1 : spec.intensity;
-    tpl.draw(ctx, DW, DH, p, k, rng(spec.seed || 1), s);
+    tpl.draw(ctx, DW, DH, p, k, rng(spec.seed || 1), s * z);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
