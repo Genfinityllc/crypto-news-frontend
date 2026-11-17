@@ -386,6 +386,11 @@ export default function CoverStudio({
   // drawn at the cover's own pixels (exportBgRef).
   const bgCanvasRef = useRef(null);
   const grainViewRef = useRef(null);
+  const shapeGrainViewRef = useRef(null);
+  const shapeGrainScratchRef = useRef(null);
+  const shapeGrainTopRef = useRef(null);
+  const shapeGrainDueRef = useRef(false);
+  const paintShapeGrainRef = useRef(null);
   const grainTimer = useRef(null);
   const exportBgRef = useRef(null);
   const bgObjRef = useRef(null);
@@ -410,6 +415,10 @@ export default function CoverStudio({
   const fontFileRef = useRef(null);
   const userFontItemsRef = useRef([]); // every font file registered in this browser
   const userFontsRef = useRef([]);
+  const fontPreviewRef = useRef(null);
+  // what the person has typed, uploaded and chosen so far, kept when the layout changes
+  const carryRef = useRef({ texts: {}, logos: {}, guests: [] });
+  const lastLayoutRef = useRef(null);
   const [userFonts, setUserFonts] = useState([]); // the same, grouped by family
   const [fontDrop, setFontDrop] = useState(false);
   // New items are arranged for you until you move something by hand.
@@ -632,6 +641,7 @@ export default function CoverStudio({
     };
     c.on('selection:created', onSel);
     c.on('selection:updated', onSel);
+    c.on('after:render', () => shapeGrainSoonRef.current());
     c.on('selection:cleared', () => {
       // items moved together as a group have their own positions again now
       if (layoutAllRef.current) layoutAllRef.current();
@@ -806,6 +816,110 @@ export default function CoverStudio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- grain on a single shape ----------
+  // A shape (a side panel, a band) can carry its own grain. It is drawn only
+  // where the shape is actually seen: the shape's outline, minus everything
+  // stacked above it, so guests, bars and text on the panel stay clean. Like
+  // the background grain it is never resized: on screen it lives in its own
+  // layer at the screen's pixels, in the file it is drawn at the cover's.
+  const paintShapeGrain = (ctx, w, h) => {
+    const c = fabricRef.current;
+    if (!c) return false;
+    const objs = c.getObjects();
+    const grainy = objs.filter((o) => o.studio && o.studio.kind === 'shape' && o.studio.grain > 0 && o.visible !== false);
+    if (!grainy.length) return false;
+    let m = shapeGrainScratchRef.current;
+    if (!m) {
+      m = document.createElement('canvas');
+      shapeGrainScratchRef.current = m;
+    }
+    if (m.width !== w || m.height !== h) {
+      m.width = w;
+      m.height = h;
+    }
+    const mg = m.getContext('2d');
+    // what lies above the shape is drawn on a sheet of its own and then cut
+    // out of the shape (fabric sets its own blend mode on every item it draws,
+    // so the cut cannot be made while drawing them)
+    let top = shapeGrainTopRef.current;
+    if (!top) {
+      top = document.createElement('canvas');
+      shapeGrainTopRef.current = top;
+    }
+    if (top.width !== w || top.height !== h) {
+      top.width = w;
+      top.height = h;
+    }
+    const tg = top.getContext('2d');
+    const k = w / W;
+    const field = grainField(w, h, 5, !!bgRef.current.grainCoarse);
+    // items selected together are positioned relative to their selection
+    const draw = (g2, o) => {
+      if (!o.group) {
+        o.render(g2);
+        return;
+      }
+      g2.save();
+      g2.transform(...o.group.calcTransformMatrix());
+      o.render(g2);
+      g2.restore();
+    };
+    grainy.forEach((sh) => {
+      mg.setTransform(1, 0, 0, 1, 0, 0);
+      mg.globalCompositeOperation = 'source-over';
+      mg.globalAlpha = 1;
+      mg.clearRect(0, 0, w, h);
+      mg.setTransform(k, 0, 0, k, 0, 0);
+      draw(mg, sh);
+      tg.setTransform(1, 0, 0, 1, 0, 0);
+      tg.clearRect(0, 0, w, h);
+      tg.setTransform(k, 0, 0, k, 0, 0);
+      objs.slice(objs.indexOf(sh) + 1).forEach((o) => draw(tg, o));
+      mg.setTransform(1, 0, 0, 1, 0, 0);
+      mg.globalCompositeOperation = 'destination-out';
+      mg.drawImage(top, 0, 0);
+      mg.globalCompositeOperation = 'source-in';
+      mg.globalAlpha = grainOpacity(sh.studio.grain);
+      mg.drawImage(field, 0, 0);
+      mg.globalAlpha = 1;
+      mg.globalCompositeOperation = 'source-over';
+      ctx.drawImage(m, 0, 0);
+    });
+    return true;
+  };
+  paintShapeGrainRef.current = paintShapeGrain;
+
+  const syncShapeGrain = useCallback(() => {
+    const gv = shapeGrainViewRef.current;
+    const stage = stageRef.current;
+    if (!gv || !stage) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(stage.clientWidth * dpr);
+    const h = Math.round(stage.clientHeight * dpr);
+    if (w < 2 || h < 2) return; // hidden tab
+    if (gv.width !== w || gv.height !== h) {
+      gv.width = w;
+      gv.height = h;
+      gv.style.width = `${w / dpr}px`;
+      gv.style.height = `${h / dpr}px`;
+    }
+    const ctx = gv.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    const any = paintShapeGrainRef.current ? paintShapeGrainRef.current(ctx, w, h) : false;
+    gv.style.display = any ? 'block' : 'none';
+  }, []);
+  // redrawn after the cover itself has been drawn, at most once per frame
+  const shapeGrainSoon = useCallback(() => {
+    if (shapeGrainDueRef.current) return;
+    shapeGrainDueRef.current = true;
+    requestAnimationFrame(() => {
+      shapeGrainDueRef.current = false;
+      syncShapeGrain();
+    });
+  }, [syncShapeGrain]);
+  const shapeGrainSoonRef = useRef(shapeGrainSoon);
+  shapeGrainSoonRef.current = shapeGrainSoon;
+
   // ---------- overlay: watermark (plus top grain in the exported file) ----------
   const watermarkRef = useRef(true);
   const drawOverlay = useCallback((forExport = false) => {
@@ -816,6 +930,8 @@ export default function CoverStudio({
     g.clearRect(0, 0, W, H);
     const b = bgRef.current;
     const wm = wmImgRef.current;
+    // grain on single shapes, in the file (on screen it has its own layer)
+    if (forExport && paintShapeGrainRef.current) paintShapeGrainRef.current(g, W, H);
     if (watermarkRef.current && wm) {
       // Same locked placement as the server watermark: centred, 5px low.
       const ww = wm.naturalWidth;
@@ -1244,7 +1360,9 @@ export default function CoverStudio({
     c.requestRenderAll();
   };
 
-  const makeAttachedText = (frame, role, text) => {
+  // seed = the placeholder the line started with; a line that still reads as
+  // its seed has not been typed yet.
+  const makeAttachedText = (frame, role, text, seed = text) => {
     const c = fabricRef.current;
     const [nf, nw] = nameFontChoice();
     const isName = role === 'name';
@@ -1262,7 +1380,7 @@ export default function CoverStudio({
       textAlign: 'center',
       editable: true,
     });
-    t.studio = { kind: 'text', role: `guest-${role}`, attach: { to: frame, role, rel: ATTACH_REL[role] || ATTACH_REL.title, dx: 0, dy: 0 } };
+    t.studio = { kind: 'text', role: `guest-${role}`, seed, attach: { to: frame, role, rel: ATTACH_REL[role] || ATTACH_REL.title, dx: 0, dy: 0 } };
     t.setControlsVisibility({ mt: false, mb: false });
     styleObject(t);
     c.add(t);
@@ -1358,13 +1476,40 @@ export default function CoverStudio({
       textAlign: opt.align || 'left',
       editable: true,
     });
-    t.studio = { kind: 'text', role: opt.role || 'text' };
+    t.studio = { kind: 'text', role: opt.role || 'text', seed: opt.seed == null ? opt.text : opt.seed };
     if (opt.box) {
       t.studio.box = { on: true, color: paletteColor(opt.box.color, bgRef.current.palette.a1), padX: opt.box.padX || 0, padY: opt.box.padY || 0, radius: opt.box.radius || 0 };
       applyTextBox(t);
     }
     t.initDimensions();
-    t.set({ left: opt.cx == null ? (opt.x || 0) + w / 2 : opt.cx, top: opt.cy == null ? (opt.y || 0) + t.height / 2 : opt.cy });
+    // Text carried over from another layout goes into the room this layout's
+    // own placeholder takes: the largest size, up to the layout's, at which it
+    // fits that width and height. It sits in the middle of that room.
+    let room = null;
+    if (opt.fitTo != null && opt.fitTo !== t.text) {
+      const mine = t.text;
+      t.set('text', opt.fitTo);
+      t.initDimensions();
+      room = t.height;
+      t.set('text', mine);
+      const fits = (size) => {
+        t.set({ fontSize: size, width: w });
+        t.initDimensions();
+        return t.height <= room * 1.01 && t.width <= w + 1; // a word wider than the box widens it
+      };
+      let hi = opt.size || 60;
+      if (!fits(hi)) {
+        let lo = 10;
+        for (let i = 0; i < 12; i += 1) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        t.set({ fontSize: Math.floor(lo), width: w });
+        t.initDimensions();
+      }
+    }
+    t.set({ left: opt.cx == null ? (opt.x || 0) + w / 2 : opt.cx, top: opt.cy == null ? (opt.y || 0) + (room == null ? t.height : room) / 2 : opt.cy });
     t.setControlsVisibility({ mt: false, mb: false });
     styleObject(t);
     c.add(t);
@@ -1373,7 +1518,8 @@ export default function CoverStudio({
 
   const makePill = (opt = {}) => {
     const size = opt.size || 54;
-    return makeText({ text: 'Interview', cx: opt.cx, cy: opt.cy, w: size * 8, size, weight: 700, align: 'center', role: 'pill', box: { color: 'a1', padX: size * 0.8, padY: size * 0.3, radius: 999 } });
+    const text = opt.text || 'Interview';
+    return makeText({ text, seed: 'Interview', cx: opt.cx, cy: opt.cy, w: Math.max(size * 8, text.length * size * 0.72), size, weight: 700, align: 'center', role: 'pill', box: { color: 'a1', padX: size * 0.8, padY: size * 0.3, radius: 999 } });
   };
 
   const logoObject = (studio) => {
@@ -1417,7 +1563,7 @@ export default function CoverStudio({
   const makeBrought = (opt = {}) => {
     const c = fabricRef.current;
     const size = opt.size || 34;
-    const t = makeText({ text: 'Brought to you by', x: 0, y: 0, w: 3000, size, weight: 500, align: 'left', role: 'brought' });
+    const t = makeText({ text: opt.text || 'Brought to you by', seed: 'Brought to you by', x: 0, y: 0, w: 3000, size, weight: 500, align: 'left', role: 'brought' });
     const tw = t.getLineWidth(0) + 6;
     t.set({ width: tw });
     t.initDimensions();
@@ -1460,24 +1606,136 @@ export default function CoverStudio({
     }
   };
 
-  const applyInterviewLayout = async (layout) => {
+  // ---------- changing layout keeps the person's work ----------
+  // A line's text if it has been typed, or undefined while it is still the
+  // placeholder. Names shown in capitals by a layout keep their typed form.
+  const typed = (t) => {
+    if (!t) return undefined;
+    const st = t.studio;
+    const text = st.raw != null && t.text === String(st.raw).toUpperCase() ? st.raw : t.text;
+    return st.seed != null && text === st.seed ? undefined : text;
+  };
+  const readingOrder = (p, q) => (Math.abs(p.top - q.top) > 60 ? p.top - q.top : p.left - q.left);
+
+  // Collect what is on the cover now. Anything the next layout has no place
+  // for (a third guest, a subtitle) stays here and returns with a layout
+  // that does have one.
+  const harvest = () => {
+    const c = fabricRef.current;
+    const prev = carryRef.current;
+    const objs = c.getObjects();
+    const texts = { ...prev.texts };
+    ['headline', 'subhead', 'pill', 'brought'].forEach((role) => {
+      const t = objs.find((o) => o.studio && o.studio.tpl && o.studio.kind === 'text' && o.studio.role === role);
+      if (t) texts[role] = typed(t);
+    });
+    const logos = { ...prev.logos };
+    ['ecosystem', 'partner'].forEach((slot) => {
+      const o = objs.find((x) => x.studio && x.studio.kind === 'logo' && x.studio.slot === slot);
+      if (!o) return;
+      if (o.studio.placeholder) logos[slot] = undefined;
+      else {
+        const { slot: s0, slotBox, anchor, placeholder, attach, tpl, ...look } = o.studio;
+        logos[slot] = look;
+      }
+      const cap = guestText(o, 'caption');
+      if (slot === 'ecosystem' && cap) texts.caption = typed(cap);
+    });
+    const now = objs
+      .filter((o) => o.studio && o.studio.kind === 'photo')
+      .sort(readingOrder)
+      .map((o) => {
+        const st = o.studio;
+        const line = (r) => {
+          const t = guestText(o, r);
+          return t ? typed(t) : st.kept && st.kept[r] ? st.kept[r].text : undefined;
+        };
+        return { src: st.src, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, name: line('name'), title: line('title') };
+      });
+    // grain put on a layout's colour panel goes with it to the next panel
+    const panels = objs.filter((o) => o.studio && o.studio.tpl && o.studio.kind === 'shape' && !o.studio.attach);
+    const grain = panels.length ? Math.max(...panels.map((o) => o.studio.grain || 0)) : prev.grain || 0;
+    carryRef.current = { texts, logos, guests: now.concat(prev.guests.slice(now.length)), grain };
+  };
+
+  const fillGuest = (o, g, upper) => {
+    if (!g) return;
+    const st = o.studio;
+    if (g.src) Object.assign(st, { src: g.src, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop });
+    if (g.src && g.treatment === 'tint') st.tintColor = g.tintColor;
+    repaintPhoto(o);
+    [['name', g.name], ['title', g.title]].forEach(([r, v]) => {
+      const t = guestText(o, r);
+      if (v == null || !t) return;
+      t.set('text', upper ? String(v).toUpperCase() : v);
+      t.studio.raw = upper ? v : undefined;
+    });
+    layoutAttached(o);
+  };
+
+  const fillLogo = (o, look, caption) => {
+    const st = o.studio;
+    if (look) {
+      const box = st.slotBox;
+      const leftEdge = o.left - o.getScaledWidth() / 2;
+      const topEdge = o.top - o.getScaledHeight() / 2;
+      Object.assign(st, look, { placeholder: false });
+      const el = paintItem(st);
+      o.setElement(el);
+      const sc = Math.min(box.w / el.width, box.h / el.height);
+      o.set({ width: el.width, height: el.height, scaleX: sc, scaleY: sc });
+      if (st.anchor === 'lt') o.set({ left: leftEdge + (el.width * sc) / 2, top: topEdge + (el.height * sc) / 2 });
+      o.setCoords();
+    }
+    const cap = guestText(o, 'caption');
+    if (cap && caption != null) cap.set('text', caption);
+    layoutAttached(o);
+  };
+
+  // fresh = start the layout again with empty placeholders
+  const applyInterviewLayout = async (layout, fresh = false) => {
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
     c.discardActiveObject();
-    c.remove(...c.getObjects());
+    if (fresh) carryRef.current = { texts: {}, logos: {}, guests: [], grain: 0 };
+    else harvest();
+    const carry = carryRef.current;
+    const moved = !!(Object.values(carry.texts).some((v) => v != null) || Object.values(carry.logos).some(Boolean) || carry.guests.some((g) => g.src || g.name != null || g.title != null));
+    // Everything a layout made is rebuilt. Extra items the person added
+    // themselves (text, shapes, logos) stay exactly where they are. Guests
+    // always move into the new layout's guest places.
+    const all = c.getObjects();
+    const builtBy = (o) => o.studio && (o.studio.tpl || o.studio.kind === 'photo');
+    const mine = fresh ? [] : all.filter((o) => o.studio && !builtBy(o) && !(o.studio.attach && builtBy(o.studio.attach.to)));
+    c.remove(...all.filter((o) => !mine.includes(o)));
+    const had = new Set(c.getObjects());
+    let g = 0;
     layout.items.forEach((it) => {
-      if (it.t === 'shape') makeShape(it);
-      else if (it.t === 'guest') makePhoto(it);
-      else if (it.t === 'logo') makeLogoSlot(it);
-      else if (it.t === 'pill') makePill(it);
-      else if (it.t === 'text') makeText(it);
-      else if (it.t === 'brought') makeBrought(it);
+      if (it.t === 'shape') {
+        const sh = makeShape(it);
+        if (carry.grain > 0) sh.studio.grain = carry.grain;
+      } else if (it.t === 'guest') {
+        fillGuest(makePhoto(it), carry.guests[g], !!it.upper);
+        g += 1;
+      } else if (it.t === 'logo') fillLogo(makeLogoSlot(it), carry.logos[it.slot], it.caption ? carry.texts.caption : null);
+      else if (it.t === 'pill') makePill({ ...it, text: carry.texts.pill });
+      else if (it.t === 'text') makeText({ ...it, text: carry.texts[it.role] == null ? it.text : carry.texts[it.role], seed: it.text, fitTo: it.text });
+      else if (it.t === 'brought') makeBrought({ ...it, text: carry.texts.brought });
     });
+    c.getObjects().forEach((o) => {
+      if (!had.has(o) && o.studio) o.studio.tpl = true;
+    });
+    mine.forEach((o) => c.bringObjectToFront(o));
+    lastLayoutRef.current = layout;
     c.requestRenderAll();
     commit();
     bump();
-    toast.success('Layout added. Click any part to change it. Undo brings back what was there before.');
+    toast.success(
+      moved
+        ? 'Layout changed. What you typed, your photos and your logos moved into it. Undo goes back.'
+        : 'Layout added. Click any part to change it. Undo brings back what was there before.'
+    );
   };
 
   const addGuest = async (shape, src) => {
@@ -1640,7 +1898,7 @@ export default function CoverStudio({
       [['name', 'Guest Name'], ['title', 'Title at Company']].forEach(([r, fallback]) => {
         if (guestText(o, r)) return;
         const k = st.kept && st.kept[r];
-        const t = makeAttachedText(o, r, k ? k.text : fallback);
+        const t = makeAttachedText(o, r, k ? k.text : fallback, fallback);
         if (k) {
           t.set(k.look);
           Object.assign(t.studio.attach, k.attach);
@@ -1675,6 +1933,7 @@ export default function CoverStudio({
     const o = active1();
     if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
     if (patch.round != null) o.studio.round = patch.round;
+    if (patch.grain != null) o.studio.grain = patch.grain;
     if (patch.width != null) o.set('width', patch.width);
     if (patch.height != null) o.set('height', patch.height);
     if (patch.fill) {
@@ -1936,15 +2195,59 @@ export default function CoverStudio({
 
   // Italic is kept only where the chosen weight really has one; the browser
   // would otherwise fake it by slanting the upright letters.
-  const setFont = async (family, weight, italic) => {
-    const o = active1();
-    if (!o) return;
+  const resolveFont = (family, weight, italic) => {
     const def = findFont(family, userFontsRef.current);
     const w = def.weights.includes(Number(weight)) ? Number(weight) : def.weights.reduce((a, b) => (Math.abs(b - weight) < Math.abs(a - weight) ? b : a));
     const forced = !!def.italicOnly && def.italicOnly.includes(w);
-    const it = forced || (hasItalic(def, w) && (italic === undefined ? o.fontStyle === 'italic' : !!italic));
-    await ensureFont(def.family, w, it);
-    change({ fontFamily: def.family, fontWeight: w, fontStyle: it ? 'italic' : 'normal' });
+    const it = forced || (hasItalic(def, w) && !!italic);
+    return { fontFamily: def.family, fontWeight: w, fontStyle: it ? 'italic' : 'normal' };
+  };
+  const setFont = async (family, weight, italic) => {
+    const o = active1();
+    if (!o) return;
+    const f = resolveFont(family, weight, italic === undefined ? o.fontStyle === 'italic' : italic);
+    await ensureFont(f.fontFamily, f.fontWeight, f.fontStyle === 'italic');
+    change(f);
+  };
+
+  // Hovering a font in the picker shows it on the selected text straight
+  // away, without choosing it: nothing is saved to the history, and the text
+  // goes back to its real font when the pointer leaves or the list closes.
+  const showFont = (o, f) => {
+    const c = fabricRef.current;
+    o.set(f);
+    o.setCoords();
+    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
+    if (c) c.requestRenderAll();
+  };
+  const previewFont = async (family) => {
+    let p = fontPreviewRef.current;
+    if (family == null) {
+      if (p) {
+        fontPreviewRef.current = null;
+        showFont(p.o, p.orig);
+      }
+      return;
+    }
+    const o = active1();
+    if (!o || !o.studio || o.studio.kind !== 'text') return;
+    if (!p || p.o !== o) {
+      if (p) showFont(p.o, p.orig);
+      p = { o, orig: { fontFamily: o.fontFamily, fontWeight: o.fontWeight, fontStyle: o.fontStyle }, turn: 0 };
+      fontPreviewRef.current = p;
+    }
+    p.turn += 1;
+    const mine = p.turn;
+    const f = resolveFont(family, p.orig.fontWeight, p.orig.fontStyle === 'italic');
+    await ensureFont(f.fontFamily, f.fontWeight, f.fontStyle === 'italic');
+    // a later hover, or the end of the preview, wins over a font still loading
+    if (fontPreviewRef.current !== p || p.turn !== mine) return;
+    showFont(o, f);
+  };
+  const pickFont = (family) => {
+    previewFont(null); // back to the real font first, so the weight and italic carry over from it
+    const o = active1();
+    if (o) setFont(family, o.fontWeight);
   };
 
   // ---------- the person's own fonts ----------
@@ -2439,6 +2742,10 @@ export default function CoverStudio({
   const applyPalette = (p) => setBg({ paletteId: p.id, palette: { base: p.base, a1: p.a1, a2: p.a2 } });
   const setColor = (key, value) => setBg((prev) => ({ paletteId: 'custom', palette: { ...prev.palette, [key]: value } }));
   const selFont = selKind === 'text' ? findFont(sel.fontFamily, userFonts) : null;
+  const fontGroups = [
+    ...(userFonts.length ? [{ label: 'Your fonts', fonts: userFonts }] : []),
+    ...['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => ({ label: kind, fonts: FONTS.filter((f) => f.kind === kind) })),
+  ];
   const kindLabel = (o) => {
     const k = o.studio && o.studio.kind;
     if (k === 'text') return 'Text';
@@ -2519,7 +2826,12 @@ export default function CoverStudio({
                 </TemplateTile>
               ))}
             </TemplateGrid>
-            <Hint>Applying a layout replaces what is on the cover. Undo brings it back.</Hint>
+            <Hint>
+              Changing layout keeps your work: what you typed, your guest photos and your logos move to their places in the new layout, in its style. Items you added yourself stay where they are. Undo goes back.
+            </Hint>
+            {lastLayoutRef.current && (
+              <Ghost onClick={() => applyInterviewLayout(lastLayoutRef.current, true)}>Start again with empty placeholders</Ghost>
+            )}
           </PanelBody>
         )}
 
@@ -3031,22 +3343,12 @@ export default function CoverStudio({
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Font</FieldLabel>
-                      <Select value={sel.fontFamily} onChange={(e) => setFont(e.target.value, sel.fontWeight)}>
-                        {userFonts.length > 0 && (
-                          <optgroup label="Your fonts">
-                            {userFonts.map((f) => (
-                              <option key={f.family} value={f.family}>{f.family}</option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => (
-                          <optgroup key={kind} label={kind}>
-                            {FONTS.filter((f) => f.kind === kind).map((f) => (
-                              <option key={f.family} value={f.family}>{f.family}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </Select>
+                      <FontPicker
+                        value={(fontPreviewRef.current && fontPreviewRef.current.o === sel ? fontPreviewRef.current.orig : sel).fontFamily}
+                        groups={fontGroups}
+                        onPreview={previewFont}
+                        onPick={pickFont}
+                      />
                       <Select value={sel.fontWeight} onChange={(e) => setFont(sel.fontFamily, Number(e.target.value))} style={{ marginTop: 6 }}>
                         {selFont.weights.map((w) => (
                           <option key={w} value={w}>{weightLabel(selFont, w)}</option>
@@ -3254,6 +3556,8 @@ export default function CoverStudio({
                         <Slider label="Width" min={10} max={W} step={2} value={sel.width} onChange={(v) => setShape({ width: v })} fmt={(v) => `${Math.round(v)}px`} />
                         <Slider label="Height" min={10} max={H} step={2} value={sel.height} onChange={(v) => setShape({ height: v })} fmt={(v) => `${Math.round(v)}px`} />
                         <Slider label="Rounded corners" min={0} max={1} step={0.01} value={sel.studio.round || 0} onChange={(v) => setShape({ round: v })} />
+                        <Slider label="Grain on this shape" min={0} max={1} step={0.02} value={sel.studio.grain || 0} onChange={(v) => setShape({ grain: v })} />
+                        <Muted>Only this shape gets the grain. Guests, bars and text on top of it stay clean.</Muted>
                       </InsCell>
                     )}
                   </>
@@ -3460,6 +3764,7 @@ export default function CoverStudio({
             }}
           />
           <CanvasHost ref={hostRef} />
+          <GrainLayer ref={shapeGrainViewRef} style={{ zIndex: 2, display: 'none' }} />
           {showGuides && <SafeBox $w={W} $h={H} />}
           {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
           {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
@@ -3490,6 +3795,125 @@ function Slider({ label, min, max, step, value, onChange, fmt }) {
       </div>
       <input type="range" min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(Number(e.target.value))} />
     </SliderWrap>
+  );
+}
+
+// The font list. Each name is shown in its own typeface, and pointing at one
+// (or moving to it with the arrow keys) previews it on the selected text.
+// A native <select> cannot do this: its options report no hover.
+function FontPicker({ value, groups, onPreview, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [hot, setHot] = useState(null);
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
+  const previewRef = useRef(onPreview);
+  previewRef.current = onPreview;
+  const flat = groups.reduce((all, g) => all.concat(g.fonts), []);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setHot(null);
+    previewRef.current(null);
+  }, []);
+
+  // a click anywhere else closes the list and ends the preview
+  useEffect(() => {
+    if (!open) return undefined;
+    const down = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) close();
+    };
+    document.addEventListener('mousedown', down, true);
+    return () => document.removeEventListener('mousedown', down, true);
+  }, [open, close]);
+  useEffect(() => () => previewRef.current(null), []);
+
+  // open on the current font
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const cur = listRef.current.querySelector('[aria-selected="true"]');
+    if (cur) listRef.current.scrollTop = Math.max(0, cur.offsetTop - listRef.current.clientHeight / 2);
+  }, [open]);
+
+  const point = (family) => {
+    setHot(family);
+    onPreview(family);
+  };
+  const choose = (family) => {
+    setOpen(false);
+    setHot(null);
+    onPick(family);
+  };
+  const onKeyDown = (e) => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    } else if (e.key === 'Enter' && hot) {
+      e.preventDefault();
+      choose(hot);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const at = flat.findIndex((f) => f.family === (hot || value));
+      const next = flat[Math.min(flat.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+      if (!next) return;
+      point(next.family);
+      const el = listRef.current && listRef.current.querySelector(`[data-font="${next.family}"]`);
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  return (
+    <FontBox ref={rootRef} onKeyDown={onKeyDown}>
+      <FontBtn type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
+        <span style={{ fontFamily: `"${value}", sans-serif` }}>{value}</span>
+        <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </FontBtn>
+      {open && (
+        <FontList
+          ref={listRef}
+          role="listbox"
+          aria-label="Font"
+          onMouseLeave={() => {
+            setHot(null);
+            onPreview(null);
+          }}
+        >
+          {groups.map((g) => (
+            <React.Fragment key={g.label}>
+              <FontGroup>{g.label}</FontGroup>
+              {g.fonts.map((f) => (
+                <FontOpt
+                  key={f.family}
+                  role="option"
+                  data-font={f.family}
+                  aria-selected={f.family === value}
+                  $on={f.family === value}
+                  $hot={f.family === hot}
+                  style={{
+                    fontFamily: `"${f.family}", sans-serif`,
+                    fontWeight: f.weights.reduce((a, b) => (Math.abs(b - 500) < Math.abs(a - 500) ? b : a)),
+                    fontStyle: (f.italicOnly || []).length === f.weights.length ? 'italic' : 'normal',
+                  }}
+                  onMouseEnter={() => point(f.family)}
+                  onClick={() => choose(f.family)}
+                >
+                  {f.family}
+                </FontOpt>
+              ))}
+            </React.Fragment>
+          ))}
+        </FontList>
+      )}
+      {open && <FontTip>Point at a font to see it on the cover. Click to keep it.</FontTip>}
+    </FontBox>
   );
 }
 
@@ -4478,6 +4902,82 @@ const TextArea = styled.textarea`
     outline: none;
     border-color: #00d4ff;
   }
+`;
+
+const FontBox = styled.div`
+  width: 100%;
+`;
+
+const FontBtn = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: #0a0a0a;
+  border: 1px solid #30363d;
+  border-radius: 9px;
+  color: #e6edf3;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  svg {
+    flex: none;
+    color: #8b949e;
+  }
+
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    outline: none;
+    border-color: #00d4ff;
+  }
+`;
+
+const FontList = styled.div`
+  position: relative;
+  margin-top: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #0a0a0a;
+  border: 1px solid #30363d;
+  border-radius: 9px;
+  padding: 4px;
+`;
+
+const FontGroup = styled.div`
+  color: #8b949e;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.5rem 0.25rem;
+`;
+
+const FontOpt = styled.div`
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: ${(p) => (p.$on ? '#00d4ff' : '#e6edf3')};
+  background: ${(p) => (p.$hot ? '#1f2a33' : 'transparent')};
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const FontTip = styled.div`
+  color: #8b949e;
+  font-size: 0.72rem;
+  margin-top: 4px;
 `;
 
 const Select = styled.select`
