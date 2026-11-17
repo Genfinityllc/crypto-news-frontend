@@ -2090,6 +2090,24 @@ export default function CoverStudio({
     bump();
   };
 
+  // Every guest by the same amount, measured from one of them: guests that
+  // were given different sizes keep their difference. The selection stays.
+  const scaleAllGuests = (ref, width) => {
+    const c = fabricRef.current;
+    if (!c || !ref) return;
+    const k = width / Math.max(1, ref.getScaledWidth());
+    c.getObjects()
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
+      .forEach((frame) => {
+        frame.set({ scaleX: Math.max(0.02, frame.scaleX * k), scaleY: Math.max(0.02, frame.scaleY * k) });
+        frame.setCoords();
+        layoutAttached(frame);
+      });
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
   const selectWhole = (frame) => {
     const c = fabricRef.current;
     if (!c || !frame) return;
@@ -3200,6 +3218,7 @@ export default function CoverStudio({
   };
   const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
   const selPhoto = selKind === 'photo' ? sel.studio : null;
+  const sizedGuests = guestList.filter((o) => !o.studio.host).length; // guests that size together (a host is not one)
   // the whole pieces behind the selection, for the toolbar's Size control
   const sizePieces = c && selection.length ? piecesOf(selection) : [];
   const sizeNow = sizePieces.length ? spanOf(sizePieces).w : 0;
@@ -3811,6 +3830,17 @@ export default function CoverStudio({
                       onChange={(v) => resizeWhole(sel.studio.attach.to, v)}
                       fmt={(v) => `${Math.round(v)}px wide`}
                     />
+                    {sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' && !sel.studio.attach.to.studio.host && sizedGuests > 1 && (
+                      <Slider
+                        label="Size of all guests together"
+                        min={60}
+                        max={1500}
+                        step={2}
+                        value={sel.studio.attach.to.getScaledWidth()}
+                        onChange={(v) => scaleAllGuests(sel.studio.attach.to, v)}
+                        fmt={(v) => `${Math.round(v)}px wide`}
+                      />
+                    )}
                     <Row>
                       <Ghost onClick={() => selectWhole(sel.studio.attach.to)}>{sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' ? 'Select the guest photo' : 'Select the logo'}</Ghost>
                     </Row>
@@ -3904,7 +3934,13 @@ export default function CoverStudio({
                     <InsCell>
                       <FieldLabel>Whole guest</FieldLabel>
                       <Slider label="Size (photo, name, title and bar together)" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => resizeWhole(sel, v)} fmt={(v) => `${Math.round(v)}px wide`} />
-                      <Muted>Dragging a corner of the photo does the same. The name and title keep their share of the size.</Muted>
+                      {!selPhoto.host && sizedGuests > 1 && (
+                        <Slider label="Size of all guests together" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => scaleAllGuests(sel, v)} fmt={(v) => `${Math.round(v)}px wide`} />
+                      )}
+                      <Muted>
+                        Dragging a corner of the photo does the same. The name and title keep their share of the size.
+                        {!selPhoto.host && sizedGuests > 1 ? ' The second slider sizes every guest by the same amount, each with its photo shape, name and title; each guest stays where it is.' : ''}
+                      </Muted>
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Photo</FieldLabel>
