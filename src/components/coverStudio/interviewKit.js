@@ -493,11 +493,13 @@ export const INTERVIEW_LAYOUTS = [
     note: 'A single large round guest photo with the headline beside it.',
     items: [
       { t: 'logo', slot: 'ecosystem', x: 90, y: 80, w: 330, h: 90, caption: true },
-      { t: 'pill', cx: 235, cy: 318, size: 46 },
-      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 395, w: 1100, size: 128, weight: 800, align: 'left', lineHeight: 1.02 },
-      { t: 'text', role: 'subhead', text: 'A supporting line that adds context', x: 90, y: 700, w: 1060, size: 48, weight: 400, align: 'left' },
+      // The guest is on the right, so the words line up on their right edge
+      // (1190), beside the photo.
+      { t: 'pill', cx: 1045, cy: 318, size: 46 },
+      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 395, w: 1100, size: 128, weight: 800, align: 'right', lineHeight: 1.02 },
+      { t: 'text', role: 'subhead', text: 'A supporting line that adds context', x: 90, y: 700, w: 1100, size: 48, weight: 400, align: 'right' },
       { t: 'guest', cx: 1500, cy: 470, size: 540, shape: 'circle', ring: 18, ringColor: 'a1', style: 'below', align: 'center' },
-      { t: 'brought', anchor: 'left', x: 90, cy: 960 },
+      { t: 'brought', anchor: 'right', x: 1190, cy: 960 },
     ],
   },
 ];
