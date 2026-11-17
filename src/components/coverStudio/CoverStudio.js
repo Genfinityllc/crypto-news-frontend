@@ -3228,10 +3228,10 @@ export default function CoverStudio({
               fmt={(v) => (Math.round(v * H) === 0 ? 'Centre' : `${Math.abs(Math.round(v * H))} px ${v < 0 ? 'up' : 'down'}`)}
               onChange={(v) => setBg({ shiftY: v })}
             />
-            <Row>
-              <Ghost onClick={centreBackground}>Centre on the open area</Ghost>
-              <Ghost onClick={resetBackgroundPlace}>Reset</Ghost>
-            </Row>
+            <Ghost onClick={centreBackground}>Centre on the open area</Ghost>
+            <Ghost onClick={resetBackgroundPlace} disabled={(bg.zoom || 1) === 1 && !bg.shiftX && !bg.shiftY}>
+              Reset to full cover (original size and position)
+            </Ghost>
             {bgNote && <Hint>{bgNote}</Hint>}
 
             <FieldLabel>Finish</FieldLabel>
