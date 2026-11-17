@@ -31,6 +31,7 @@ import {
   removePlainBackground,
   drawLayoutThumb,
 } from './interviewKit';
+import { cutOutPerson } from './photoCutout';
 
 // ---------------------------------------------------------------------------
 // Design Studio: compose a cover by hand.
@@ -429,6 +430,9 @@ export default function CoverStudio({
   const [bg, setBgState] = useState(DEFAULT_BG);
   const [bgNote, setBgNote] = useState('');
   const [ringAll, setRingAll] = useState(false);
+  const [cutting, setCutting] = useState(false);
+  const [dropBox, setDropBox] = useState(null);
+  const dropKeyRef = useRef('');
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
   const [watermark, setWatermark] = useState(() => {
@@ -1197,8 +1201,9 @@ export default function CoverStudio({
   };
   // Names are set in a wide bold face: the person's own Pilat Wide when they
   // have added it, otherwise the built-in wide cut.
-  const nameFontChoice = () =>
-    userFontsRef.current.some((f) => f.family === 'Pilat Wide' && f.weights.includes(700)) ? ['Pilat Wide', 700] : ['CMG Sans Wide', 800];
+  // Guest names start in CMG Sans Bold and titles in CMG Sans Regular (the
+  // owner's choice); either can be changed per line afterwards.
+  const nameFontChoice = () => ['CMG Sans', 700];
   const ensureInterviewFonts = () => {
     const [nf, nw] = nameFontChoice();
     return Promise.all([
@@ -1209,6 +1214,7 @@ export default function CoverStudio({
       ensureFont('Montserrat', 400),
       ensureFont('Instrument Serif', 400, true),
       ensureFont(nf, nw),
+      ensureFont('CMG Sans', 400),
     ]);
   };
 
@@ -1372,8 +1378,8 @@ export default function CoverStudio({
       left: frame.left,
       top: frame.top,
       width: 400,
-      fontFamily: isName ? nf : 'Montserrat',
-      fontWeight: isName ? nw : role === 'caption' ? 600 : 500,
+      fontFamily: isName ? nf : role === 'title' ? 'CMG Sans' : 'Montserrat',
+      fontWeight: isName ? nw : role === 'caption' ? 600 : 400,
       fontSize: 30,
       fill: '#ffffff',
       lineHeight: 1.08,
@@ -1650,7 +1656,7 @@ export default function CoverStudio({
           const t = guestText(o, r);
           return t ? typed(t) : st.kept && st.kept[r] ? st.kept[r].text : undefined;
         };
-        return { src: st.src, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, name: line('name'), title: line('title') };
+        return { src: st.src, srcOrig: st.srcOrig, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, name: line('name'), title: line('title') };
       });
     // grain put on a layout's colour panel goes with it to the next panel
     const panels = objs.filter((o) => o.studio && o.studio.tpl && o.studio.kind === 'shape' && !o.studio.attach);
@@ -1661,7 +1667,7 @@ export default function CoverStudio({
   const fillGuest = (o, g, upper) => {
     if (!g) return;
     const st = o.studio;
-    if (g.src) Object.assign(st, { src: g.src, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop });
+    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop });
     if (g.src && g.treatment === 'tint') st.tintColor = g.tintColor;
     repaintPhoto(o);
     [['name', g.name], ['title', g.title]].forEach(([r, v]) => {
@@ -1761,15 +1767,139 @@ export default function CoverStudio({
     readFileAsDataUrl(file)
       .then((url) => loadImage(url, false))
       .then((img) => {
-        const src = preparePhoto(img);
         const c = fabricRef.current;
-        if (target && c && c.getObjects().includes(target)) {
-          Object.assign(target.studio, { src, zoom: 1, panX: 0, panY: 0 });
-          repaintPhoto(target);
-          layoutAttached(target);
-          finishAdd(target);
-        } else {
-          addGuest('circle', src);
+        if (target && c && c.getObjects().includes(target)) placeGuestPhoto(target, img);
+        else addGuest('circle', preparePhoto(img));
+      })
+      .catch(() => toast.error('Could not read that image.'));
+  };
+
+  // Put a picture into a guest's mask, keeping the guest's place and style.
+  const placeGuestPhoto = (target, img) => {
+    Object.assign(target.studio, { src: preparePhoto(img), srcOrig: null, zoom: 1, panX: 0, panY: 0 });
+    repaintPhoto(target);
+    layoutAttached(target);
+    finishAdd(target);
+  };
+
+  // ---------- erase the background of a guest photo ----------
+  // Runs in this browser (see photoCutout.js). The untouched photo is kept in
+  // studio.srcOrig so the background can be brought back.
+  const cutOutPhoto = async () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo' || !o.studio.src || cutting) return;
+    setCutting(true);
+    const note = toast.info('Removing the background. The first time takes a little longer while the tool loads.', { autoClose: false });
+    // let the message appear before the work starts; the work itself holds the page for a moment
+    await new Promise((r) => setTimeout(r, 60));
+    try {
+      const original = o.studio.srcOrig || o.studio.src;
+      const cut = await cutOutPerson(original);
+      if (!c.getObjects().includes(o)) return;
+      if (!cut) {
+        toast.info('No person was found in this photo, so nothing was removed.');
+        return;
+      }
+      o.studio.srcOrig = original;
+      o.studio.src = cut;
+      repaintPhoto(o);
+      layoutAttached(o);
+      c.requestRenderAll();
+      commit();
+      bump();
+      toast.success('Background removed. "Bring the background back" or Undo restores it.');
+    } catch (e) {
+      toast.error('The background could not be removed in this browser.');
+    } finally {
+      toast.dismiss(note);
+      setCutting(false);
+    }
+  };
+
+  // ---------- drop an image from the computer onto the cover ----------
+  // On a guest: it becomes that guest's photo. On an empty logo spot: it fills
+  // it. Anywhere else: it is added as an image at that point.
+  const dropTargetAt = (e) => {
+    const c = fabricRef.current;
+    const stage = stageRef.current;
+    if (!c || !stage) return null;
+    const r = stage.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * W;
+    const y = ((e.clientY - r.top) / r.height) * H;
+    const objs = c.getObjects();
+    for (let i = objs.length - 1; i >= 0; i -= 1) {
+      const o = objs[i];
+      if (!o.studio || o.visible === false) continue;
+      const owner = o.studio.attach ? o.studio.attach.to : o;
+      const k = owner.studio && owner.studio.kind;
+      if (k !== 'photo' && !(k === 'logo' && owner.studio.placeholder)) continue;
+      const b = o.getBoundingRect();
+      if (x >= b.left && x <= b.left + b.width && y >= b.top && y <= b.top + b.height) return { owner, x, y };
+    }
+    return { owner: null, x, y };
+  };
+  const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+  const onStageDragOver = (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const t = dropTargetAt(e);
+    if (!t) return;
+    const c = fabricRef.current;
+    const key = t.owner ? `o${c.getObjects().indexOf(t.owner)}` : 'cover';
+    if (dropKeyRef.current === key) return;
+    dropKeyRef.current = key;
+    if (!t.owner) {
+      setDropBox({ left: 0, top: 0, width: 100, height: 100, label: 'Drop to add this image to the cover' });
+      return;
+    }
+    const b = t.owner.getBoundingRect();
+    setDropBox({
+      left: (b.left / W) * 100,
+      top: (b.top / H) * 100,
+      width: (b.width / W) * 100,
+      height: (b.height / H) * 100,
+      label: t.owner.studio.kind === 'photo' ? 'Drop for this guest' : 'Drop for this logo',
+    });
+  };
+  const endDrop = () => {
+    dropKeyRef.current = '';
+    setDropBox(null);
+  };
+  const onStageDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    endDrop();
+  };
+  const onStageDrop = (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const t = dropTargetAt(e);
+    endDrop();
+    const file = Array.from(e.dataTransfer.files || []).find((f) => /^image\/(png|jpeg|webp|svg\+xml)$/.test(f.type));
+    if (!file) {
+      toast.info('Drop a PNG, JPG, WebP or SVG image.');
+      return;
+    }
+    readFileAsDataUrl(file)
+      .then((url) => loadImage(url, false))
+      .then((img) => {
+        const c = fabricRef.current;
+        if (!c || !t) return;
+        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, '') };
+        if (t.owner && c.getObjects().includes(t.owner)) {
+          if (t.owner.studio.kind === 'photo') placeGuestPhoto(t.owner, img);
+          else replaceLogo(t.owner, img, meta);
+          return;
+        }
+        c.discardActiveObject(); // so a selected placeholder is not filled by mistake
+        addLogoFromImage(img, meta);
+        const o = c.getActiveObject();
+        if (o && o.studio && o.studio.kind === 'logo') {
+          o.set({ left: Math.min(W - 20, Math.max(20, t.x)), top: Math.min(H - 20, Math.max(20, t.y)) });
+          o.setCoords();
+          c.requestRenderAll();
+          commitSoon();
         }
       })
       .catch(() => toast.error('Could not read that image.'));
@@ -3428,8 +3558,22 @@ export default function CoverStudio({
                       <FieldLabel>Photo</FieldLabel>
                       <Row>
                         <Ghost onClick={() => pickGuestPhoto(sel)}>{selPhoto.src ? 'Replace photo' : 'Choose photo'}</Ghost>
-                        {selPhoto.src && <Ghost onClick={() => setPhoto({ src: null })}>Remove photo</Ghost>}
+                        {selPhoto.src && <Ghost onClick={() => setPhoto({ src: null, srcOrig: null })}>Remove photo</Ghost>}
                       </Row>
+                      {selPhoto.src && (
+                        <>
+                          <Row style={{ marginTop: 6 }}>
+                            {selPhoto.srcOrig ? (
+                              <Ghost onClick={() => setPhoto({ src: selPhoto.srcOrig, srcOrig: null })}>Bring the background back</Ghost>
+                            ) : (
+                              <Ghost onClick={cutOutPhoto} disabled={cutting}>{cutting ? 'Removing the background...' : 'Remove the background'}</Ghost>
+                            )}
+                          </Row>
+                          <Muted style={{ marginTop: 6 }}>
+                            For photos of people. It runs on your computer and the photo is not uploaded. You can also drag a picture from your computer straight onto a guest.
+                          </Muted>
+                        </>
+                      )}
                       <FieldLabel style={{ marginTop: 10 }}>Photo look</FieldLabel>
                       <Seg>
                         {[['color', 'Colour'], ['bw', 'Black and white'], ['tint', 'Tint']].map(([id, label]) => (
@@ -3753,7 +3897,7 @@ export default function CoverStudio({
           </NameBar>
         )}
 
-        <Stage ref={stageRef} $ratio={`${W} / ${H}`}>
+        <Stage ref={stageRef} $ratio={`${W} / ${H}`} onDragOver={onStageDragOver} onDragLeave={onStageDragLeave} onDrop={onStageDrop}>
           <BgLayer ref={bgCanvasRef} width={W} height={H} />
           <GrainLayer
             ref={grainViewRef}
@@ -3765,6 +3909,11 @@ export default function CoverStudio({
           />
           <CanvasHost ref={hostRef} />
           <GrainLayer ref={shapeGrainViewRef} style={{ zIndex: 2, display: 'none' }} />
+          {dropBox && (
+            <DropBox style={{ left: `${dropBox.left}%`, top: `${dropBox.top}%`, width: `${dropBox.width}%`, height: `${dropBox.height}%` }}>
+              <span>{dropBox.label}</span>
+            </DropBox>
+          )}
           {showGuides && <SafeBox $w={W} $h={H} />}
           {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
           {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
@@ -4348,6 +4497,11 @@ const Ghost = styled.button`
   &:hover {
     border-color: #00d4ff;
   }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
 `;
 
 const Primary = styled.button`
@@ -4796,6 +4950,28 @@ const SafeBox = styled.div`
   bottom: ${(p) => (SAFE / p.$h) * 100}%;
   border: 1px dashed rgba(0, 212, 255, 0.55);
   pointer-events: none;
+`;
+
+const DropBox = styled.div`
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 2px dashed #00d4ff;
+  background: rgba(0, 212, 255, 0.12);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  line-height: 1.2;
+
+  span {
+    background: rgba(0, 0, 0, 0.78);
+    color: #e6edf3;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.3rem 0.55rem;
+    border-radius: 6px;
+    text-align: center;
+  }
 `;
 
 const GuideV = styled.div`
