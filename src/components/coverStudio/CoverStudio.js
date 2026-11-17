@@ -28,6 +28,9 @@ import {
   paintPhoto,
   preparePhoto,
   placeholderLogo,
+  hostMicBadge,
+  INTERVIEW_ELEMENTS,
+  drawElementThumb,
   removePlainBackground,
   drawLayoutThumb,
 } from './interviewKit';
@@ -295,6 +298,15 @@ function TemplateThumb({ templateId, palette, seed, wide }) {
   return <canvas ref={ref} width={240} height={wide ? 135 : 120} />;
 }
 
+// ----- schematic of a ready-made piece for its tile -----
+function ElementThumb({ id, palette }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) drawElementThumb(ref.current, id, palette);
+  }, [id, palette]);
+  return <canvas ref={ref} width={240} height={150} />;
+}
+
 // ----- schematic of an interview layout for its picker tile -----
 function LayoutThumb({ layout, palette }) {
   const ref = useRef(null);
@@ -354,7 +366,7 @@ function applyTextBox(o) {
 // A copy of an item's settings for undo (nested bits copied too).
 // Size of a guest's name, title and a logo's caption as a share of the photo's
 // (or logo's) width. These are the sizes the starting layouts show.
-const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.062 };
+const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.062, hostlabel: 0.225, hostmic: 0.356 };
 
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
@@ -1232,19 +1244,24 @@ export default function CoverStudio({
 
   // Anything the person did to an attached text by hand since the last layout
   // (dragged it, resized it) is kept as its own offset and size.
-  const takeHandEdits = (t, frame, fw) => {
+  // For a picture (the host's microphone badge) "size" is its width on the
+  // cover; for text it is the font size.
+  const takeHandEdits = (t, frame, fw, picture = false) => {
     const a = t.studio.attach;
     if (a.lastLeft == null) return;
     const base = a.lastFw || fw;
     const grew = fw / base; // how much the parent has grown since the last layout
-    const size = t.fontSize * (t.scaleY || 1);
+    const size = picture ? t.getScaledWidth() : t.fontSize * (t.scaleY || 1);
     // Where this text would be if it had simply travelled (and grown) with its
     // parent, as it does when the whole guest is selected and moved or scaled.
     const rode =
       Math.abs(t.left - (frame.left + (a.lastLeft - a.lastFrameLeft) * grew)) < 1 &&
       Math.abs(t.top - (frame.top + (a.lastTop - a.lastFrameTop) * grew)) < 1;
     // Untouched: only the parent moved or changed size.
-    const stayed = Math.abs(t.left - a.lastLeft) < 0.01 && Math.abs(t.top - a.lastTop) < 0.01 && Math.abs((t.scaleY || 1) - 1) < 0.001;
+    const stayed =
+      Math.abs(t.left - a.lastLeft) < 0.01 &&
+      Math.abs(t.top - a.lastTop) < 0.01 &&
+      (picture ? Math.abs(size - a.lastSize) < 0.01 : Math.abs((t.scaleY || 1) - 1) < 0.001);
     if (!rode && !stayed) {
       a.dx += (t.left - a.lastLeft) / base;
       a.dy += (t.top - a.lastTop) / base;
@@ -1257,11 +1274,11 @@ export default function CoverStudio({
       if (a.role === 'name' || a.role === 'title') a.free = true;
     }
   };
-  const noteLayout = (t, frame, fw) => {
+  const noteLayout = (t, frame, fw, picture = false) => {
     const a = t.studio.attach;
     a.lastLeft = t.left;
     a.lastTop = t.top;
-    a.lastSize = t.fontSize;
+    a.lastSize = picture ? t.getScaledWidth() : t.fontSize;
     a.lastFw = fw;
     a.lastFrameLeft = frame.left;
     a.lastFrameTop = frame.top;
@@ -1299,6 +1316,44 @@ export default function CoverStudio({
       noteLayout(cap, frame, fw);
     }
 
+    // "Hosted by" and the microphone badge: one line above the host's photo,
+    // the words first and the badge after them, centred on the photo.
+    const hl = role('hostlabel');
+    const hm = role('hostmic');
+    if (hl || hm) {
+      let lw = 0;
+      let mw = 0;
+      if (hl) {
+        takeHandEdits(hl, frame, fw);
+        hl.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: Math.max(8, hl.studio.attach.rel * fw), width: 6000, textAlign: 'left' });
+        hl.initDimensions();
+        for (let i = 0; i < hl._textLines.length; i += 1) lw = Math.max(lw, hl.getLineWidth(i));
+        lw += 2;
+        hl.set({ width: lw });
+        hl.initDimensions();
+      }
+      if (hm) {
+        takeHandEdits(hm, frame, fw, true);
+        mw = Math.max(6, hm.studio.attach.rel * fw);
+        hm.set({ scaleX: mw / hm.width, scaleY: mw / hm.width, angle: 0 });
+      }
+      const gap = hl && hm ? fw * 0.04 : 0;
+      const x0 = cx - (lw + gap + mw) / 2;
+      const yc = frame.top - fh / 2 - fw * 0.31;
+      if (hl) {
+        const a = hl.studio.attach;
+        hl.set({ left: x0 + lw / 2 + a.dx * fw, top: yc + a.dy * fw });
+        hl.setCoords();
+        noteLayout(hl, frame, fw);
+      }
+      if (hm) {
+        const a = hm.studio.attach;
+        hm.set({ left: x0 + lw + gap + mw / 2 + a.dx * fw, top: yc + a.dy * fw });
+        hm.setCoords();
+        noteLayout(hm, frame, fw, true);
+      }
+    }
+
     const bar = role('bar');
     const texts = [role('name'), role('title')].filter(Boolean);
     if (!texts.length && !bar) return;
@@ -1317,21 +1372,23 @@ export default function CoverStudio({
       let widest = 1;
       for (let i = 0; i < t._textLines.length; i += 1) widest = Math.max(widest, t.getLineWidth(i));
       let size = want;
-      let boxW = tw;
+      // a host's handle may run a little wider than the round photo above it
+      const room = tw * (a.wide || 1);
+      let boxW = room;
       if (a.free) {
         // sized by hand: keep it, even if it is wider than the photo
-        boxW = Math.max(tw, widest + 2);
+        boxW = Math.max(room, widest + 2);
       } else {
         // The layout's size is the largest a line gets. A longer line is made
         // smaller until it fits the width; it wraps only below 45%.
-        if (widest > tw) size = Math.max(want * 0.45, (want * tw) / widest) * 0.995;
+        if (widest > room) size = Math.max(want * 0.45, (want * room) / widest) * 0.995;
         if (a.role === 'title' && nameSize) size = Math.min(size, nameSize * 0.82);
       }
       t.set({ fontSize: size, width: boxW });
       t.initDimensions();
       if (a.role === 'name') nameSize = size;
       // a line wider than the photo still starts (or ends) on the chosen side
-      const lean = align === 'left' ? (boxW - tw) / 2 : align === 'right' ? -(boxW - tw) / 2 : 0;
+      const lean = align === 'left' ? (boxW - room) / 2 : align === 'right' ? -(boxW - room) / 2 : 0;
       t.set({ left: cx + lean + a.dx * fw, top: y + t.height / 2 + a.dy * fw });
       t.setCoords();
       noteLayout(t, frame, fw);
@@ -1604,6 +1661,10 @@ export default function CoverStudio({
     }
     t.setCoords();
     if (logo) logo.setCoords();
+    // the words and the logo stay separate items but are sized as one piece
+    const setId = `set-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
+    t.studio.set = setId;
+    if (logo) logo.studio.set = setId;
     return [t, logo];
   };
 
@@ -1655,7 +1716,7 @@ export default function CoverStudio({
       if (slot === 'ecosystem' && cap) texts.caption = typed(cap);
     });
     const now = objs
-      .filter((o) => o.studio && o.studio.kind === 'photo')
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
       .sort(readingOrder)
       .map((o) => {
         const st = o.studio;
@@ -1719,7 +1780,8 @@ export default function CoverStudio({
     // themselves (text, shapes, logos) stay exactly where they are. Guests
     // always move into the new layout's guest places.
     const all = c.getObjects();
-    const builtBy = (o) => o.studio && (o.studio.tpl || o.studio.kind === 'photo');
+    // (a "Hosted by" host is something the person added: it stays put)
+    const builtBy = (o) => o.studio && (o.studio.tpl || (o.studio.kind === 'photo' && !o.studio.host));
     const mine = fresh ? [] : all.filter((o) => o.studio && !builtBy(o) && !(o.studio.attach && builtBy(o.studio.attach.to)));
     c.remove(...all.filter((o) => !mine.includes(o)));
     const had = new Set(c.getObjects());
@@ -1758,6 +1820,58 @@ export default function CoverStudio({
     const n = c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo').length;
     const o = makePhoto({ shape, aspect: shape === 'rect' ? 0.9 : 1, src: src || null, size: 360, cx: W / 2 + (n % 5) * 44, cy: H / 2 - 40 + (n % 5) * 30 });
     finishAdd(o, 'guests');
+  };
+
+  // "Hosted by": a round host photo with the words and the microphone badge
+  // above it and a handle under it. Four separate items (photo, words, badge,
+  // handle) that can each be moved, restyled or deleted, and that travel and
+  // resize with the photo like a guest's name and title do.
+  const addHost = async (tab = 'guests') => {
+    const c = fabricRef.current;
+    if (!c) return;
+    await ensureInterviewFonts();
+    const o = makePhoto({ shape: 'circle', size: 300, cx: W / 2, cy: H / 2, style: 'none' });
+    Object.assign(o.studio, { host: true, name: 'Host', textStyle: 'below', textAlign: 'center' });
+    const handle = makeAttachedText(o, 'name', '@HostName');
+    handle.set({ fontWeight: 400 });
+    Object.assign(handle.studio.attach, { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 });
+    const label = makeAttachedText(o, 'hostlabel', 'Hosted by');
+    label.set({ fontFamily: 'CMG Sans', fontWeight: 400 });
+    const mic = logoObject({
+      kind: 'logo',
+      seal: false,
+      symbol: '',
+      name: 'Host microphone',
+      tint: 'original',
+      tintColor: '#ffffff',
+      source: hostMicBadge(),
+      colors: [],
+      attach: { to: o, role: 'hostmic', rel: ATTACH_REL.hostmic, dx: 0, dy: 0 },
+    });
+    c.add(mic);
+    layoutAttached(o);
+    finishAdd(o, tab);
+  };
+
+  // ---------- the Elements tab: ready-made pieces ----------
+  const addElement = async (id) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    await ensureInterviewFonts();
+    const at = { cx: W / 2, cy: H / 2 };
+    let o = null;
+    if (id === 'host') {
+      addHost('elements');
+      return;
+    }
+    if (id === 'guest-circle') o = makePhoto({ ...at, shape: 'circle', size: 360, style: 'below', align: 'center' });
+    if (id === 'guest-bar') o = makePhoto({ ...at, shape: 'rect', aspect: 0.9, size: 360, style: 'bar', align: 'right', barFill: '#141414' });
+    if (id === 'guest-hex') o = makePhoto({ ...at, shape: 'polygon', sides: 6, rounding: 0.3, ring: 34, ringColor: 'a1', size: 300, style: 'below', align: 'center' });
+    if (id === 'pill') o = makePill(at);
+    if (id === 'highlight') o = makeText({ ...at, text: 'Highlighted words', w: 1100, size: 70, weight: 700, align: 'center', role: 'highlight', box: { color: 'a1', padX: 30, padY: 10, radius: 0 } });
+    if (id === 'brought') [o] = makeBrought({ anchor: 'center', x: W / 2, cy: H / 2 });
+    if (id === 'ecosystem') o = makeLogoSlot({ slot: 'ecosystem', ...at, w: 300, h: 100, caption: true });
+    finishAdd(o, 'elements');
   };
 
   const pickGuestPhoto = (target) => {
@@ -1959,7 +2073,7 @@ export default function CoverStudio({
     if (!c) return;
     c.discardActiveObject();
     c.getObjects()
-      .filter((o) => o.studio && o.studio.kind === 'photo')
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
       .forEach((frame) => {
         const sc = Math.max(0.02, width / frame.width);
         frame.set({ scaleX: sc, scaleY: sc });
@@ -1976,6 +2090,87 @@ export default function CoverStudio({
     if (!c || !frame) return;
     c.setActiveObject(frame);
     c.requestRenderAll();
+    bump();
+  };
+
+  // ---------- size a whole piece from the toolbar ----------
+  // The pieces behind a selection: a guest's name counts as its guest, the
+  // host's microphone as its host, and "Brought to you by" as its two items.
+  const piecesOf = (picked) => {
+    const c = fabricRef.current;
+    const out = new Set();
+    picked.forEach((o) => {
+      if (!o.studio) return;
+      const root = o.studio.attach ? o.studio.attach.to : o;
+      if (!root || !root.studio) return;
+      if (root.studio.set) c.getObjects().filter((x) => x.studio && x.studio.set === root.studio.set).forEach((x) => out.add(x));
+      else out.add(root);
+    });
+    return [...out];
+  };
+  const spanOf = (items) => {
+    let l = Infinity;
+    let t = Infinity;
+    let r = -Infinity;
+    let b = -Infinity;
+    items.forEach((o) => {
+      const q = o.getBoundingRect();
+      l = Math.min(l, q.left);
+      t = Math.min(t, q.top);
+      r = Math.max(r, q.left + q.width);
+      b = Math.max(b, q.top + q.height);
+    });
+    return { l, t, r, b, w: r - l };
+  };
+  // Make the selected pieces `width` wide in total, growing or shrinking
+  // everything about their common centre. Attached parts follow their parent.
+  const scalePieces = (width) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const picked = c.getActiveObjects().slice();
+    if (!picked.length) return;
+    const multi = picked.length > 1;
+    const tabWas = leftTab;
+    if (multi) c.discardActiveObject(); // work in cover positions
+    const roots = piecesOf(picked);
+    const span = roots.length ? spanOf(roots) : null;
+    if (span && span.w > 1) {
+      const f = Math.min(20, Math.max(0.05, width / span.w));
+      const mx = (span.l + span.r) / 2;
+      const my = (span.t + span.b) / 2;
+      roots.forEach((o) => {
+        o.set({ left: mx + (o.left - mx) * f, top: my + (o.top - my) * f });
+        const k = o.studio.kind;
+        if (k === 'text') {
+          o.set({ fontSize: Math.max(6, o.fontSize * f), width: o.width * f });
+          const box = o.studio.box;
+          if (box) {
+            box.padX *= f;
+            box.padY *= f;
+            if (box.radius < 500) box.radius *= f;
+          }
+          o.initDimensions();
+          o.dirty = true;
+        } else if (k === 'shape') {
+          const w = Math.max(4, o.width * f);
+          const h = Math.max(4, o.height * f);
+          const r = ((o.studio.round || 0) * Math.min(w, h)) / 2;
+          o.set({ width: w, height: h, rx: r, ry: r });
+        } else {
+          o.set({ scaleX: o.scaleX * f, scaleY: o.scaleY * f });
+        }
+        o.setCoords();
+        layoutAttached(o);
+      });
+    }
+    if (multi) {
+      const still = picked.filter((o) => c.getObjects().includes(o));
+      if (still.length > 1) c.setActiveObject(new ActiveSelection(still, { canvas: c }));
+      else if (still.length === 1) c.setActiveObject(still[0]);
+      setLeftTab(tabWas);
+    }
+    c.requestRenderAll();
+    commitSoon();
     bump();
   };
 
@@ -2072,7 +2267,7 @@ export default function CoverStudio({
       // settle anything dragged since the last layout before the reset
       layoutAttached(o);
       t.set('text', value);
-      t.studio.attach.rel = ATTACH_REL[role] || t.studio.attach.rel;
+      t.studio.attach.rel = t.studio.attach.rel0 || ATTACH_REL[role] || t.studio.attach.rel;
       t.studio.attach.free = false;
     }
     layoutAttached(o);
@@ -2336,6 +2531,7 @@ export default function CoverStudio({
     const o = active1();
     if (!c || !o || !o.studio) return;
     const cl = await cloneItem(o);
+    delete cl.studio.set;
     // a copied name or caption becomes a free text block
     if (cl.studio.attach) {
       delete cl.studio.attach;
@@ -2978,6 +3174,9 @@ export default function CoverStudio({
   };
   const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
   const selPhoto = selKind === 'photo' ? sel.studio : null;
+  // the whole pieces behind the selection, for the toolbar's Size control
+  const sizePieces = c && selection.length ? piecesOf(selection) : [];
+  const sizeNow = sizePieces.length ? spanOf(sizePieces).w : 0;
   // how many separate pieces are selected (a guest with its name and title is one)
   const alignCount = selection.filter((o) => o.studio && !(o.studio.attach && selection.includes(o.studio.attach.to))).length;
   // Guests that show a name plate, in reading order, for the name strip.
@@ -3004,6 +3203,7 @@ export default function CoverStudio({
             ? [
                 ['layouts', 'Layouts'],
                 ['background', 'Background'],
+                ['elements', 'Elements'],
                 ['guests', 'Guests'],
                 ['logos', 'Logos'],
                 ['text', 'Text'],
@@ -3051,6 +3251,22 @@ export default function CoverStudio({
           </PanelBody>
         )}
 
+        {leftTab === 'elements' && (
+          <PanelBody>
+            <Hint>
+              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel.
+            </Hint>
+            <TemplateGrid>
+              {INTERVIEW_ELEMENTS.map((el) => (
+                <TemplateTile key={el.id} title={el.note} onClick={() => addElement(el.id)}>
+                  <ElementThumb id={el.id} palette={bg.palette} />
+                  <span>{el.name}</span>
+                </TemplateTile>
+              ))}
+            </TemplateGrid>
+          </PanelBody>
+        )}
+
         {leftTab === 'guests' && (
           <PanelBody>
             <Hint>Add a guest, then click it on the cover to change the photo, the mask shape, and the name and title under it.</Hint>
@@ -3064,7 +3280,12 @@ export default function CoverStudio({
               <SegBtn onClick={() => addGuest('rect')}>Rectangle</SegBtn>
               <SegBtn onClick={() => addGuest('polygon')}>Polygon</SegBtn>
             </Seg>
-            {guestList.length > 1 && (
+            <FieldLabel>Host</FieldLabel>
+            <AddText onClick={() => addHost('guests')}>
+              <b style={{ fontSize: 15 }}>Add "Hosted by"</b>
+              <small>A round host photo with the Hosted by line, the microphone badge and a handle. Each part can be moved or changed on its own.</small>
+            </AddText>
+            {guestList.filter((o) => !o.studio.host).length > 1 && (
               <>
                 <FieldLabel>All guests</FieldLabel>
                 <Slider
@@ -3072,7 +3293,10 @@ export default function CoverStudio({
                   min={60}
                   max={1200}
                   step={2}
-                  value={guestList.reduce((sum, o) => sum + o.getScaledWidth(), 0) / guestList.length}
+                  value={(() => {
+                    const only = guestList.filter((o) => !o.studio.host);
+                    return only.reduce((sum, o) => sum + o.getScaledWidth(), 0) / Math.max(1, only.length);
+                  })()}
                   onChange={resizeAllGuests}
                   fmt={(v) => `${Math.round(v)}px wide`}
                 />
@@ -3092,7 +3316,7 @@ export default function CoverStudio({
                   bump();
                 }}
               >
-                <em>Guest</em>
+                <em>{o.studio.host ? 'Host' : 'Guest'}</em>
                 <span>{layerName(o)}</span>
                 <button type="button" onClick={(e) => { e.stopPropagation(); pickGuestPhoto(o); }}>{o.studio.src ? 'Replace photo' : 'Choose photo'}</button>
               </LayerRow>
@@ -3950,6 +4174,20 @@ export default function CoverStudio({
             <ToolLabel>Align</ToolLabel>
             <AlignTools count={alignCount} onAlign={alignSelected} />
           </Group>
+          <Group title="Sizes the selected piece as a whole: a guest with its name and title, Hosted by with its badge, or everything you have selected. Drag a part on the cover to size only that part.">
+            <ToolLabel>Size</ToolLabel>
+            <ToolRange
+              type="range"
+              aria-label="Size of the selected piece"
+              min={30}
+              max={Math.round(W * 1.2)}
+              step={2}
+              value={sizeNow ? Math.round(sizeNow) : 30}
+              disabled={!sizeNow}
+              onChange={(e) => scalePieces(Number(e.target.value))}
+            />
+            <ToolValue>{sizeNow ? `${Math.round(sizeNow)} px` : ''}</ToolValue>
+          </Group>
           <Spacer />
           <Group>
             <Tool onClick={download}>Download PNG</Tool>
@@ -4255,7 +4493,7 @@ const Tabs = styled.div`
 `;
 
 const Tab = styled.button`
-  flex: ${(p) => (p.$quarter ? '1 1 25%' : '1 1 auto')};
+  flex: ${(p) => (p.$quarter ? '1 1 20%' : '1 1 auto')}; /* interview: nine tabs, five to a row */
   background: ${(p) => (p.$on ? '#161616' : 'transparent')};
   color: ${(p) => (p.$on ? '#e6edf3' : '#8b949e')};
   opacity: ${(p) => (p.$dim && !p.$on ? 0.45 : 1)};
@@ -4968,6 +5206,24 @@ const Group = styled.div`
 
 const Spacer = styled.div`
   flex: 1;
+`;
+
+const ToolRange = styled.input`
+  width: 130px;
+  accent-color: #00d4ff;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+`;
+
+const ToolValue = styled.span`
+  color: #8b949e;
+  font-size: 0.72rem;
+  min-width: 3.6rem;
+  font-variant-numeric: tabular-nums;
 `;
 
 const ToolLabel = styled.span`

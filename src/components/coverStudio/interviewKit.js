@@ -332,6 +332,56 @@ export function removePlainBackground(source, tolerance = 34) {
   return c;
 }
 
+// The microphone badge of the "Hosted by" group: a lime disc with a black
+// line-drawn studio microphone, redrawn from the owner's 58px reference so it
+// stays sharp at cover size. Returned as a canvas, used like any logo source.
+export function hostMicBadge(size = 512) {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+  const u = size / 100; // drawn on a 100 x 100 grid
+  g.fillStyle = '#d2ff00';
+  g.beginPath();
+  g.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = '#000000';
+  g.lineWidth = 3.6 * u;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  // the capsule
+  const cw = 30 * u;
+  const cx = size / 2;
+  const top = 12 * u;
+  const bottom = 62 * u;
+  g.beginPath();
+  g.moveTo(cx - cw / 2, top + cw / 2);
+  g.arc(cx, top + cw / 2, cw / 2, Math.PI, 0);
+  g.lineTo(cx + cw / 2, bottom - cw / 2);
+  g.arc(cx, bottom - cw / 2, cw / 2, 0, Math.PI);
+  g.closePath();
+  g.stroke();
+  // the grille
+  g.lineWidth = 3.2 * u;
+  [26, 33, 40, 47].forEach((y) => {
+    g.beginPath();
+    g.moveTo(cx - 8.5 * u, y * u);
+    g.lineTo(cx + 8.5 * u, y * u);
+    g.stroke();
+  });
+  // the cradle and the stem, which runs to the edge of the disc
+  g.lineWidth = 3.6 * u;
+  g.beginPath();
+  g.arc(cx, 52 * u, 23 * u, 0.08 * Math.PI, 0.92 * Math.PI);
+  g.stroke();
+  g.lineCap = 'butt';
+  g.beginPath();
+  g.moveTo(cx, 75 * u);
+  g.lineTo(cx, 100 * u);
+  g.stroke();
+  return c;
+}
+
 // ------------------------------ starting layouts ------------------------------
 // Positions are in cover pixels (1920x1080). Colours 'a1', 'a2' and 'base' are
 // taken from the current background palette when the layout is applied.
@@ -451,6 +501,98 @@ export const INTERVIEW_LAYOUTS = [
     ],
   },
 ];
+
+// ------------------------------ ready-made pieces ------------------------------
+// The Elements tab: groups of items added in one click. Each one is built from
+// ordinary items (photo, text, logo, shape), so every part stays editable.
+export const INTERVIEW_ELEMENTS = [
+  { id: 'host', name: 'Hosted by', note: 'Round host photo with the Hosted by line, the microphone badge and a handle.' },
+  { id: 'guest-circle', name: 'Guest, round', note: 'Round photo with the name and title under it.' },
+  { id: 'guest-bar', name: 'Guest, label bar', note: 'Tall photo with the name and title on a bar.' },
+  { id: 'guest-hex', name: 'Guest, six-sided', note: 'Six-sided photo with a colour border, name and title.' },
+  { id: 'pill', name: 'Interview pill', note: 'The rounded Interview label.' },
+  { id: 'highlight', name: 'Highlighted words', note: 'A line of text on a colour block.' },
+  { id: 'brought', name: 'Brought to you by', note: 'The line with the Genfinity logo.' },
+  { id: 'ecosystem', name: 'Ecosystem logo', note: 'A logo spot with the spaced ECOSYSTEM label under it.' },
+];
+
+// A small schematic of a ready-made piece for its tile.
+export function drawElementThumb(canvas, id, pal) {
+  const g = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = '#0d0d10';
+  g.fillRect(0, 0, w, h);
+  const cx = w / 2;
+  const white = 'rgba(255,255,255,0.9)';
+  const grey = '#8b93a1';
+  const bar = (x, y, bw, bh, fill = white) => {
+    g.fillStyle = fill;
+    g.fillRect(x - bw / 2, y - bh / 2, bw, bh);
+  };
+  const round = (x, y, bw, bh, r, fill) => {
+    g.fillStyle = fill;
+    g.beginPath();
+    g.roundRect(x - bw / 2, y - bh / 2, bw, bh, r);
+    g.fill();
+  };
+  if (id === 'host') {
+    bar(cx - 14, 26, 62, 9);
+    g.fillStyle = '#d2ff00';
+    g.beginPath();
+    g.arc(cx + 34, 26, 12, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = grey;
+    g.beginPath();
+    g.arc(cx, 82, 34, 0, Math.PI * 2);
+    g.fill();
+    bar(cx, 132, 70, 7);
+  } else if (id === 'guest-circle') {
+    g.fillStyle = grey;
+    g.beginPath();
+    g.arc(cx, 62, 42, 0, Math.PI * 2);
+    g.fill();
+    bar(cx, 120, 84, 9);
+    bar(cx, 135, 56, 5);
+  } else if (id === 'guest-bar') {
+    bar(cx, 62, 84, 96, grey);
+    bar(cx, 126, 84, 32, '#141414');
+    bar(cx + 6, 121, 62, 8);
+    bar(cx + 16, 133, 42, 4);
+  } else if (id === 'guest-hex') {
+    g.beginPath();
+    for (let i = 0; i < 6; i += 1) {
+      const a = (Math.PI / 3) * i - Math.PI / 2;
+      g[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * 42, 62 + Math.sin(a) * 42);
+    }
+    g.closePath();
+    g.fillStyle = grey;
+    g.fill();
+    g.lineWidth = 6;
+    g.lineJoin = 'round';
+    g.strokeStyle = pal.a1;
+    g.stroke();
+    bar(cx, 122, 84, 9);
+    bar(cx, 137, 56, 5);
+  } else if (id === 'pill') {
+    round(cx, h / 2, 150, 46, 23, pal.a1);
+    bar(cx, h / 2, 96, 12);
+  } else if (id === 'highlight') {
+    bar(cx, h / 2, 190, 44, pal.a1);
+    bar(cx, h / 2, 150, 14);
+  } else if (id === 'brought') {
+    bar(cx - 52, h / 2, 84, 8);
+    bar(cx + 48, h / 2, 96, 14);
+  } else if (id === 'ecosystem') {
+    g.strokeStyle = 'rgba(255,255,255,0.8)';
+    g.lineWidth = 2;
+    g.setLineDash([6, 4]);
+    g.strokeRect(cx - 62, 44, 124, 46);
+    g.setLineDash([]);
+    for (let i = 0; i < 9; i += 1) bar(cx - 60 + i * 15, 110, 5, 6);
+  }
+}
 
 // A small schematic of a layout for its picker tile.
 export function drawLayoutThumb(canvas, layout, pal) {
