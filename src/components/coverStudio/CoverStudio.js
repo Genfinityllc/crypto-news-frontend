@@ -1308,7 +1308,9 @@ export default function CoverStudio({
       takeHandEdits(cap, frame, fw);
       const a = cap.studio.attach;
       const size = Math.max(6, a.rel * fw);
-      cap.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: size, charSpacing: 0, width: 6000, textAlign: 'center' });
+      // left / centre / right against the logo's edges (a.align, see setCaption)
+      const side = a.align === 'left' || a.align === 'right' ? a.align : 'center';
+      cap.set({ scaleX: 1, scaleY: 1, angle: 0, fontSize: size, charSpacing: 0, width: 6000, textAlign: side });
       cap.initDimensions();
       const n = String(cap.text || '').length;
       const w0 = cap.getLineWidth(0);
@@ -1322,7 +1324,10 @@ export default function CoverStudio({
       // never let a widely spaced word wrap
       cap.set({ width: Math.max(fw, cap.getLineWidth(0)) + size * 2 });
       cap.initDimensions();
-      cap.set({ left: cx + a.dx * fw, top: bottom + fw * 0.075 + cap.height / 2 + a.dy * fw });
+      // the text box is a little wider than the word, so for left and right
+      // the box edge (where the letters start or end) is put on the logo's edge
+      const lean = side === 'left' ? (cap.width - fw) / 2 : side === 'right' ? -(cap.width - fw) / 2 : 0;
+      cap.set({ left: cx + lean + a.dx * fw, top: bottom + fw * 0.075 + cap.height / 2 + a.dy * fw });
       cap.setCoords();
       noteLayout(cap, frame, fw);
     }
@@ -2500,7 +2505,8 @@ export default function CoverStudio({
     bump();
   };
 
-  // The small label under a logo: its size and its letter spacing.
+  // The small label under a logo: its size, its letter spacing and which edge
+  // of the logo it lines up with (align: left, center or right).
   // spacing: null spreads the letters to the logo's width again.
   const setCaption = (frame, patch) => {
     const c = fabricRef.current;
@@ -2509,6 +2515,7 @@ export default function CoverStudio({
     const a = cap.studio.attach;
     if (patch.size != null) a.rel = patch.size / Math.max(1, frame.getScaledWidth());
     if ('spacing' in patch) a.track = patch.spacing;
+    if (patch.align) a.align = patch.align;
     layoutAttached(frame);
     c.requestRenderAll();
     commitSoon();
@@ -3926,9 +3933,12 @@ export default function CoverStudio({
                       <FieldLabel style={{ marginTop: 10 }}>Align text</FieldLabel>
                       <Seg>
                         {[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']].map(([id, label]) => (
-                          <SegBtn key={id} $on={sel.textAlign === id} onClick={() => change({ textAlign: id })}>{label}</SegBtn>
+                          <SegBtn key={id} $on={sel.textAlign === id} onClick={() => (selCap ? setCaption(selCap, { align: id }) : change({ textAlign: id }))}>{label}</SegBtn>
                         ))}
                       </Seg>
+                      {selCap && sel.studio.attach.track == null && (
+                        <Muted style={{ marginTop: 6 }}>The letters are spread to the logo's full width, so left, centre and right look the same. Set the letter spacing and the label lines up with that edge of the logo.</Muted>
+                      )}
                       <Row style={{ marginTop: 8 }}>
                         <Ghost onClick={() => change({ text: String(sel.text || '').toUpperCase() })}>Make uppercase</Ghost>
                       </Row>
@@ -4175,6 +4185,12 @@ export default function CoverStudio({
                             <Row>
                               <Ghost onClick={() => setCaption(sel, { spacing: null })} disabled={logoCap.studio.attach.track == null}>Spread to the logo's width</Ghost>
                             </Row>
+                            <FieldLabel style={{ marginTop: 10 }}>Line the label up with the logo's</FieldLabel>
+                            <Seg>
+                              {[['left', 'Left edge'], ['center', 'Centre'], ['right', 'Right edge']].map(([id, label]) => (
+                                <SegBtn key={id} $on={(logoCap.studio.attach.align || 'center') === id} onClick={() => setCaption(sel, { align: id })}>{label}</SegBtn>
+                              ))}
+                            </Seg>
                             <Muted style={{ marginTop: 6 }}>The letters spread to the logo's width until you set the spacing yourself.</Muted>
                           </>
                         )}
