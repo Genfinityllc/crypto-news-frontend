@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
-import { Canvas, FabricImage, Textbox, Shadow, Rect } from 'fabric';
+import { Canvas, FabricImage, Textbox, Shadow, Rect, ActiveSelection, util } from 'fabric';
 import {
   COVER_W,
   COVER_H,
@@ -521,6 +521,13 @@ export default function CoverStudio({
       opacity: o.opacity,
       shadowOn: !!o.shadow,
     };
+    // While several items are selected together, each one's own numbers are
+    // relative to the selection. History must store where it really is on the
+    // cover, or Undo puts it somewhere else.
+    if (o.group) {
+      const d = util.qrDecompose(o.calcTransformMatrix());
+      Object.assign(p, { left: d.translateX, top: d.translateY, scaleX: d.scaleX, scaleY: d.scaleY, angle: d.angle });
+    }
     if (o.studio && o.studio.kind === 'text') {
       Object.assign(p, {
         text: o.text,
@@ -1972,6 +1979,83 @@ export default function CoverStudio({
     bump();
   };
 
+  // ---------- line up or space out the selected items ----------
+  // A guest (or a logo with its label) counts as one piece: its name, title
+  // and bar travel with it, and its outline for lining up includes them.
+  // mode: left | hcenter | right | top | middle | bottom | hspace | vspace
+  const alignSelected = (mode) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const picked = c.getActiveObjects().slice();
+    if (picked.length < 2) return;
+    const tabWas = leftTab;
+    c.discardActiveObject(); // every item is back at its own place on the cover
+    const units = [];
+    picked.forEach((o) => {
+      if (!o.studio) return;
+      const parent = o.studio.attach ? o.studio.attach.to : null;
+      if (parent && picked.includes(parent)) return; // travels with its guest
+      const members = parent ? [o] : [o, ...kidsOf(o)];
+      let l = Infinity;
+      let t = Infinity;
+      let r = -Infinity;
+      let b = -Infinity;
+      members.forEach((m) => {
+        const q = m.getBoundingRect();
+        l = Math.min(l, q.left);
+        t = Math.min(t, q.top);
+        r = Math.max(r, q.left + q.width);
+        b = Math.max(b, q.top + q.height);
+      });
+      units.push({ o, parent, l, t, r, b });
+    });
+    const horizontal = mode === 'left' || mode === 'hcenter' || mode === 'right' || mode === 'hspace';
+    const enough = units.length >= (mode === 'hspace' || mode === 'vspace' ? 3 : 2);
+    if (enough) {
+      const L = Math.min(...units.map((u) => u.l));
+      const R = Math.max(...units.map((u) => u.r));
+      const T = Math.min(...units.map((u) => u.t));
+      const B = Math.max(...units.map((u) => u.b));
+      const move = (u, dx, dy) => {
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+        u.o.set({ left: u.o.left + dx, top: u.o.top + dy });
+        u.o.setCoords();
+        layoutAttached(u.parent || u.o);
+      };
+      if (mode === 'hspace' || mode === 'vspace') {
+        // the outer two stay put; the gaps between neighbours become equal
+        const lo = horizontal ? 'l' : 't';
+        const hi = horizontal ? 'r' : 'b';
+        const row = units.slice().sort((p, q) => p[lo] - q[lo]);
+        const filled = row.reduce((sum, u) => sum + (u[hi] - u[lo]), 0);
+        const gap = ((horizontal ? R - L : B - T) - filled) / (row.length - 1);
+        let at = horizontal ? L : T;
+        row.forEach((u) => {
+          const d = at - u[lo];
+          at += u[hi] - u[lo] + gap;
+          move(u, horizontal ? d : 0, horizontal ? 0 : d);
+        });
+      } else {
+        units.forEach((u) => {
+          if (mode === 'left') move(u, L - u.l, 0);
+          else if (mode === 'right') move(u, R - u.r, 0);
+          else if (mode === 'hcenter') move(u, (L + R) / 2 - (u.l + u.r) / 2, 0);
+          else if (mode === 'top') move(u, 0, T - u.t);
+          else if (mode === 'bottom') move(u, 0, B - u.b);
+          else if (mode === 'middle') move(u, 0, (T + B) / 2 - (u.t + u.b) / 2);
+        });
+      }
+    }
+    // select the same items again
+    const still = picked.filter((o) => c.getObjects().includes(o));
+    if (still.length > 1) c.setActiveObject(new ActiveSelection(still, { canvas: c }));
+    else if (still.length === 1) c.setActiveObject(still[0]);
+    setLeftTab(tabWas);
+    c.requestRenderAll();
+    if (enough) commit();
+    bump();
+  };
+
   const guestText = (frame, role) => kidsOf(frame).find((k) => k.studio.attach.role === role) || null;
 
   // Typing a name or title in a field (the name strip above the cover, or the
@@ -2894,6 +2978,8 @@ export default function CoverStudio({
   };
   const guestList = c ? c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo') : [];
   const selPhoto = selKind === 'photo' ? sel.studio : null;
+  // how many separate pieces are selected (a guest with its name and title is one)
+  const alignCount = selection.filter((o) => o.studio && !(o.studio.attach && selection.includes(o.studio.attach.to))).length;
   // Guests that show a name plate, in reading order, for the name strip.
   const plateGuests = guestList
     .filter((o) => o.studio.textStyle !== 'none')
@@ -3433,6 +3519,15 @@ export default function CoverStudio({
               <Danger onClick={removeSelected}>Delete</Danger>
             </InsRow>
           )}
+          {selection.length > 1 && (
+            <>
+              <FieldLabel style={{ marginTop: 10 }}>Line up and space out</FieldLabel>
+              <AlignTools count={alignCount} onAlign={alignSelected} />
+              <Muted style={{ marginTop: 6 }}>
+                The first six line the items up with each other. The last two give three or more items equal gaps; the outer two stay where they are.
+              </Muted>
+            </>
+          )}
 
           {sel && (
             <>
@@ -3851,6 +3946,10 @@ export default function CoverStudio({
             </Seg>
           </Group>
           )}
+          <Group title={alignCount < 2 ? 'Select two or more items first: hold Shift and click them, or drag a box around them' : undefined}>
+            <ToolLabel>Align</ToolLabel>
+            <AlignTools count={alignCount} onAlign={alignSelected} />
+          </Group>
           <Spacer />
           <Group>
             <Tool onClick={download}>Download PNG</Tool>
@@ -4063,6 +4162,39 @@ function FontPicker({ value, groups, onPreview, onPick }) {
       )}
       {open && <FontTip>Point at a font to see it on the cover. Click to keep it.</FontTip>}
     </FontBox>
+  );
+}
+
+// Buttons that line up the selected items, or space them out evenly.
+// Each drawing is [guide line, bar, bar] on a 16 x 16 grid.
+const ALIGN_TOOLS = [
+  ['left', 'Line up left edges', [[2, 1, 2, 15], [4, 3, 9, 4], [4, 9, 6, 4]]],
+  ['hcenter', 'Line up centres (left to right)', [[8, 1, 8, 15], [3, 3, 10, 4], [5, 9, 6, 4]]],
+  ['right', 'Line up right edges', [[14, 1, 14, 15], [3, 3, 9, 4], [6, 9, 6, 4]]],
+  ['top', 'Line up top edges', [[1, 2, 15, 2], [3, 4, 4, 9], [9, 4, 4, 6]]],
+  ['middle', 'Line up middles (top to bottom)', [[1, 8, 15, 8], [3, 3, 4, 10], [9, 5, 4, 6]]],
+  ['bottom', 'Line up bottom edges', [[1, 14, 15, 14], [3, 3, 4, 9], [9, 6, 4, 6]]],
+  ['hspace', 'Space evenly left to right (three or more items)', [[2, 1, 2, 15], [6, 4, 4, 8], [14, 1, 14, 15]]],
+  ['vspace', 'Space evenly top to bottom (three or more items)', [[1, 2, 15, 2], [4, 6, 8, 4], [1, 14, 15, 14]]],
+];
+function AlignTools({ count, onAlign }) {
+  return (
+    <AlignWrap role="group" aria-label="Line up selected items">
+      {ALIGN_TOOLS.map(([mode, label, parts]) => (
+        <AlignBtn key={mode} type="button" title={label} aria-label={label} disabled={count < (mode === 'hspace' || mode === 'vspace' ? 3 : 2)} onClick={() => onAlign(mode)}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            {parts.map((q, i) =>
+              // lining up: one guide line, then two bars; spacing: a bar between two guide lines
+              (mode === 'hspace' || mode === 'vspace' ? i !== 1 : i === 0) ? (
+                <line key={i} x1={q[0]} y1={q[1]} x2={q[2]} y2={q[3]} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              ) : (
+                <rect key={i} x={q[0]} y={q[1]} width={q[2]} height={q[3]} rx="1" fill="currentColor" />
+              )
+            )}
+          </svg>
+        </AlignBtn>
+      ))}
+    </AlignWrap>
   );
 }
 
@@ -4818,6 +4950,12 @@ const AlignBtn = styled.button`
   &:focus-visible {
     outline: 2px solid #00d4ff;
     outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+    background: transparent;
   }
 `;
 
