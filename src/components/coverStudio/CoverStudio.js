@@ -397,6 +397,7 @@ export default function CoverStudio({
   const wordmarkRef = useRef(null);
   const layoutAttachedRef = useRef(null);
   const layoutAllRef = useRef(null);
+  const liveBarsRef = useRef(null);
   const [logoMode, setLogoMode] = useState('logo'); // interview: 'logo' | 'ecosystem'
   const [swapQuery, setSwapQuery] = useState(''); // search in the Edit tab's logo picker
   const fontFileRef = useRef(null);
@@ -611,7 +612,15 @@ export default function CoverStudio({
     overlayObjRef.current = new FabricImage(ovC, fixed);
     c.overlayImage = overlayObjRef.current;
 
-    const onSel = () => bump();
+    const onSel = () => {
+      // several items selected together get the same easy-to-grab handles
+      const picked = c.getActiveObject();
+      if (picked && !picked.studio) {
+        styleObject(picked);
+        picked.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+      }
+      bump();
+    };
     c.on('selection:created', onSel);
     c.on('selection:updated', onSel);
     c.on('selection:cleared', () => {
@@ -622,6 +631,11 @@ export default function CoverStudio({
     });
     // Clicking something on the cover opens its controls beside the canvas.
     c.on('mouse:down', (e) => {
+      const hit = e.target;
+      if (hit && hit.studio && hit.studio.attach && hit.studio.attach.role === 'bar' && c.getObjects().includes(hit.studio.attach.to)) {
+        c.setActiveObject(hit.studio.attach.to);
+        c.requestRenderAll();
+      }
       if (e.target) {
         setLeftTab((t) => {
           if (t !== 'edit') prevTabRef.current = t;
@@ -666,7 +680,9 @@ export default function CoverStudio({
     });
     const follow = (e) => {
       const o = e.target;
-      if (o && o.studio && !o.studio.attach && layoutAttachedRef.current) layoutAttachedRef.current(o);
+      if (!o) return;
+      if (o.studio && !o.studio.attach && layoutAttachedRef.current) layoutAttachedRef.current(o);
+      else if (!o.studio && typeof o.getObjects === 'function' && liveBarsRef.current) liveBarsRef.current(o);
     };
     c.on('object:scaling', follow);
 
@@ -1080,19 +1096,23 @@ export default function CoverStudio({
   // (dragged it, resized it) is kept as its own offset and size.
   const takeHandEdits = (t, frame, fw) => {
     const a = t.studio.attach;
+    if (a.lastLeft == null) return;
     const base = a.lastFw || fw;
-    if (a.lastLeft != null) {
-      const mx = t.left - a.lastLeft;
-      const my = t.top - a.lastTop;
-      // Moved by exactly as much as its photo: the two were dragged together
-      // as a group, which is not a hand edit of the text.
-      const together = Math.abs(mx - (frame.left - a.lastFrameLeft)) < 0.75 && Math.abs(my - (frame.top - a.lastFrameTop)) < 0.75;
-      if (!together) {
-        a.dx += mx / base;
-        a.dy += my / base;
-      }
+    const grew = fw / base; // how much the parent has grown since the last layout
+    const size = t.fontSize * (t.scaleY || 1);
+    // Where this text would be if it had simply travelled (and grown) with its
+    // parent, as it does when the whole guest is selected and moved or scaled.
+    const rode =
+      Math.abs(t.left - (frame.left + (a.lastLeft - a.lastFrameLeft) * grew)) < 1 &&
+      Math.abs(t.top - (frame.top + (a.lastTop - a.lastFrameTop) * grew)) < 1;
+    // Untouched: only the parent moved or changed size.
+    const stayed = Math.abs(t.left - a.lastLeft) < 0.01 && Math.abs(t.top - a.lastTop) < 0.01 && Math.abs((t.scaleY || 1) - 1) < 0.001;
+    if (!rode && !stayed) {
+      a.dx += (t.left - a.lastLeft) / base;
+      a.dy += (t.top - a.lastTop) / base;
     }
-    if (a.lastSize != null && Math.abs(t.fontSize * (t.scaleY || 1) - a.lastSize) > 0.5) a.rel = (t.fontSize * (t.scaleY || 1)) / base;
+    const together = rode && !stayed;
+    if (Math.abs(size - a.lastSize * (together ? grew : 1)) > 0.5) a.rel = size / (together ? fw : base);
   };
   const noteLayout = (t, frame, fw) => {
     const a = t.studio.attach;
@@ -1167,9 +1187,28 @@ export default function CoverStudio({
       const hgt = Math.max(fw * 0.14, y - fw * 0.012 - bottom + padY);
       bar.set({ width: fw, height: hgt, rx: 0, ry: 0, scaleX: 1, scaleY: 1, angle: 0, left: cx, top: bottom + hgt / 2 - 0.5 });
       bar.setCoords();
+      bar.studio.attach.lastFw = fw;
+      bar.studio.attach.lastH = hgt;
     }
   };
   layoutAttachedRef.current = layoutAttached;
+  // While several items are moved or scaled together, keep each guest's label
+  // bar under its photo (the bar itself is never part of a selection).
+  liveBarsRef.current = (selection) => {
+    selection.getObjects().forEach((frame) => {
+      if (!frame.studio || frame.studio.kind !== 'photo') return;
+      const bar = kidsOf(frame).find((k) => k.studio.attach.role === 'bar');
+      if (!bar) return;
+      const a = bar.studio.attach;
+      const centre = frame.getCenterPoint();
+      const sc = frame.getObjectScaling();
+      const fw = frame.width * sc.x;
+      const fh = frame.height * sc.y;
+      const hgt = (a.lastH || bar.height) * (fw / (a.lastFw || fw));
+      bar.set({ width: fw, height: hgt, left: centre.x, top: centre.y + fh / 2 + hgt / 2 - 0.5 });
+      bar.setCoords();
+    });
+  };
   layoutAllRef.current = () => {
     const c = fabricRef.current;
     if (!c) return;
@@ -1208,7 +1247,7 @@ export default function CoverStudio({
     const c = fabricRef.current;
     const r = new Rect({ originX: 'center', originY: 'center', left: frame.left, top: frame.top, width: 100, height: 40, fill, strokeWidth: 0, objectCaching: false });
     r.studio = { kind: 'shape', name: 'Label bar', round: 0, attach: { to: frame, role: 'bar' } };
-    r.set({ lockMovementX: true, lockMovementY: true, hasControls: false });
+    r.set({ selectable: false, hoverCursor: 'pointer' }); // clicking it selects the guest it belongs to
     styleObject(r);
     c.insertAt(c.getObjects().indexOf(frame) + 1, r);
     return r;
@@ -1464,6 +1503,45 @@ export default function CoverStudio({
     bump();
   };
 
+  // Size a guest (or a logo with its label) as one piece: the photo, the name,
+  // the title and the label bar all change together.
+  const resizeWhole = (frame, width) => {
+    const c = fabricRef.current;
+    if (!c || !frame) return;
+    const sc = Math.max(0.02, width / frame.width);
+    frame.set({ scaleX: sc, scaleY: sc });
+    frame.setCoords();
+    layoutAttached(frame);
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const resizeAllGuests = (width) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    c.discardActiveObject();
+    c.getObjects()
+      .filter((o) => o.studio && o.studio.kind === 'photo')
+      .forEach((frame) => {
+        const sc = Math.max(0.02, width / frame.width);
+        frame.set({ scaleX: sc, scaleY: sc });
+        frame.setCoords();
+        layoutAttached(frame);
+      });
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
+  const selectWhole = (frame) => {
+    const c = fabricRef.current;
+    if (!c || !frame) return;
+    c.setActiveObject(frame);
+    c.requestRenderAll();
+    bump();
+  };
+
   const guestText = (frame, role) => kidsOf(frame).find((k) => k.studio.attach.role === role) || null;
 
   const setGuestText = (role, value) => {
@@ -1567,7 +1645,7 @@ export default function CoverStudio({
     const o = active1();
     if (!o || !o.studio || !o.studio.attach) return;
     delete o.studio.attach;
-    o.set({ lockMovementX: false, lockMovementY: false });
+    o.set({ selectable: true });
     commit();
     bump();
   };
@@ -1703,7 +1781,7 @@ export default function CoverStudio({
     if (k === 'photo' || k === 'shape') cl.set({ objectCaching: false });
     if (k === 'photo') repaintPhoto(cl);
     if (k === 'text') applyTextBox(cl);
-    if (o.lockMovementX) cl.set({ lockMovementX: true, lockMovementY: true, hasControls: false });
+    if (o.selectable === false) cl.set({ selectable: false, hoverCursor: 'pointer' });
     styleObject(cl);
     return cl;
   };
@@ -1716,7 +1794,7 @@ export default function CoverStudio({
     // a copied name or caption becomes a free text block
     if (cl.studio.attach) {
       delete cl.studio.attach;
-      cl.set({ lockMovementX: false, lockMovementY: false, hasControls: true });
+      cl.set({ selectable: true });
     }
     c.add(cl);
     // a copied guest or logo brings copies of its name, title, bar and caption
@@ -2300,6 +2378,21 @@ export default function CoverStudio({
               <SegBtn onClick={() => addGuest('rect')}>Rectangle</SegBtn>
               <SegBtn onClick={() => addGuest('polygon')}>Polygon</SegBtn>
             </Seg>
+            {guestList.length > 1 && (
+              <>
+                <FieldLabel>All guests</FieldLabel>
+                <Slider
+                  label="Size of every guest at once"
+                  min={60}
+                  max={1200}
+                  step={2}
+                  value={guestList.reduce((sum, o) => sum + o.getScaledWidth(), 0) / guestList.length}
+                  onChange={resizeAllGuests}
+                  fmt={(v) => `${Math.round(v)}px wide`}
+                />
+                <Hint>Each guest keeps its place; its photo, name, title and bar all change size together.</Hint>
+              </>
+            )}
             {guestList.length > 0 && <FieldLabel>Guests on this cover</FieldLabel>}
             {guestList.map((o, i) => (
               <LayerRow
@@ -2724,6 +2817,24 @@ export default function CoverStudio({
               </InsHead>
 
               <InsGrid>
+                {selKind === 'text' && sel.studio.attach && sel.studio.attach.to && (
+                  <InsCell>
+                    <FieldLabel>{sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' ? 'Whole guest' : 'Logo and its label'}</FieldLabel>
+                    <Slider
+                      label={sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' ? 'Size (photo, name, title and bar together)' : 'Size (logo and label together)'}
+                      min={40}
+                      max={1500}
+                      step={2}
+                      value={sel.studio.attach.to.getScaledWidth()}
+                      onChange={(v) => resizeWhole(sel.studio.attach.to, v)}
+                      fmt={(v) => `${Math.round(v)}px wide`}
+                    />
+                    <Row>
+                      <Ghost onClick={() => selectWhole(sel.studio.attach.to)}>{sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' ? 'Select the guest photo' : 'Select the logo'}</Ghost>
+                    </Row>
+                    <Muted style={{ marginTop: 6 }}>The controls below change only this line of text.</Muted>
+                  </InsCell>
+                )}
                 {selKind === 'text' && (
                   <>
                     <InsCell $wide>
@@ -2819,6 +2930,11 @@ export default function CoverStudio({
                 {selKind === 'photo' && (
                   <>
                     <InsCell>
+                      <FieldLabel>Whole guest</FieldLabel>
+                      <Slider label="Size (photo, name, title and bar together)" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => resizeWhole(sel, v)} fmt={(v) => `${Math.round(v)}px wide`} />
+                      <Muted>Dragging a corner of the photo does the same. The name and title keep their share of the size.</Muted>
+                    </InsCell>
+                    <InsCell>
                       <FieldLabel>Photo</FieldLabel>
                       <Row>
                         <Ghost onClick={() => pickGuestPhoto(sel)}>{selPhoto.src ? 'Replace photo' : 'Choose photo'}</Ghost>
@@ -2858,7 +2974,6 @@ export default function CoverStudio({
                           <Slider label="Turn the mask (the photo stays upright)" min={-180} max={180} step={1} value={selPhoto.maskAngle} onChange={(v) => setPhoto({ maskAngle: v })} fmt={(v) => `${Math.round(v)} deg`} />
                         </>
                       )}
-                      <Slider label="Size" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => change({ scaleX: v / sel.width, scaleY: v / sel.width })} fmt={(v) => `${Math.round(v)}px wide`} />
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Photo inside the mask</FieldLabel>
