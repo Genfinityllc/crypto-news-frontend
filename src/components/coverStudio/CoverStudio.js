@@ -29,6 +29,7 @@ import {
   preparePhoto,
   placeholderLogo,
   hostMicBadge,
+  HOSTS,
   INTERVIEW_ELEMENTS,
   drawElementThumb,
   removePlainBackground,
@@ -1838,13 +1839,13 @@ export default function CoverStudio({
   // above it and a handle under it. Four separate items (photo, words, badge,
   // handle) that can each be moved, restyled or deleted, and that travel and
   // resize with the photo like a guest's name and title do.
-  const addHost = async (tab = 'guests') => {
+  const addHost = async (tab = 'guests', src = null, who = null) => {
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
-    const o = makePhoto({ shape: 'circle', size: 300, cx: W / 2, cy: H / 2, style: 'none' });
-    Object.assign(o.studio, { host: true, name: 'Host', textStyle: 'below', textAlign: 'center' });
-    const handle = makeAttachedText(o, 'name', '@HostName');
+    const o = makePhoto({ shape: 'circle', size: 300, cx: W / 2, cy: H / 2, style: 'none', src });
+    Object.assign(o.studio, { host: true, name: (who && (who.name || who.label)) || 'Host', textStyle: 'below', textAlign: 'center' });
+    const handle = makeAttachedText(o, 'name', (who && (who.handle || who.name)) || '@HostName');
     handle.set({ fontWeight: 400 });
     Object.assign(handle.studio.attach, { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 });
     const label = makeAttachedText(o, 'hostlabel', 'Hosted by');
@@ -1863,6 +1864,21 @@ export default function CoverStudio({
     c.add(mic);
     layoutAttached(o);
     finishAdd(o, tab);
+  };
+
+  // One of our own hosts (HOSTS): as a "Hosted by" piece, as an ordinary
+  // guest, or into a guest that is already on the cover.
+  const putHost = async (host, as, target) => {
+    try {
+      const img = await loadImage(host.src, false);
+      if (as === 'into') {
+        const c = fabricRef.current;
+        if (target && c && c.getObjects().includes(target)) placeGuestPhoto(target, img);
+      } else if (as === 'host') await addHost('guests', preparePhoto(img), host);
+      else await addGuest('circle', preparePhoto(img));
+    } catch (e) {
+      toast.error('Could not load that photo.');
+    }
   };
 
   // ---------- the Elements tab: ready-made pieces ----------
@@ -3358,6 +3374,18 @@ export default function CoverStudio({
               <b style={{ fontSize: 15 }}>Add "Hosted by"</b>
               <small>A round host photo with the Hosted by line, the microphone badge and a handle. Each part can be moved or changed on its own.</small>
             </AddText>
+            <FieldLabel>Our hosts</FieldLabel>
+            <HostGrid>
+              {HOSTS.map((h) => (
+                <HostCard key={h.id}>
+                  <img src={h.src} alt={h.name || h.label} draggable={false} />
+                  <b>{h.name || h.label}</b>
+                  <button type="button" onClick={() => putHost(h, 'host')}>Add as Hosted by</button>
+                  <button type="button" onClick={() => putHost(h, 'guest')}>Add as a guest</button>
+                </HostCard>
+              ))}
+            </HostGrid>
+            <Hint>To put a host into a guest that is already on the cover, click that guest and pick the host under Photo.</Hint>
             {guestList.filter((o) => !o.studio.host).length > 1 && (
               <>
                 <FieldLabel>All guests</FieldLabel>
@@ -3991,6 +4019,16 @@ export default function CoverStudio({
                         <Ghost onClick={() => pickGuestPhoto(sel)}>{selPhoto.src ? 'Replace photo' : 'Choose photo'}</Ghost>
                         {selPhoto.src && <Ghost onClick={() => setPhoto({ src: null, srcOrig: null })}>Remove photo</Ghost>}
                       </Row>
+                      {isInterview && (
+                        <HostPick>
+                          <span>Or use a host</span>
+                          {HOSTS.map((h) => (
+                            <button key={h.id} type="button" title={h.name || h.label} onClick={() => putHost(h, 'into', sel)}>
+                              <img src={h.src} alt={h.name || h.label} draggable={false} />
+                            </button>
+                          ))}
+                        </HostPick>
+                      )}
                       {selPhoto.src && (
                         <>
                           <Row style={{ marginTop: 6 }}>
@@ -4991,6 +5029,78 @@ const Row = styled.div`
 
   > * {
     flex: 1;
+  }
+`;
+
+const HostGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+`;
+
+const HostCard = styled.div`
+  background: #0a0a0a;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+
+  img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 7px;
+    display: block;
+  }
+  b {
+    color: #e6edf3;
+    font-size: 0.8rem;
+  }
+  button {
+    background: #161616;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.42rem 0.3rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover {
+    border-color: #00d4ff;
+  }
+`;
+
+const HostPick = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 8px;
+
+  span {
+    color: #8b949e;
+    font-size: 0.78rem;
+  }
+  button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid #30363d;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #0a0a0a;
+    cursor: pointer;
+  }
+  button:hover {
+    border-color: #00d4ff;
+  }
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 `;
 

@@ -1,3 +1,6 @@
+import host1Url from './hosts/host-1.jpg';
+import host2Url from './hosts/host-2.jpg';
+
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
 // starting layouts. Pure canvas code, no fabric in here.
@@ -502,6 +505,17 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'brought', anchor: 'center', x: 618, cy: 925 },
     ],
   },
+];
+
+// ------------------------------ our hosts ------------------------------
+// The show's own hosts, offered in the Guests tab and in a guest's Photo
+// panel. The photos are files in ./hosts, bundled with the site (so they are
+// public, like everything in the bundle). To add a host: put a square photo
+// in ./hosts, import it above and add a line here. `name` and `handle` fill
+// the name line when given.
+export const HOSTS = [
+  { id: 'host-1', label: 'Host 1', name: '', handle: '', src: host1Url },
+  { id: 'host-2', label: 'Host 2', name: '', handle: '', src: host2Url },
 ];
 
 // ------------------------------ ready-made pieces ------------------------------
