@@ -5231,7 +5231,9 @@ export default function CoverStudio({
             )}
             <Muted style={{ marginTop: 8 }}>
               {currentUser
-                ? 'You are signed in, so Save draft keeps drafts in your account: only you can see them, and they are there on any computer you sign in on. Drafts marked "This browser only" were made while signed out; "To account" moves one up.'
+                ? isOwner
+                  ? 'You are signed in with an owner account, so Save draft keeps drafts in the owners\' shared space: every owner account sees and can edit the same drafts, on any computer, and nobody else can. Drafts marked "This browser only" were made while signed out; "To account" moves one up.'
+                  : 'You are signed in, so Save draft keeps drafts in your account: only you can see them, and they are there on any computer you sign in on. Drafts marked "This browser only" were made while signed out; "To account" moves one up.'
                 : 'You are not signed in, so drafts are kept in this browser on this computer only. Sign in to keep them in your account and open them anywhere.'}
             </Muted>
           </DraftsBox>
