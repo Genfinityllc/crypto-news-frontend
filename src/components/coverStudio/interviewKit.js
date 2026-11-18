@@ -514,9 +514,11 @@ export const INTERVIEW_LAYOUTS = [
 // title lines and sets how the photo sits in its mask (zoom, panX, panY: the
 // same numbers as the "Photo inside the mask" sliders). The first entry is
 // the one a new "Hosted by" piece starts with.
+// hostLabel: in a "Hosted by" piece these words replace "Hosted by" before
+// the microphone, and no title is put under the name (owner 2026-11-18).
 // To add a person: put a square photo in ./hosts, import it above, add a line.
 export const HOSTS = [
-  { id: 'tate', name: '@TateOnChain', title: 'Genfinity Host', src: tateUrl, zoom: 2.1, panX: 0, panY: 0.9 },
+  { id: 'tate', name: '@TateOnChain', title: 'Genfinity Host', hostLabel: 'Genfinity Host', src: tateUrl, zoom: 2.1, panX: 0, panY: 0.9 },
   { id: 'ryan', name: 'Ryan Solomon', title: 'Founder & CEO of Genfinity', src: ryanUrl },
 ];
 

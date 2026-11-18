@@ -1853,7 +1853,18 @@ export default function CoverStudio({
   // carries them along.
   const fillPersonWords = (frame, who) => {
     if (!who || frame.studio.textStyle === 'none') return;
-    [['name', who.name, frame.studio.host ? '@HostName' : 'Guest Name'], ['title', who.title, frame.studio.host ? 'Title' : 'Title at Company']].forEach(([r, v, seed]) => {
+    // In a "Hosted by" piece the line before the microphone carries the
+    // person's own words when they have some, and then no title goes under
+    // the name. Words typed there by hand are left alone.
+    const ownLabel = frame.studio.host && who.hostLabel;
+    if (frame.studio.host) {
+      const label = guestText(frame, 'hostlabel');
+      const ours = ['Hosted by', ...HOSTS.map((h) => h.hostLabel).filter(Boolean)];
+      if (label && ours.includes(label.text)) label.set('text', who.hostLabel || 'Hosted by');
+      const old = guestText(frame, 'title');
+      if (ownLabel && old) fabricRef.current.remove(old);
+    }
+    [['name', who.name, frame.studio.host ? '@HostName' : 'Guest Name'], ['title', ownLabel ? '' : who.title, frame.studio.host ? 'Title' : 'Title at Company']].forEach(([r, v, seed]) => {
       if (!v) return;
       let t = guestText(frame, r);
       if (!t) {
@@ -1895,8 +1906,10 @@ export default function CoverStudio({
     const handle = makeAttachedText(o, 'name', (who && who.name) || '@HostName', '@HostName');
     handle.set({ fontWeight: 400 });
     Object.assign(handle.studio.attach, HOST_LINE.name);
-    if (who && who.title) Object.assign(makeAttachedText(o, 'title', who.title, 'Title').studio.attach, HOST_LINE.title);
-    const label = makeAttachedText(o, 'hostlabel', 'Hosted by');
+    // a person with their own words for the line above (hostLabel) gets no
+    // title under the name: those words say it already
+    if (who && who.title && !who.hostLabel) Object.assign(makeAttachedText(o, 'title', who.title, 'Title').studio.attach, HOST_LINE.title);
+    const label = makeAttachedText(o, 'hostlabel', (who && who.hostLabel) || 'Hosted by', 'Hosted by');
     label.set({ fontFamily: 'CMG Sans', fontWeight: 400 });
     const mic = logoObject({
       kind: 'logo',
