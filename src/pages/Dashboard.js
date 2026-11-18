@@ -680,7 +680,15 @@ export default function Dashboard() {
   
   const { articles, loading, error, pagination, search, loadPage, refetch } = useNews(filters);
   // eslint-disable-next-line no-unused-vars
-  const { allNews: fastAllNews, breakingNews: fastBreakingNews, clientNews: fastClientNews, loading: fastLoading } = useFastNews();
+  // useFastNews returns one list called `news`. This page used to read three
+  // lists from it that do not exist, got undefined, and crashed on the first
+  // render (`fastAllNews.length`), which left the whole Dashboard blank.
+  const fastNews = useFastNews();
+  const fastAllNews = fastNews.allNews || fastNews.news || [];
+  const fastBreakingNews = fastNews.breakingNews || [];
+  const fastClientNews = fastNews.clientNews || [];
+  // eslint-disable-next-line no-unused-vars
+  const fastLoading = fastNews.loading;
   
   // PRELOADED NEWS: Instant 0-second loading with auto-population
   const {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { addBookmark, removeBookmark, generateCardImage, addRSSBookmark, removeRSSBookmark } from '../../services/api';
+import { addBookmark, removeBookmark, generateCardImage } from '../../services/api';
 import { startRewritePipeline } from '../../services/rewritePipeline';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
@@ -606,7 +606,9 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
   const [generatedImage, setGeneratedImage] = useState(null);
   const [generatingImage, setGeneratingImage] = useState(false);
 
-  const isBookmarked = bookmarks.some(b => b.articleId === article.id);
+  // every article is bookmarked the same way now: by its id, or its address when it has none
+  const articleKey = article.id || article.url;
+  const isBookmarked = !!articleKey && bookmarks.some(b => b.articleId === articleKey);
   const publishedDate = new Date(article.published_at).toLocaleDateString();
   const timeAgo = getTimeAgo(article.published_at);
   const readableContent = getReadableContent(article);
@@ -646,45 +648,13 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
     
     setBookmarking(true);
     try {
-      // Check if this is an RSS article (no database ID) or database article
-      // Database articles have UUID strings, RSS articles have no ID or non-UUID format
-      if (article.id && (typeof article.id === 'string' && article.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i))) {
-        // Database article with proper UUID ID - use Firebase bookmark system
-        if (isBookmarked) {
-          const bookmark = bookmarks.find(b => b.articleId === article.id);
-          await removeBookmark(bookmark.id);
-          toast.success('Bookmark removed');
-        } else {
-          await addBookmark(article.id);
-          toast.success('Article bookmarked');
-        }
+      if (isBookmarked) {
+        const bookmark = bookmarks.find(b => b.articleId === articleKey);
+        await removeBookmark(bookmark.id);
+        toast.success('Bookmark removed');
       } else {
-        // RSS article - use RSS bookmark system
-        const userId = currentUser.uid;
-        
-        if (isBookmarked) {
-          // Find the RSS bookmark to remove
-          const bookmark = bookmarks.find(b => b.rssId === article.rssId || b.url === article.url);
-          if (bookmark) {
-            await removeRSSBookmark(bookmark.bookmarkId, userId);
-            toast.success('RSS bookmark removed');
-          }
-        } else {
-          // Add RSS bookmark
-          const articleData = {
-            title: article.title,
-            url: article.url,
-            content: article.content || article.description || article.summary,
-            source: article.source,
-            network: article.network,
-            category: article.category,
-            published_at: article.published_at,
-            image_url: article.image_url || article.cover_image
-          };
-          
-          await addRSSBookmark(articleData, userId);
-          toast.success('RSS article bookmarked');
-        }
+        await addBookmark(articleKey, article);
+        toast.success('Article bookmarked');
       }
       
       if (onBookmarkChange) onBookmarkChange();

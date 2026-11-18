@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { auth } from '../config/firebase';
 
 // Create axios instance with base configuration
 const baseURL = process.env.REACT_APP_API_URL 
@@ -13,9 +14,19 @@ const api = axios.create({
 });
 
 // Request interceptor to add auth token
+// The sign-in token only lasts an hour. It is asked for fresh on every request
+// (Firebase renews it by itself); the copy in localStorage is only a fallback.
+// Using the stored copy alone meant every request was refused an hour after
+// signing in.
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('firebaseToken');
+  async (config) => {
+    let token = null;
+    try {
+      if (auth && auth.currentUser) token = await auth.currentUser.getIdToken();
+    } catch (e) {
+      token = null;
+    }
+    if (!token) token = localStorage.getItem('firebaseToken');
     if (token && token !== 'null' && token !== 'undefined') {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -32,17 +43,11 @@ api.interceptors.response.use(
   (error) => {
     console.error('API Error:', error);
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      // The stored copy of the token is stale: drop it. Nobody is sent to the
+      // login page from here any more. One refused request used to throw a
+      // signed-in person out of the Bookmarks page; pages that need a sign-in
+      // already send signed-out visitors to the login page themselves.
       localStorage.removeItem('firebaseToken');
-      // Only redirect if not on login/signup pages and user should be authenticated
-      const currentPath = window.location.pathname;
-      const isAuthPage = currentPath === '/login' || currentPath === '/signup';
-      const isPublicRoute = currentPath === '/' || currentPath === '/dashboard';
-      
-      if (!isAuthPage && !isPublicRoute) {
-        // Only redirect from protected routes that require authentication
-        window.location.href = '/login';
-      }
     }
     return Promise.reject(error.response?.data || error);
   }
@@ -142,8 +147,23 @@ export const getCacheStats = () => {
 };
 
 // Bookmark API calls
-export const addBookmark = (articleId) => {
-  return api.post('/firebase-auth/bookmarks', { articleId });
+// The article goes along (only what a news card shows), so the Bookmarks page
+// can show it later whatever feed it came from.
+export const addBookmark = (articleId, article) => {
+  const a = article || {};
+  const card = {
+    id: a.id,
+    title: a.title,
+    url: a.url,
+    source: a.source,
+    network: a.network,
+    category: a.category,
+    published_at: a.published_at,
+    image_url: a.image_url || a.cover_image,
+    cover_image: a.cover_image || a.image_url,
+    summary: String(a.summary || a.description || a.content || '').slice(0, 800)
+  };
+  return api.post('/firebase-auth/bookmarks', { articleId, article: card });
 };
 
 export const getBookmarks = () => {
