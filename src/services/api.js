@@ -226,6 +226,12 @@ export const rewriteArticle = (articleId) => {
   return api.post(`/enhanced-news/${articleId}/rewrite`);
 };
 
+// Client News: the clients (with logos and counts) and their articles in one
+// answer. { data: articles, clients: [{ id, name, displayName, logo, color, count }], total }
+export const getClientNews = (client = 'all') => {
+  return api.get('/client-news', { params: { client, limit: 1000 } });
+};
+
 // Enhanced Client News API calls
 export const getEnhancedClientNews = (params = {}) => {
   return api.get('/enhanced-client-news', { params });

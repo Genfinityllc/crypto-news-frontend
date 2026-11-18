@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import NewsCard from '../components/news/NewsCard';
-import { useFastNews } from '../hooks/useFastNews';
-import { getClientNetworkMetadata } from '../services/api';
+import { useClientNews } from '../hooks/useClientNews';
 
 const Container = styled.div`
   max-width: 1200px;
@@ -173,346 +172,102 @@ const ArticleCount = styled.div`
   margin-bottom: 1rem;
 `;
 
-// Helper function to get emoji for network
-const getEmojiForNetwork = (networkName) => {
-  const emojiMap = {
-    'Hedera': '🌐',
-    'XDC Network': '⚡', 
-    'Algorand': '🔷',
-    'Constellation': '✨',
-    'HashPack': '📦'
-  };
-  return emojiMap[networkName] || '🏢';
-};
-
-// Fallback client network definitions (used while loading from API)
-const FALLBACK_CLIENT_NETWORKS = [
-  { name: 'All Clients', path: '/clients', emoji: '🏢', logo: 'multi', color: '#007bff', logos: [] },
-  { name: 'Hedera', path: '/clients/hedera', emoji: '🌐', logo: '/logos/hedera_icon.png', color: '#0066cc' },
-  { name: 'XDC Network', path: '/clients/xdc', emoji: '⚡', logo: '/logos/xdc_icon.png', color: '#22c55e' },
-  { name: 'Algorand', path: '/clients/algorand', emoji: '🔷', logo: '/logos/algorand_icon.png', color: '#ff4757' },
-  { name: 'Constellation', path: '/clients/constellation', emoji: '✨', logo: '/logos/constellation_icon.png', color: '#8b5cf6' },
-  { name: 'HashPack', path: '/clients/hashpack', emoji: '📦', logo: '/logos/hashpack_icon.png', color: '#00b4d8' }
-];
-
 /**
- * 🏢 CLIENT NEWS PAGE - Shows client-specific cryptocurrency news
- * 
- * Features:
- * - All client networks or specific client filtering
- * - Persistent URL-based filtering  
- * - 100% guaranteed working images
- * - Real-time updates from RSS feeds
+ * CLIENT NEWS PAGE (/clients and /clients/:client)
+ *
+ * The clients, their logos and their articles come from one request
+ * (useClientNews, backed by the server's single client list), so this page
+ * holds no client names of its own.
  */
 function ClientNews() {
   const { client } = useParams();
-  const currentClient = client ? client.toLowerCase() : 'all';
-  
-  // State for client network metadata
-  const [clientNetworks, setClientNetworks] = useState([]);
-  const [loadingNetworks, setLoadingNetworks] = useState(true);
-  
-  // Generate CLIENT_NETWORKS from API data or fallback
-  const CLIENT_NETWORKS = React.useMemo(() => {
-    if (clientNetworks.length === 0) {
-      return FALLBACK_CLIENT_NETWORKS;
-    }
+  const { clients, forClient, loading, error, refresh } = useClientNews();
 
-    const networks = [
-      {
-        name: 'All Clients',
-        path: '/clients',
-        logo: 'multi',
-        color: '#007bff',
-        emoji: '🏢',
-        logos: clientNetworks.map(network => network.logo)
-      }
-    ];
+  const wanted = client ? client.toLowerCase() : 'all';
+  const current = clients.find(c => c.id === wanted) || null;
+  const currentId = current ? current.id : 'all';
+  const news = forClient(currentId);
+  const title = current ? `${current.displayName} News` : 'Client News';
 
-    // Add individual client networks from API
-    clientNetworks.forEach(network => {
-      const path = `/clients/${network.id}`;
-      networks.push({
-        name: network.displayName || network.name,
-        path: path,
-        logo: network.logo,
-        color: network.color,
-        emoji: getEmojiForNetwork(network.name), // Add emoji fallback
-        id: network.id
-      });
-    });
-
-    return networks;
-  }, [clientNetworks]);
-
-  // Fetch client network metadata on mount
-  useEffect(() => {
-    const fetchClientNetworks = async () => {
-      try {
-        setLoadingNetworks(true);
-        const response = await getClientNetworkMetadata(true);
-        if (response && response.data) {
-          console.log('🎨 Fetched client network metadata for ClientNews:', response.data);
-          setClientNetworks(response.data);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching client network metadata:', error);
-        // Keep fallback data if API fails
-      } finally {
-        setLoadingNetworks(false);
-      }
-    };
-
-    fetchClientNetworks();
-  }, []);
-  
-  // Get news with appropriate network filter
-  const networkParam = currentClient === 'all' ? 'clients' : 
-                      currentClient === 'xdc' ? 'XDC Network' : 
-                      currentClient === 'hedera' ? 'Hedera' :
-                      currentClient === 'algorand' ? 'Algorand' :
-                      currentClient === 'constellation' ? 'Constellation' :
-                      currentClient === 'hashpack' ? 'HashPack' : 'clients';
-  
-  const { 
-    news, 
-    loading, 
-    error, 
-    refreshNews 
-  } = useFastNews(networkParam === 'clients' ? 'client' : 'all', { network: networkParam });
-
-  // Get current client info
-  const currentClientInfo = CLIENT_NETWORKS.find(c => 
-    c.path === `/clients/${currentClient}` || (currentClient === 'all' && c.path === '/clients')
-  ) || CLIENT_NETWORKS[0];
-
-  if (loading) {
-    return (
-      <Container>
-        <Header>
-          <Title>
-            {currentClientInfo.logo && currentClientInfo.logo !== 'multi' && !loadingNetworks ? (
-              <ClientLogo 
-                src={currentClientInfo.logo} 
-                alt={currentClientInfo.name}
-                style={{ marginRight: '0.5rem' }}
-                onError={(e) => {
-                  // Fallback to emoji if logo fails
-                  e.target.style.display = 'none';
-                  const span = document.createElement('span');
-                  span.textContent = currentClientInfo.emoji || '🏢';
-                  span.style.marginRight = '0.5rem';
-                  e.target.parentNode.insertBefore(span, e.target);
-                }}
-              />
-            ) : (
-              currentClientInfo.emoji + ' '
-            )}
-            {currentClientInfo.name} News
-          </Title>
-          <Subtitle>Latest news from our valued clients</Subtitle>
-        </Header>
-        
-        <ClientFilters>
-          {CLIENT_NETWORKS.map((clientNetwork) => (
-            <ClientFilter
-              key={clientNetwork.path}
-              to={clientNetwork.path}
-              color={clientNetwork.color}
-              active={clientNetwork.path === `/clients/${currentClient}` || 
-                     (currentClient === 'all' && clientNetwork.path === '/clients')}
-            >
-                {clientNetwork.logo === 'multi' ? (
-                  <MultiLogo>
-                    {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
-                      <img key={index} src={logo} alt={`Client ${index + 1}`} />
-                    ))}
-                  </MultiLogo>
-                ) : (
-                  <ClientLogo 
-                    src={clientNetwork.logo} 
-                    alt={clientNetwork.name}
-                    onError={(e) => {
-                      // Fallback to emoji if logo fails to load
-                      e.target.style.display = 'none';
-                      const span = document.createElement('span');
-                      span.textContent = clientNetwork.emoji || '🏢';
-                      e.target.parentNode.insertBefore(span, e.target);
-                    }}
-                  />
-                )}
-                {clientNetwork.name}
-            </ClientFilter>
+  const filters = (
+    <ClientFilters>
+      <ClientFilter to="/clients" color="#007bff" active={currentId === 'all'}>
+        <MultiLogo>
+          {clients.map(c => (
+            <img key={c.id} src={c.logo} alt="" />
           ))}
-        </ClientFilters>
-        
-        <LoadingMessage>Loading client news articles...</LoadingMessage>
-      </Container>
-    );
-  }
+        </MultiLogo>
+        All Clients
+      </ClientFilter>
+      {clients.map(c => (
+        <ClientFilter key={c.id} to={`/clients/${c.id}`} color={c.color} active={currentId === c.id}>
+          <ClientLogo src={c.logo} alt="" />
+          {c.displayName}
+        </ClientFilter>
+      ))}
+    </ClientFilters>
+  );
 
-  if (error) {
-    return (
-      <Container>
-        <Header>
-          <Title>
-            {currentClientInfo.logo && currentClientInfo.logo !== 'multi' && !loadingNetworks ? (
-              <ClientLogo 
-                src={currentClientInfo.logo} 
-                alt={currentClientInfo.name}
-                style={{ marginRight: '0.5rem' }}
-                onError={(e) => {
-                  // Fallback to emoji if logo fails
-                  e.target.style.display = 'none';
-                  const span = document.createElement('span');
-                  span.textContent = currentClientInfo.emoji || '🏢';
-                  span.style.marginRight = '0.5rem';
-                  e.target.parentNode.insertBefore(span, e.target);
-                }}
-              />
-            ) : (
-              currentClientInfo.emoji + ' '
-            )}
-            {currentClientInfo.name} News
-          </Title>
-          <Subtitle>Latest news from our valued clients</Subtitle>
-        </Header>
-        
-        <ClientFilters>
-          {CLIENT_NETWORKS.map((clientNetwork) => (
-            <ClientFilter
-              key={clientNetwork.path}
-              to={clientNetwork.path}
-              color={clientNetwork.color}
-              active={clientNetwork.path === `/clients/${currentClient}` || 
-                     (currentClient === 'all' && clientNetwork.path === '/clients')}
-            >
-                {clientNetwork.logo === 'multi' ? (
-                  <MultiLogo>
-                    {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
-                      <img key={index} src={logo} alt={`Client ${index + 1}`} />
-                    ))}
-                  </MultiLogo>
-                ) : (
-                  <ClientLogo 
-                    src={clientNetwork.logo} 
-                    alt={clientNetwork.name}
-                    onError={(e) => {
-                      // Fallback to emoji if logo fails to load
-                      e.target.style.display = 'none';
-                      const span = document.createElement('span');
-                      span.textContent = clientNetwork.emoji || '🏢';
-                      e.target.parentNode.insertBefore(span, e.target);
-                    }}
-                  />
-                )}
-                {clientNetwork.name}
-            </ClientFilter>
-          ))}
-        </ClientFilters>
-        
-        <ErrorMessage>
-          Error loading client news: {error.message || 'Unknown error occurred'}
-          <br />
-          <button 
-            onClick={refreshNews}
-            style={{ 
-              marginTop: '1rem', 
-              padding: '0.5rem 1rem', 
-              background: '#ff6b6b', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Retry
-          </button>
-        </ErrorMessage>
-      </Container>
-    );
-  }
+  const retry = (
+    <button
+      onClick={refresh}
+      style={{
+        marginTop: '1rem',
+        padding: '0.5rem 1rem',
+        background: '#007bff',
+        color: 'white',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer'
+      }}
+    >
+      Try again
+    </button>
+  );
 
   return (
     <Container>
       <Header>
-        <Title>{currentClientInfo.emoji} {currentClientInfo.name} News</Title>
+        <Title>
+          {current && <ClientLogo src={current.logo} alt="" style={{ marginRight: '0.5rem' }} />}
+          {title}
+        </Title>
         <Subtitle>
-          {currentClient === 'all' 
-            ? 'Latest news from all our valued client networks' 
-            : `Exclusive ${currentClientInfo.name} updates and insights`
-          }
+          {current
+            ? `News that names ${current.displayName}, from the last 30 days`
+            : 'News about our clients, from the last 30 days'}
         </Subtitle>
-        <ArticleCount>
-          {news.length} articles with confirmed images
-        </ArticleCount>
+        {!loading && !error && (
+          <ArticleCount>
+            {news.length} {news.length === 1 ? 'article' : 'articles'}
+          </ArticleCount>
+        )}
       </Header>
 
-      <ClientFilters>
-        {CLIENT_NETWORKS.map((clientNetwork) => (
-          <ClientFilter
-            key={clientNetwork.path}
-            to={clientNetwork.path}
-            color={clientNetwork.color}
-            active={clientNetwork.path === `/clients/${currentClient}` || 
-                   (currentClient === 'all' && clientNetwork.path === '/clients')}
-          >
-            {clientNetwork.logo === 'multi' ? (
-              <MultiLogo>
-                {clientNetwork.logos && clientNetwork.logos.map((logo, index) => (
-                  <img key={index} src={logo} alt={`Client ${index + 1}`} />
-                ))}
-              </MultiLogo>
-            ) : clientNetwork.logo ? (
-              <ClientLogo 
-                src={clientNetwork.logo} 
-                alt={clientNetwork.name}
-                onError={(e) => {
-                  // Fallback to emoji if logo fails to load
-                  e.target.style.display = 'none';
-                  const span = document.createElement('span');
-                  span.textContent = clientNetwork.emoji || '🏢';
-                  e.target.parentNode.insertBefore(span, e.target);
-                }}
-              />
-            ) : (
-              clientNetwork.emoji || '🏢'
-            )}
-            {clientNetwork.name}
-          </ClientFilter>
-        ))}
-      </ClientFilters>
+      {filters}
 
-      <NewsGrid>
-        {news.map((article) => (
-          <NewsCard
-            key={article.id || article.url}
-            article={article}
-          />
-        ))}
-      </NewsGrid>
-
-      {news.length === 0 && !loading && (
+      {loading && news.length === 0 ? (
+        <LoadingMessage>Loading client news...</LoadingMessage>
+      ) : error && news.length === 0 ? (
+        <ErrorMessage>
+          Client news could not be loaded.
+          <br />
+          {retry}
+        </ErrorMessage>
+      ) : news.length === 0 ? (
         <LoadingMessage>
-          No {currentClient === 'all' ? 'client' : currentClientInfo.name} articles found with images.
+          {client && !current
+            ? 'That client is not on the list.'
+            : `No articles ${current ? `for ${current.displayName} ` : ''}in the last 30 days.`}
           <br />
-          This may happen if image validation is in progress or there are no recent articles.
-          <br />
-          <button 
-            onClick={refreshNews}
-            style={{ 
-              marginTop: '1rem', 
-              padding: '0.5rem 1rem', 
-              background: '#007bff', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Refresh Articles
-          </button>
+          {retry}
         </LoadingMessage>
+      ) : (
+        <NewsGrid>
+          {news.map(article => (
+            <NewsCard key={article.id || article.url} article={article} />
+          ))}
+        </NewsGrid>
       )}
     </Container>
   );

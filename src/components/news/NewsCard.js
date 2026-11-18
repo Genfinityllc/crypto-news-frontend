@@ -829,7 +829,16 @@ export default function NewsCard({ article, bookmarks = [], onBookmarkChange, on
               />
             ) : null}
             <PlaceholderImage style={{ display: articleImage ? 'none' : 'flex' }}>
-              📰
+              {article.fallback_logo ? (
+                // Client News sends the client's logo for articles that came without a picture
+                <img
+                  src={article.fallback_logo}
+                  alt=""
+                  style={{ maxWidth: '46%', maxHeight: '56%', objectFit: 'contain', opacity: 0.9 }}
+                />
+              ) : (
+                '📰'
+              )}
             </PlaceholderImage>
           </ImageContainer>
         </CardHeader>
