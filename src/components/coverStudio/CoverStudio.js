@@ -2116,6 +2116,9 @@ export default function CoverStudio({
           o.setCoords();
           c.requestRenderAll();
           commitSoon();
+          // open its Edit panel, where "Remove the background" is
+          if (leftTab !== 'edit') prevTabRef.current = leftTab;
+          setLeftTab('edit');
         }
       })
       .catch(() => toast.error('Could not read that image.'));
@@ -2517,7 +2520,7 @@ export default function CoverStudio({
     const leftEdge = o.left - oldW / 2;
     const topEdge = o.top - oldH / 2;
     const source = prepareLogo(img);
-    Object.assign(st, { source, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
+    Object.assign(st, { source, sourceOrig: undefined, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
     const el = paintItem(st);
     o.setElement(el);
     const sc = Math.min(box.w / el.width, box.h / el.height);
@@ -2562,7 +2565,17 @@ export default function CoverStudio({
       return;
     }
     const source = prepareLogo(cut); // also trims the empty margin that is left
+    showLogoSource(o, source, o.studio.sourceOrig || o.studio.source);
+    toast.success('Background removed. "Bring the background back" or Undo restores it.');
+  };
+
+  // Swap the picture inside a logo or a dropped image, keeping its place.
+  // orig: the picture as it was before a background was removed (or null).
+  const showLogoSource = (o, source, orig) => {
+    const c = fabricRef.current;
     o.studio.source = source;
+    o.studio.sourceOrig = orig || undefined;
+    o.studio.mono = undefined; // a one-colour version made from the old picture no longer fits
     o.studio.colors = extractLogoColors(source);
     const el = paintItem(o.studio);
     o.setElement(el);
@@ -2572,7 +2585,40 @@ export default function CoverStudio({
     c.requestRenderAll();
     commit();
     bump();
-    toast.success('Background removed. Undo brings it back.');
+  };
+
+  // The same people cut-out that guest photos have, for any image on the
+  // cover (a picture dragged in, or a file added in the Logos tab). The
+  // picture keeps its size and place: only the background becomes clear.
+  const cutOutLogoPerson = async () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'logo' || !o.studio.source || cutting) return;
+    setCutting(true);
+    const note = toast.info('Removing the background. The first time takes a little longer while the tool loads.', { autoClose: false });
+    await new Promise((r) => setTimeout(r, 60));
+    try {
+      const original = o.studio.sourceOrig || o.studio.source;
+      const cut = await cutOutPerson(original);
+      if (!c.getObjects().includes(o)) return;
+      if (!cut) {
+        toast.info('No person was found in this image, so nothing was removed. For a logo on a flat colour, use "Remove plain background".');
+        return;
+      }
+      showLogoSource(o, cut, original);
+      toast.success('Background removed. "Bring the background back" or Undo restores it.');
+    } catch (e) {
+      toast.error('The background could not be removed in this browser.');
+    } finally {
+      toast.dismiss(note);
+      setCutting(false);
+    }
+  };
+
+  const restoreLogoBackground = () => {
+    const o = active1();
+    if (!o || !o.studio || o.studio.kind !== 'logo' || !o.studio.sourceOrig) return;
+    showLogoSource(o, o.studio.sourceOrig, null);
   };
 
   const toggleCaption = (on) => {
@@ -3446,7 +3492,7 @@ export default function CoverStudio({
             <FieldLabel>Host</FieldLabel>
             <AddText onClick={() => addHost('guests')}>
               <b style={{ fontSize: 15 }}>Add "Hosted by"</b>
-              <small>Starts with {HOSTS[0].name}: round photo, the Hosted by line, the microphone badge, handle and title. Each part can be moved or changed on its own.</small>
+              <small>Starts with {HOSTS[0].name}: round photo, the line with the microphone badge above it and the handle under it. Each part can be moved or changed on its own.</small>
             </AddText>
             <FieldLabel>Our hosts</FieldLabel>
             <HostGrid>
@@ -4253,6 +4299,24 @@ export default function CoverStudio({
 
                 {selKind === 'logo' && (
                   <>
+                    {!sel.studio.placeholder && !sel.studio.seal && sel.studio.source && (
+                      <InsCell>
+                        <FieldLabel>Background of this image</FieldLabel>
+                        {sel.studio.sourceOrig ? (
+                          <Row>
+                            <Ghost onClick={restoreLogoBackground}>Bring the background back</Ghost>
+                          </Row>
+                        ) : (
+                          <Row>
+                            <Ghost onClick={cutOutLogoPerson} disabled={cutting}>{cutting ? 'Removing the background...' : 'Remove the background'}</Ghost>
+                            <Ghost onClick={removeLogoBackground} disabled={cutting}>Remove plain background</Ghost>
+                          </Row>
+                        )}
+                        <Muted style={{ marginTop: 6 }}>
+                          "Remove the background" is for photos of people; it runs on your computer and the image is not uploaded. "Remove plain background" is for a logo on one flat colour.
+                        </Muted>
+                      </InsCell>
+                    )}
                     <InsCell>
                       <FieldLabel>{sel.studio.seal ? 'Seal colour' : 'Logo colour'}</FieldLabel>
                       <Seg>
@@ -4342,7 +4406,6 @@ export default function CoverStudio({
                         {allLogos.length > swapLogos.length && !swapQuery && <Muted style={{ marginTop: 6 }}>Showing the first {swapLogos.length}. Search to find the rest.</Muted>}
                         <Row style={{ marginTop: 8 }}>
                           <Ghost onClick={() => pickReplaceLogo(sel)}>Use a file from my computer</Ghost>
-                          {!sel.studio.placeholder && <Ghost onClick={removeLogoBackground}>Remove plain background</Ghost>}
                         </Row>
                       </InsCell>
                     )}
