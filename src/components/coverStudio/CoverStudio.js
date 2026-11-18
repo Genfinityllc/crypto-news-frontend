@@ -61,7 +61,8 @@ const FONTS = [
   { family: 'CMG Sans', weights: [100, 400, 700], kind: 'Sans', italic: true },
   { family: 'Barlow Condensed', weights: [500, 600, 700], kind: 'Condensed' },
   { family: 'Bebas Neue', weights: [400], kind: 'Condensed' },
-  { family: 'Instrument Serif', weights: [400], kind: 'Serif', italic: true },
+  // italicFirst: choosing this font from the list starts it in italic (owner 2026-11-18)
+  { family: 'Instrument Serif', weights: [400], kind: 'Serif', italic: true, italicFirst: true },
   { family: 'CMG Sans Wide', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Wide Outline', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Outline', weights: [700], kind: 'Display' },
@@ -2781,16 +2782,19 @@ export default function CoverStudio({
     }
     p.turn += 1;
     const mine = p.turn;
-    const f = resolveFont(family, p.orig.fontWeight, p.orig.fontStyle === 'italic');
+    const f = resolveFont(family, p.orig.fontWeight, startsItalic(family, p.orig.fontFamily) || p.orig.fontStyle === 'italic');
     await ensureFont(f.fontFamily, f.fontWeight, f.fontStyle === 'italic');
     // a later hover, or the end of the preview, wins over a font still loading
     if (fontPreviewRef.current !== p || p.turn !== mine) return;
     showFont(o, f);
   };
+  // A font marked italicFirst starts in italic when it is chosen for text that
+  // was in another font; the Italic tick box still switches it off.
+  const startsItalic = (family, from) => family !== from && !!findFont(family, userFontsRef.current).italicFirst;
   const pickFont = (family) => {
     previewFont(null); // back to the real font first, so the weight and italic carry over from it
     const o = active1();
-    if (o) setFont(family, o.fontWeight);
+    if (o) setFont(family, o.fontWeight, startsItalic(family, o.fontFamily) ? true : undefined);
   };
 
   // ---------- the person's own fonts ----------
@@ -4635,7 +4639,7 @@ function FontPicker({ value, groups, onPreview, onPick }) {
                   style={{
                     fontFamily: `"${f.family}", sans-serif`,
                     fontWeight: f.weights.reduce((a, b) => (Math.abs(b - 500) < Math.abs(a - 500) ? b : a)),
-                    fontStyle: (f.italicOnly || []).length === f.weights.length ? 'italic' : 'normal',
+                    fontStyle: f.italicFirst || (f.italicOnly || []).length === f.weights.length ? 'italic' : 'normal',
                   }}
                   onMouseEnter={() => point(f.family)}
                   onClick={() => choose(f.family)}
