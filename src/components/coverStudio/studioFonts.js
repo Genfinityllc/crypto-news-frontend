@@ -25,6 +25,7 @@ import '@fontsource/archivo/latin-800.css';
 import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
+import '@fontsource/bebas-neue/latin-400.css';
 import '@fontsource/playfair-display/latin-400.css';
 import '@fontsource/playfair-display/latin-600.css';
 import '@fontsource/playfair-display/latin-700.css';

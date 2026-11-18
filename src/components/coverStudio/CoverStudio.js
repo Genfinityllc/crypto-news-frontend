@@ -56,6 +56,7 @@ const FONTS = [
   { family: 'Montserrat', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
   { family: 'CMG Sans', weights: [100, 400, 700], kind: 'Sans', italic: true },
   { family: 'Barlow Condensed', weights: [500, 600, 700], kind: 'Condensed' },
+  { family: 'Bebas Neue', weights: [400], kind: 'Condensed' },
   { family: 'Playfair Display', weights: [400, 600, 700, 800], kind: 'Serif' },
   { family: 'Source Serif 4', weights: [400, 600, 700], kind: 'Serif' },
   { family: 'Newsreader', weights: [400, 500, 700], kind: 'Serif' },
