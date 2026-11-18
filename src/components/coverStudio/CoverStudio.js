@@ -53,15 +53,13 @@ const FONTS = [
   { family: 'IBM Plex Sans', weights: [400, 500, 600, 700], kind: 'Sans' },
   { family: 'Space Grotesk', weights: [400, 500, 700], kind: 'Sans' },
   { family: 'Archivo', weights: [400, 600, 800], kind: 'Sans' },
+  { family: 'Geist Sans', label: 'Geist', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans' },
+  { family: 'Plus Jakarta Sans', weights: [200, 300, 400, 500, 600, 700, 800], kind: 'Sans', italic: true },
+  { family: 'DM Sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
   { family: 'Montserrat', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
   { family: 'CMG Sans', weights: [100, 400, 700], kind: 'Sans', italic: true },
   { family: 'Barlow Condensed', weights: [500, 600, 700], kind: 'Condensed' },
   { family: 'Bebas Neue', weights: [400], kind: 'Condensed' },
-  { family: 'Playfair Display', weights: [400, 600, 700, 800], kind: 'Serif' },
-  { family: 'Source Serif 4', weights: [400, 600, 700], kind: 'Serif' },
-  { family: 'Newsreader', weights: [400, 500, 700], kind: 'Serif' },
-  { family: 'Fraunces', weights: [400, 600, 800], kind: 'Serif' },
-  { family: 'DM Serif Display', weights: [400], kind: 'Serif' },
   { family: 'Instrument Serif', weights: [400], kind: 'Serif', italic: true },
   { family: 'CMG Sans Wide', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Wide Outline', weights: [800], kind: 'Display' },
@@ -71,6 +69,7 @@ const FONTS = [
   { family: 'CMG Sans Backslant', weights: [700], kind: 'Display' },
   { family: 'CMG Sans Mono Digits', weights: [700], kind: 'Display' },
   { family: 'IBM Plex Mono', weights: [400, 500, 600], kind: 'Mono' },
+  { family: 'Geist Mono', weights: [400, 500, 700], kind: 'Mono' },
 ];
 const WEIGHT_NAMES = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
 
@@ -4502,7 +4501,7 @@ function FontPicker({ value, groups, onPreview, onPick }) {
   return (
     <FontBox ref={rootRef} onKeyDown={onKeyDown}>
       <FontBtn type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
-        <span style={{ fontFamily: `"${value}", sans-serif` }}>{value}</span>
+        <span style={{ fontFamily: `"${value}", sans-serif` }}>{(flat.find((f) => f.family === value) || {}).label || value}</span>
         <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
           <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -4536,7 +4535,7 @@ function FontPicker({ value, groups, onPreview, onPick }) {
                   onMouseEnter={() => point(f.family)}
                   onClick={() => choose(f.family)}
                 >
-                  {f.family}
+                  {f.label || f.family}
                 </FontOpt>
               ))}
             </React.Fragment>
