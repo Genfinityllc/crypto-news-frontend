@@ -1,5 +1,5 @@
-import host1Url from './hosts/host-1.jpg';
-import host2Url from './hosts/host-2.jpg';
+import tateUrl from './hosts/tate.jpg';
+import ryanUrl from './hosts/ryan.jpg';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -508,14 +508,16 @@ export const INTERVIEW_LAYOUTS = [
 ];
 
 // ------------------------------ our hosts ------------------------------
-// The show's own hosts, offered in the Guests tab and in a guest's Photo
+// The show's own people, offered in the Guests tab and in a guest's Photo
 // panel. The photos are files in ./hosts, bundled with the site (so they are
-// public, like everything in the bundle). To add a host: put a square photo
-// in ./hosts, import it above and add a line here. `name` and `handle` fill
-// the name line when given.
+// public, like everything in the bundle). Choosing one fills in the name and
+// title lines and sets how the photo sits in its mask (zoom, panX, panY: the
+// same numbers as the "Photo inside the mask" sliders). The first entry is
+// the one a new "Hosted by" piece starts with.
+// To add a person: put a square photo in ./hosts, import it above, add a line.
 export const HOSTS = [
-  { id: 'host-1', label: 'Host 1', name: '', handle: '', src: host1Url },
-  { id: 'host-2', label: 'Host 2', name: '', handle: '', src: host2Url },
+  { id: 'tate', name: '@TateOnChain', title: 'Genfinity Host', src: tateUrl, zoom: 2.1, panX: 0, panY: 0.9 },
+  { id: 'ryan', name: 'Ryan Solomon', title: 'Founder & CEO of Genfinity', src: ryanUrl },
 ];
 
 // ------------------------------ ready-made pieces ------------------------------

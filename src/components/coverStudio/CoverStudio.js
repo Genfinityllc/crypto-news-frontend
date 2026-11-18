@@ -369,6 +369,12 @@ const MOST_USED_LOGOS = ['HEDERA_FULL', 'HBAR', 'HASHPACK', 'HASHPACKMARK', 'SOL
 // Size of a guest's name, title and a logo's caption as a share of the photo's
 // (or logo's) width. These are the sizes the starting layouts show.
 const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.046, hostlabel: 0.225, hostmic: 0.356 };
+// The two lines under a "Hosted by" photo: larger than a guest's, allowed to
+// run a little wider than the round photo, and set a little lower.
+// Letter spacing a main title starts with (owner 2026-11-18); the person can
+// change it with the Letter spacing slider.
+const HEADLINE_SPACING = -55;
+const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title: { rel: 0.09, rel0: 0.09, wide: 1.4, dy: 0.08 } };
 
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
@@ -1169,7 +1175,7 @@ export default function CoverStudio({
   };
 
   const TEXT_PRESETS = {
-    headline: { text: 'Your headline goes here', fontSize: 92, fontWeight: 700, width: 1180, charSpacing: -12, lineHeight: 1.06, opacity: 1 },
+    headline: { text: 'Your headline goes here', fontSize: 92, fontWeight: 700, width: 1180, charSpacing: HEADLINE_SPACING, lineHeight: 1.06, opacity: 1 },
     subhead: { text: 'A supporting line that adds context to the story', fontSize: 40, fontWeight: 400, width: 1000, charSpacing: 0, lineHeight: 1.25, opacity: 0.86 },
     label: { text: 'MARKET UPDATE', fontSize: 26, fontWeight: 600, width: 520, charSpacing: 180, lineHeight: 1.1, opacity: 1 },
   };
@@ -1494,6 +1500,9 @@ export default function CoverStudio({
       ringColor: paletteColor(opt.ringColor, '#ffffff'),
       tintColor: bgRef.current.palette.a1,
       src: opt.src || null,
+      zoom: opt.zoom || DEFAULT_PHOTO.zoom,
+      panX: opt.panX || 0,
+      panY: opt.panY || 0,
       textStyle: opt.style || 'below', // below | bar | none
       textAlign: opt.align || 'center',
       barFill: paletteColor(opt.barFill, '#141414'),
@@ -1554,7 +1563,7 @@ export default function CoverStudio({
       fontStyle: opt.italic ? 'italic' : 'normal',
       fontSize: opt.size || 60,
       fill: opt.fill || '#ffffff',
-      charSpacing: opt.spacing || 0,
+      charSpacing: opt.spacing != null ? opt.spacing : opt.role === 'headline' ? HEADLINE_SPACING : 0,
       lineHeight: opt.lineHeight || 1.1,
       textAlign: opt.align || 'left',
       editable: true,
@@ -1826,28 +1835,67 @@ export default function CoverStudio({
     );
   };
 
-  const addGuest = async (shape, src) => {
+  // who: one of our own people (HOSTS); their photo framing, name and title
+  const addGuest = async (shape, src, who) => {
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
     const n = c.getObjects().filter((o) => o.studio && o.studio.kind === 'photo').length;
-    const o = makePhoto({ shape, aspect: shape === 'rect' ? 0.9 : 1, src: src || null, size: 360, cx: W / 2 + (n % 5) * 44, cy: H / 2 - 40 + (n % 5) * 30 });
+    const o = makePhoto({ shape, aspect: shape === 'rect' ? 0.9 : 1, src: src || null, size: 360, cx: W / 2 + (n % 5) * 44, cy: H / 2 - 40 + (n % 5) * 30, ...(who && src ? personFraming(who) : {}) });
+    if (who) fillPersonWords(o, who);
     finishAdd(o, 'guests');
+  };
+
+  const personFraming = (who) => ({ zoom: who.zoom || 1, panX: who.panX || 0, panY: who.panY || 0 });
+
+  // Put a person's name and title on a guest or host. The lines count as
+  // typed (their placeholder stays as the seed), so a change of layout
+  // carries them along.
+  const fillPersonWords = (frame, who) => {
+    if (!who || frame.studio.textStyle === 'none') return;
+    [['name', who.name, frame.studio.host ? '@HostName' : 'Guest Name'], ['title', who.title, frame.studio.host ? 'Title' : 'Title at Company']].forEach(([r, v, seed]) => {
+      if (!v) return;
+      let t = guestText(frame, r);
+      if (!t) {
+        t = makeAttachedText(frame, r, v, seed);
+        if (frame.studio.host) {
+          Object.assign(t.studio.attach, HOST_LINE[r]);
+          if (r === 'name') t.set({ fontWeight: 400 });
+        }
+        return;
+      }
+      const upper = t.studio.seed && t.studio.seed === String(t.studio.seed).toUpperCase() && /[A-Z]/.test(t.studio.seed);
+      t.set('text', upper ? v.toUpperCase() : v);
+      t.studio.raw = upper ? v : undefined;
+      t.studio.attach.rel = t.studio.attach.rel0 || ATTACH_REL[r] || t.studio.attach.rel;
+      t.studio.attach.free = false;
+    });
+    layoutAttached(frame);
   };
 
   // "Hosted by": a round host photo with the words and the microphone badge
   // above it and a handle under it. Four separate items (photo, words, badge,
   // handle) that can each be moved, restyled or deleted, and that travel and
   // resize with the photo like a guest's name and title do.
-  const addHost = async (tab = 'guests', src = null, who = null) => {
+  // It starts as one of our own people (the first of HOSTS unless another is
+  // asked for): their photo, framed as set in HOSTS, with their name as the
+  // handle and their title under it.
+  const addHost = async (tab = 'guests', who = HOSTS[0]) => {
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
-    const o = makePhoto({ shape: 'circle', size: 300, cx: W / 2, cy: H / 2, style: 'none', src });
-    Object.assign(o.studio, { host: true, name: (who && (who.name || who.label)) || 'Host', textStyle: 'below', textAlign: 'center' });
-    const handle = makeAttachedText(o, 'name', (who && (who.handle || who.name)) || '@HostName');
+    let src = null;
+    try {
+      if (who) src = preparePhoto(await loadImage(who.src, false));
+    } catch (e) {
+      src = null; // the photo did not load: start with the empty placeholder
+    }
+    const o = makePhoto({ shape: 'circle', size: 300, cx: W / 2, cy: H / 2, style: 'none', src, ...(who && src ? personFraming(who) : {}) });
+    Object.assign(o.studio, { host: true, name: (who && who.name) || 'Host', textStyle: 'below', textAlign: 'center' });
+    const handle = makeAttachedText(o, 'name', (who && who.name) || '@HostName', '@HostName');
     handle.set({ fontWeight: 400 });
-    Object.assign(handle.studio.attach, { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 });
+    Object.assign(handle.studio.attach, HOST_LINE.name);
+    if (who && who.title) Object.assign(makeAttachedText(o, 'title', who.title, 'Title').studio.attach, HOST_LINE.title);
     const label = makeAttachedText(o, 'hostlabel', 'Hosted by');
     label.set({ fontFamily: 'CMG Sans', fontWeight: 400 });
     const mic = logoObject({
@@ -1869,13 +1917,16 @@ export default function CoverStudio({
   // One of our own hosts (HOSTS): as a "Hosted by" piece, as an ordinary
   // guest, or into a guest that is already on the cover.
   const putHost = async (host, as, target) => {
+    if (as === 'host') {
+      await addHost('guests', host);
+      return;
+    }
     try {
       const img = await loadImage(host.src, false);
       if (as === 'into') {
         const c = fabricRef.current;
-        if (target && c && c.getObjects().includes(target)) placeGuestPhoto(target, img);
-      } else if (as === 'host') await addHost('guests', preparePhoto(img), host);
-      else await addGuest('circle', preparePhoto(img));
+        if (target && c && c.getObjects().includes(target)) placeGuestPhoto(target, img, host);
+      } else await addGuest('circle', preparePhoto(img), host);
     } catch (e) {
       toast.error('Could not load that photo.');
     }
@@ -1924,9 +1975,11 @@ export default function CoverStudio({
   };
 
   // Put a picture into a guest's mask, keeping the guest's place and style.
-  const placeGuestPhoto = (target, img) => {
-    Object.assign(target.studio, { src: preparePhoto(img), srcOrig: null, zoom: 1, panX: 0, panY: 0 });
+  // who: one of our own people (HOSTS), when the picture is theirs.
+  const placeGuestPhoto = (target, img, who) => {
+    Object.assign(target.studio, { src: preparePhoto(img), srcOrig: null, zoom: 1, panX: 0, panY: 0, ...(who ? personFraming(who) : {}) });
     repaintPhoto(target);
+    if (who) fillPersonWords(target, who);
     layoutAttached(target);
     finishAdd(target);
   };
@@ -2308,7 +2361,11 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c || !o) return;
     let t = guestText(o, role);
-    if (!t && value) t = makeAttachedText(o, role, value);
+    if (!t && value) {
+      t = makeAttachedText(o, role, value);
+      // a host's lines sit lower and larger than a guest's
+      if (o.studio.host && HOST_LINE[role]) Object.assign(t.studio.attach, HOST_LINE[role]);
+    }
     if (t) {
       // settle anything dragged since the last layout before the reset
       layoutAttached(o);
@@ -3372,14 +3429,15 @@ export default function CoverStudio({
             <FieldLabel>Host</FieldLabel>
             <AddText onClick={() => addHost('guests')}>
               <b style={{ fontSize: 15 }}>Add "Hosted by"</b>
-              <small>A round host photo with the Hosted by line, the microphone badge and a handle. Each part can be moved or changed on its own.</small>
+              <small>Starts with {HOSTS[0].name}: round photo, the Hosted by line, the microphone badge, handle and title. Each part can be moved or changed on its own.</small>
             </AddText>
             <FieldLabel>Our hosts</FieldLabel>
             <HostGrid>
               {HOSTS.map((h) => (
                 <HostCard key={h.id}>
-                  <img src={h.src} alt={h.name || h.label} draggable={false} />
-                  <b>{h.name || h.label}</b>
+                  <img src={h.src} alt={h.name} draggable={false} />
+                  <b>{h.name}</b>
+                  <small>{h.title}</small>
                   <button type="button" onClick={() => putHost(h, 'host')}>Add as Hosted by</button>
                   <button type="button" onClick={() => putHost(h, 'guest')}>Add as a guest</button>
                 </HostCard>
@@ -4023,8 +4081,8 @@ export default function CoverStudio({
                         <HostPick>
                           <span>Or use a host</span>
                           {HOSTS.map((h) => (
-                            <button key={h.id} type="button" title={h.name || h.label} onClick={() => putHost(h, 'into', sel)}>
-                              <img src={h.src} alt={h.name || h.label} draggable={false} />
+                            <button key={h.id} type="button" title={h.name} onClick={() => putHost(h, 'into', sel)}>
+                              <img src={h.src} alt={h.name} draggable={false} />
                             </button>
                           ))}
                         </HostPick>
@@ -5057,6 +5115,13 @@ const HostCard = styled.div`
   b {
     color: #e6edf3;
     font-size: 0.8rem;
+  }
+  small {
+    color: #8b949e;
+    font-size: 0.72rem;
+    line-height: 1.3;
+    margin-top: -0.25rem;
+    min-height: 1.9em;
   }
   button {
     background: #161616;
