@@ -3280,6 +3280,20 @@ export default function CoverStudio({
     });
   };
 
+  // A recent backdrop whose image is gone from the server is dropped from the
+  // list instead of showing as a broken tile.
+  const forgetBackdrop = (url) => {
+    setRecentBackdrops((prev) => {
+      const next = prev.filter((u) => u !== url);
+      try {
+        localStorage.setItem('cg_studio_backdrops', JSON.stringify(next));
+      } catch (e) {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  };
+
   const applyImageUrl = async (url, label) => {
     try {
       const img = await loadImage(corsUrl(url));
@@ -4351,7 +4365,7 @@ export default function CoverStudio({
                       {recentBackdrops.map((u) => (
                         <RecentTile key={u} onClick={() => applyImageUrl(u, 'AI backdrop')}>
                           <Thumb $ratio={50}>
-                            <img src={u} alt="" loading="lazy" />
+                            <img src={u} alt="" loading="lazy" onError={() => forgetBackdrop(u)} />
                           </Thumb>
                         </RecentTile>
                       ))}
@@ -4401,7 +4415,7 @@ export default function CoverStudio({
                       {recentBackdrops.map((u) => (
                         <RecentTile key={u} onClick={() => applyImageUrl(u, 'AI backdrop')}>
                           <Thumb $ratio={50}>
-                            <img src={u} alt="" loading="lazy" />
+                            <img src={u} alt="" loading="lazy" onError={() => forgetBackdrop(u)} />
                           </Thumb>
                         </RecentTile>
                       ))}
