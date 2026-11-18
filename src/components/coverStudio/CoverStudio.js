@@ -64,10 +64,6 @@ const FONTS = [
   { family: 'CMG Sans Wide', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Wide Outline', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Outline', weights: [700], kind: 'Display' },
-  { family: 'CMG Sans Rounded', weights: [700], kind: 'Display' },
-  { family: 'CMG Sans Slab', weights: [700], kind: 'Display' },
-  { family: 'CMG Sans Backslant', weights: [700], kind: 'Display' },
-  { family: 'CMG Sans Mono Digits', weights: [700], kind: 'Display' },
   { family: 'IBM Plex Mono', weights: [400, 500, 600], kind: 'Mono' },
   { family: 'Geist Mono', weights: [400, 500, 700], kind: 'Mono' },
 ];

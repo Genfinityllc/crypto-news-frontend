@@ -63,31 +63,3 @@
   font-display: swap;
   src: url('./CMGSans-BoldOutline.woff') format('woff');
 }
-@font-face {
-  font-family: 'CMG Sans Rounded';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./CMGSans-BoldRounded.woff') format('woff');
-}
-@font-face {
-  font-family: 'CMG Sans Slab';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./CMGSans-BoldSlab.woff') format('woff');
-}
-@font-face {
-  font-family: 'CMG Sans Backslant';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./CMGSans-BoldBackslant.woff') format('woff');
-}
-@font-face {
-  font-family: 'CMG Sans Mono Digits';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./CMGSans-BoldMonoDigits.woff') format('woff');
-}
