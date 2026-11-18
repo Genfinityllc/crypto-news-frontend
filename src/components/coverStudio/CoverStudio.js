@@ -36,6 +36,7 @@ import {
   drawLayoutThumb,
 } from './interviewKit';
 import { cutOutPerson } from './photoCutout';
+import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 
 // ---------------------------------------------------------------------------
 // Design Studio: compose a cover by hand.
@@ -571,6 +572,25 @@ export default function CoverStudio({
   const [ringAll, setRingAll] = useState(false);
   const [cutting, setCutting] = useState(false);
   const [dropBox, setDropBox] = useState(null);
+  // ---------- drafts (working files kept in this browser) ----------
+  const [draft, setDraft] = useState(null); // the saved draft this cover belongs to: { id, name, created, updated }
+  const [draftName, setDraftName] = useState('');
+  const [dirty, setDirty] = useState(false); // changed since the draft was last saved
+  const [drafts, setDrafts] = useState([]);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftAsk, setDraftAsk] = useState(null); // { title, text, run }: unsaved work is about to be replaced
+  const [draftDelete, setDraftDelete] = useState(''); // id of the draft whose Delete was pressed once
+  const draftRef = useRef(null);
+  const dirtyRef = useRef(false);
+  const draftReadyRef = useRef(false); // false until the cover kept from the last visit has been looked for
+  const draftQuietRef = useRef(false); // true while a cover is being put on the canvas
+  const draftLoadedRef = useRef({ bg: null, watermark: null }); // background and watermark as last loaded
+  const touchRef = useRef(null);
+  const saveDraftRef = useRef(null);
+  const workingTimer = useRef(null);
+  const workingChain = useRef(Promise.resolve());
+  const userFontsLoadedRef = useRef(null);
   const dropKeyRef = useRef('');
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
@@ -697,6 +717,7 @@ export default function CoverStudio({
     if (h.stack.length > 80) h.stack.shift();
     h.index = h.stack.length - 1;
     if (sharpenRef.current) sharpenRef.current();
+    if (touchRef.current) touchRef.current();
   }, []);
 
   const commitSoon = useCallback(() => {
@@ -3030,7 +3051,7 @@ export default function CoverStudio({
   // Fonts added on an earlier visit are kept in this browser and come back here.
   useEffect(() => {
     let off = false;
-    loadStoredFontFiles().then(async (rows) => {
+    userFontsLoadedRef.current = loadStoredFontFiles().then(async (rows) => {
       for (const row of rows) {
         try {
           const item = await registerFont(row.buffer, row.fileName);
@@ -3192,6 +3213,12 @@ export default function CoverStudio({
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e) => {
+      // Cmd/Ctrl+S saves the draft, wherever the cursor is
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 's') {
+        e.preventDefault();
+        if (saveDraftRef.current) saveDraftRef.current(false);
+        return;
+      }
       const tag = ((e.target && e.target.tagName) || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
       const c = fabricRef.current;
@@ -3398,6 +3425,335 @@ export default function CoverStudio({
       bump();
     }
   };
+
+  // ---------- drafts ----------
+  // A cover can be saved as a draft and opened again later: every item stays
+  // editable. Drafts live in this browser (see drafts.js). Separately, the
+  // cover that is open right now is kept after every change, so a refresh or
+  // a closed tab brings it back as it was, saved as a draft or not.
+
+  // The whole cover as plain data plus pictures.
+  const snapshotCover = () => {
+    const cv = fabricRef.current;
+    const items = cv.getObjects().filter((o) => o.studio);
+    const rows = items.map((o) => {
+      // eslint-disable-next-line no-unused-vars
+      const { st, ...props } = capture(o);
+      return { kind: o.studio.kind, props, studio: o.studio };
+    });
+    return packCover({
+      profile,
+      width: W,
+      height: H,
+      items,
+      rows,
+      bg: bgRef.current,
+      extras: { watermark, autoLayout: { ...autoLayoutRef.current }, lastLayoutId: lastLayoutRef.current ? lastLayoutRef.current.id : null },
+    });
+  };
+
+  // One stored item back as a live one (not yet on the canvas).
+  const buildItem = (kind, props, st) => {
+    // eslint-disable-next-line no-unused-vars
+    const { shadowOn, tint, tintColor, ...p } = props || {};
+    if (!st) return null;
+    const centre = { originX: 'center', originY: 'center' };
+    let o = null;
+    if (kind === 'text') {
+      const { text, ...rest } = p;
+      o = new Textbox(text == null ? '' : String(text), { ...centre, editable: true, ...rest });
+      o.setControlsVisibility({ mt: false, mb: false });
+    } else if (kind === 'logo') {
+      if (!st.source) return null;
+      if (st.seal) st.mono = monoEmblem(st.source);
+      o = new FabricImage(paintItem(st), { ...centre, objectCaching: false, ...p });
+      o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    } else if (kind === 'photo') {
+      o = new FabricImage(paintPhoto(st), { ...centre, objectCaching: false, ...p });
+      o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    } else if (kind === 'shape') {
+      o = new Rect({ ...centre, strokeWidth: 0, objectCaching: false, ...p });
+      if (st.attach && st.attach.role === 'bar') o.set({ selectable: false, hoverCursor: 'pointer' });
+    }
+    if (!o) return null;
+    o.studio = st;
+    styleObject(o);
+    if (shadowOn) o.set('shadow', softShadow());
+    if (kind === 'text') applyTextBox(o);
+    o.setCoords();
+    return o;
+  };
+
+  // Replace what is on the canvas with a stored cover.
+  const loadCover = async (cover) => {
+    const data = await unpackCover(cover);
+    // fonts first, so every line is measured in its own font
+    if (userFontsLoadedRef.current) await Promise.race([userFontsLoadedRef.current.catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
+    const faces = new Map();
+    data.objects.forEach((it) => {
+      if (it.kind === 'text' && it.props && it.props.fontFamily) faces.set(`${it.props.fontFamily}|${it.props.fontWeight}|${it.props.fontStyle}`, it.props);
+    });
+    await Promise.all([...faces.values()].map((f) => ensureFont(f.fontFamily, f.fontWeight || 400, f.fontStyle === 'italic')));
+    const cv = fabricRef.current;
+    if (!cv) return false;
+    draftQuietRef.current = true;
+    try {
+      cv.discardActiveObject();
+      cv.remove(...cv.getObjects());
+      const made = data.objects.map((it) => {
+        try {
+          return buildItem(it.kind, it.props, it.studio);
+        } catch (e) {
+          return null; // one item that cannot be rebuilt must not lose the rest
+        }
+      });
+      made.forEach((o) => {
+        if (!o) return;
+        linkItems(o.studio, made);
+        // a part whose owner could not be rebuilt stands on its own
+        if (o.studio.attach && !o.studio.attach.to) {
+          delete o.studio.attach;
+          o.set({ selectable: true });
+        }
+      });
+      made.forEach((o) => {
+        if (o) cv.add(o);
+      });
+      const nextBg = { ...DEFAULT_BG, ...(data.background || {}) };
+      if (nextBg.kind === 'image' && !nextBg.image) Object.assign(nextBg, { kind: 'template' });
+      const ex = data.extras || {};
+      const wm = isInterview ? false : ex.watermark == null ? watermark : !!ex.watermark;
+      draftLoadedRef.current = { bg: nextBg, watermark: wm };
+      bgRef.current = nextBg;
+      setBgState(nextBg);
+      if (!isInterview) setWatermark(wm);
+      if (ex.autoLayout) autoLayoutRef.current = { ...autoLayoutRef.current, ...ex.autoLayout };
+      lastLayoutRef.current = (isInterview && INTERVIEW_LAYOUTS.find((l) => l.id === ex.lastLayoutId)) || null;
+      carryRef.current = { texts: {}, logos: {}, guests: [], grain: 0 };
+      historyRef.current = { stack: [], index: -1 };
+      commit();
+      cv.requestRenderAll();
+    } finally {
+      draftQuietRef.current = false;
+    }
+    bump();
+    return true;
+  };
+
+  const markDraft = (d, isDirty) => {
+    draftRef.current = d;
+    dirtyRef.current = isDirty;
+    setDraft(d);
+    setDirty(isDirty);
+  };
+
+  // Keep the open cover (called a moment after every change).
+  const keepWorking = () => {
+    clearTimeout(workingTimer.current);
+    workingTimer.current = null;
+    workingChain.current = workingChain.current
+      .then(async () => {
+        if (!fabricRef.current) return;
+        const cover = await snapshotCover();
+        await putWorking(profile, { cover, draft: draftRef.current, dirty: dirtyRef.current });
+      })
+      .catch(() => null); // storage full or switched off: the cover on screen is unaffected
+    return workingChain.current;
+  };
+  // Something on the cover changed.
+  touchRef.current = () => {
+    if (!draftReadyRef.current || draftQuietRef.current) return;
+    if (!dirtyRef.current) {
+      dirtyRef.current = true;
+      setDirty(true);
+    }
+    clearTimeout(workingTimer.current);
+    workingTimer.current = setTimeout(keepWorking, 1200);
+  };
+
+  const refreshDrafts = () =>
+    listDrafts(profile)
+      .then(setDrafts)
+      .catch(() => setDrafts([]));
+
+  // Save the open cover as a draft. asNew: as a separate draft, leaving the
+  // one it came from as it was. Returns true when it was saved.
+  const saveDraft = async (asNew = false) => {
+    const cv = fabricRef.current;
+    if (!cv || draftBusy) return false;
+    setDraftBusy(true);
+    try {
+      const now = Date.now();
+      const cur = asNew ? null : draftRef.current;
+      let name = String(draftName || '').trim() || headlineText() || 'Untitled cover';
+      if (asNew && draftRef.current && name === draftRef.current.name) name = `${name} copy`;
+      const cover = await snapshotCover();
+      // the picture for the list is the finished cover; making it drops the
+      // selection, so that is put back afterwards
+      const picked = cv.getActiveObjects();
+      const tabWas = leftTab;
+      const thumb = await makeThumb(exportDataUrl());
+      if (picked.length === 1 && cv.getObjects().includes(picked[0])) {
+        cv.setActiveObject(picked[0]);
+        cv.requestRenderAll();
+        setLeftTab(tabWas);
+      }
+      const meta = { id: cur ? cur.id : newDraftId(), profile, name, created: cur && cur.created ? cur.created : now, updated: now, thumb, width: W, height: H };
+      await putDraft(meta, cover);
+      const d = { id: meta.id, name, created: meta.created, updated: now };
+      markDraft(d, false);
+      setDraftName(name);
+      clearTimeout(workingTimer.current);
+      await putWorking(profile, { cover, draft: d, dirty: false }).catch(() => null);
+      refreshDrafts();
+      toast.success(cur ? `Draft saved: ${name}` : `Saved as a new draft: ${name}`);
+      return true;
+    } catch (e) {
+      toast.error('The draft could not be saved in this browser. Storage may be full or switched off (private windows often block it).');
+      return false;
+    } finally {
+      setDraftBusy(false);
+      bump();
+    }
+  };
+  saveDraftRef.current = saveDraft;
+
+  // Before the open cover is replaced: ask when it has changes that are not in a draft.
+  const guardDraft = (what, run) => {
+    if (!dirtyRef.current) {
+      run();
+      return;
+    }
+    setDraftAsk({
+      title: draftRef.current ? `Save the changes to "${draftRef.current.name}" first?` : 'Save this cover as a draft first?',
+      text: `${what} replaces the cover you have open. Changes that are not saved in a draft will be gone.`,
+      run,
+    });
+  };
+
+  const openDraft = async (meta) => {
+    setDraftBusy(true);
+    try {
+      const cover = await getDraftCover(meta.id);
+      if (!cover) throw new Error('missing');
+      await loadCover(cover);
+      markDraft({ id: meta.id, name: meta.name, created: meta.created, updated: meta.updated }, false);
+      setDraftName(meta.name);
+      setDraftsOpen(false);
+      setLeftTab(isInterview ? 'layouts' : 'background');
+      keepWorking();
+      toast.success(`Opened: ${meta.name}`);
+    } catch (e) {
+      toast.error('That draft could not be opened.');
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  const newCover = () => {
+    const cv = fabricRef.current;
+    if (!cv) return;
+    draftQuietRef.current = true;
+    try {
+      cv.discardActiveObject();
+      cv.remove(...cv.getObjects());
+      const nextBg = { ...DEFAULT_BG };
+      draftLoadedRef.current = { bg: nextBg, watermark };
+      bgRef.current = nextBg;
+      setBgState(nextBg);
+      autoLayoutRef.current = { on: !isInterview, id: 'center' };
+      lastLayoutRef.current = null;
+      carryRef.current = { texts: {}, logos: {}, guests: [], grain: 0 };
+      historyRef.current = { stack: [], index: -1 };
+      commit();
+      cv.requestRenderAll();
+    } finally {
+      draftQuietRef.current = false;
+    }
+    markDraft(null, false);
+    setDraftName('');
+    setLeftTab(isInterview ? 'layouts' : 'background');
+    clearTimeout(workingTimer.current);
+    clearWorking(profile).catch(() => null);
+    bump();
+  };
+
+  const removeDraft = async (meta) => {
+    try {
+      await deleteDraft(meta.id);
+      // the cover on screen stays; it just no longer belongs to a saved draft
+      if (draftRef.current && draftRef.current.id === meta.id) {
+        markDraft(null, true);
+        keepWorking();
+      }
+      setDraftDelete('');
+      refreshDrafts();
+      toast.info(`Draft deleted: ${meta.name}`);
+    } catch (e) {
+      toast.error('That draft could not be deleted.');
+    }
+  };
+
+  // On opening the editor: bring back the cover that was open last time.
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        // a cover handed over from the Generate tab starts a new file instead
+        const kept = incoming && incoming.url ? null : await getWorking(profile);
+        if (!off && kept && kept.cover && fabricRef.current) {
+          await loadCover(kept.cover);
+          if (off) return;
+          markDraft(kept.draft || null, !!kept.dirty);
+          setDraftName(kept.draft ? kept.draft.name : '');
+        }
+      } catch (e) {
+        // nothing kept, or storage is not available: start with an empty cover
+      }
+      if (off) return;
+      draftReadyRef.current = true;
+      refreshDrafts();
+    })();
+    return () => {
+      off = true;
+      draftReadyRef.current = false;
+      clearTimeout(workingTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The background and the watermark are not items, so they report their own changes.
+  useEffect(() => {
+    const was = draftLoadedRef.current;
+    if (bg === was.bg && watermark === was.watermark) return;
+    draftLoadedRef.current = { bg: null, watermark: null };
+    if (touchRef.current) touchRef.current();
+  }, [bg, watermark]);
+
+  // Leaving the page or hiding the tab: keep the latest state straight away.
+  useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState === 'hidden' && workingTimer.current) keepWorking();
+    };
+    document.addEventListener('visibilitychange', flush);
+    return () => document.removeEventListener('visibilitychange', flush);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const draftWhen = (t) => {
+    if (!t) return '';
+    const d = new Date(t);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return sameDay ? `today at ${time}` : `${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at ${time}`;
+  };
+  const draftStatus = draft
+    ? dirty
+      ? 'Changes not saved to the draft yet'
+      : `Saved ${draftWhen(draft.updated)}`
+    : dirty
+      ? 'Not saved as a draft yet'
+      : 'New cover';
 
   // ---------- derived view state ----------
   const c = fabricRef.current;
@@ -4629,6 +4985,97 @@ export default function CoverStudio({
 
       {/* ------------------------------ canvas side ------------------------------ */}
       <Main>
+        <FileBar>
+          <ToolLabel>File</ToolLabel>
+          <FileName
+            value={draftName}
+            placeholder="Name this cover"
+            maxLength={80}
+            onChange={(e) => {
+              setDraftName(e.target.value);
+              if (draft && touchRef.current) touchRef.current(); // a new name is saved with the next Save draft
+            }}
+            aria-label="Name of this cover"
+          />
+          <FileState $warn={dirty}>{draftStatus}</FileState>
+          <Spacer />
+          <Group>
+            <SaveBtn onClick={() => saveDraft(false)} disabled={draftBusy} title="Save this cover as a draft you can open and edit later (Cmd/Ctrl+S)">{draftBusy ? 'Working...' : 'Save draft'}</SaveBtn>
+            {draft && <Tool onClick={() => saveDraft(true)} disabled={draftBusy} title="Save this as a separate draft and leave the original as it was">Save as new</Tool>}
+            <Tool onClick={() => guardDraft('Starting a new cover', newCover)} disabled={draftBusy} title="Clear the cover and start a new file">New cover</Tool>
+            <Tool
+              onClick={() => {
+                setDraftDelete('');
+                if (!draftsOpen) refreshDrafts();
+                setDraftsOpen(!draftsOpen);
+              }}
+            >
+              {draftsOpen ? 'Hide drafts' : `My drafts (${drafts.length})`}
+            </Tool>
+          </Group>
+        </FileBar>
+
+        {draftsOpen && (
+          <DraftsBox>
+            {drafts.length === 0 ? (
+              <Muted>No drafts yet. Press "Save draft" to keep this cover as a file you can open and edit later.</Muted>
+            ) : (
+              <DraftGrid>
+                {drafts.map((d) => (
+                  <DraftCard key={d.id} $on={!!draft && draft.id === d.id}>
+                    <button type="button" className="thumb" onClick={() => guardDraft('Opening another draft', () => openDraft(d))} disabled={draftBusy} title="Open this draft">
+                      {d.thumb ? <img src={d.thumb} alt="" draggable={false} /> : <span>No preview</span>}
+                    </button>
+                    <b title={d.name}>{d.name}</b>
+                    <small>{draft && draft.id === d.id ? 'Open now. ' : ''}Saved {draftWhen(d.updated)}</small>
+                    <div className="row">
+                      <button type="button" onClick={() => guardDraft('Opening another draft', () => openDraft(d))} disabled={draftBusy}>Open</button>
+                      {draftDelete === d.id ? (
+                        <button type="button" className="danger" onClick={() => removeDraft(d)}>Delete for good</button>
+                      ) : (
+                        <button type="button" onClick={() => setDraftDelete(d.id)}>Delete</button>
+                      )}
+                    </div>
+                  </DraftCard>
+                ))}
+              </DraftGrid>
+            )}
+            <Muted style={{ marginTop: 8 }}>
+              Drafts are kept in this browser on this computer. They are not uploaded, so they will not appear on another computer or in another browser, and clearing this site's data removes them.
+            </Muted>
+          </DraftsBox>
+        )}
+
+        {draftAsk && (
+          <AskVeil onClick={() => setDraftAsk(null)}>
+            <AskCard onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+              <b>{draftAsk.title}</b>
+              <p>{draftAsk.text}</p>
+              <div className="row">
+                <SaveBtn
+                  onClick={async () => {
+                    const { run } = draftAsk;
+                    setDraftAsk(null);
+                    if (await saveDraft(false)) run();
+                  }}
+                >
+                  Save draft first
+                </SaveBtn>
+                <Tool
+                  onClick={() => {
+                    const { run } = draftAsk;
+                    setDraftAsk(null);
+                    run();
+                  }}
+                >
+                  Do not save
+                </Tool>
+                <Tool onClick={() => setDraftAsk(null)}>Cancel</Tool>
+              </div>
+            </AskCard>
+          </AskVeil>
+        )}
+
         <Toolbar>
           <Group>
             <Tool disabled={hist.index <= 0} onClick={undo} title="Undo (Cmd/Ctrl+Z)">Undo</Tool>
@@ -5647,6 +6094,163 @@ const Toolbar = styled.div`
   align-items: center;
   flex-wrap: wrap;
   gap: 0.6rem 1rem;
+`;
+
+const FileBar = styled.div`
+  background: #111111;
+  border: 1px solid #222222;
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.8rem;
+`;
+
+const FileName = styled.input`
+  flex: 0 1 300px;
+  min-width: 160px;
+  background: #0a0a0a;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+  }
+  &::placeholder {
+    color: #6e7681;
+    font-weight: 400;
+  }
+`;
+
+const FileState = styled.span`
+  color: ${(p) => (p.$warn ? '#e3b341' : '#8b949e')};
+  font-size: 0.76rem;
+`;
+
+const DraftsBox = styled.div`
+  background: #111111;
+  border: 1px solid #222222;
+  border-radius: 12px;
+  padding: 0.7rem;
+`;
+
+const DraftGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.6rem;
+  max-height: 420px;
+  overflow-y: auto;
+`;
+
+const DraftCard = styled.div`
+  background: #0a0a0a;
+  border: 1px solid ${(p) => (p.$on ? '#00d4ff' : '#30363d')};
+  border-radius: 10px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+
+  .thumb {
+    padding: 0;
+    border: none;
+    background: #050505;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6e7681;
+    font-size: 0.74rem;
+  }
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  b {
+    color: #e6edf3;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  small {
+    color: #8b949e;
+    font-size: 0.72rem;
+  }
+  .row {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .row button {
+    flex: 1;
+    background: #161616;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.38rem 0.3rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .row button:hover:not(:disabled) {
+    border-color: #00d4ff;
+  }
+  .row button.danger {
+    color: #f85149;
+    border-color: #5a1e1a;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+`;
+
+const AskVeil = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+`;
+
+const AskCard = styled.div`
+  background: #111111;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+  max-width: 440px;
+  width: 100%;
+
+  b {
+    color: #e6edf3;
+    font-size: 1rem;
+  }
+  p {
+    color: #8b949e;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    margin: 0.5rem 0 0.9rem;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
 `;
 
 const NameBar = styled.div`
