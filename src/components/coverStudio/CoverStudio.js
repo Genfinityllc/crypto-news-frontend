@@ -170,6 +170,121 @@ function prepareLogo(img) {
   return t;
 }
 
+// ---------- SVG files stay vectors ----------
+// A picture on the cover is drawn from a canvas (`studio.source`), so an SVG
+// has to be turned into pixels at some size. To keep it sharp at any size the
+// file itself is kept (`studio.vector`) and drawn again, larger, whenever the
+// item is scaled up past the pixels it has (see sharpenVectors).
+
+// Where the visible part of a canvas is (same threshold as prepareLogo's trim).
+function alphaBox(canvas) {
+  const w = canvas.width;
+  const h = canvas.height;
+  let data;
+  try {
+    data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  } catch (e) {
+    return null;
+  }
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 12) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+// Read an SVG file's text. Returns { inner, fw, fh }: the drawing as markup
+// that fills a box of fw by fh, or null when the text is not a readable SVG
+// (the file is then handled like any other image).
+function readSvg(text) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length) return null;
+  const size = (v) => {
+    const t = String(v == null ? '' : v).trim();
+    const n = parseFloat(t);
+    return Number.isFinite(n) && n > 0 && !/%$/.test(t) ? n : 0;
+  };
+  const vb = String(root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  const hasBox = vb.length === 4 && vb.every(Number.isFinite) && vb[2] > 0 && vb[3] > 0;
+  let fw = size(root.getAttribute('width'));
+  let fh = size(root.getAttribute('height'));
+  if (!hasBox) {
+    // no size given: browsers draw such a file in a 300 by 150 box
+    fw = fw || 300;
+    fh = fh || 150;
+    root.setAttribute('viewBox', `0 0 ${fw} ${fh}`); // so the drawing scales with its box
+  } else if (!fw || !fh) {
+    if (fw) fh = (fw * vb[3]) / vb[2];
+    else if (fh) fw = (fh * vb[2]) / vb[3];
+    else {
+      fw = vb[2];
+      fh = vb[3];
+    }
+  }
+  root.setAttribute('x', '0');
+  root.setAttribute('y', '0');
+  root.setAttribute('width', String(fw));
+  root.setAttribute('height', String(fh));
+  return { inner: new XMLSerializer().serializeToString(root), fw, fh };
+}
+
+// Draw part of a vector (crop: fractions of the whole drawing) so that its
+// longer side is `longSide` pixels. The file is wrapped in an outer SVG whose
+// view is the wanted part, so the browser draws it fresh at that size.
+async function rasterVector(vec, crop, longSide) {
+  const cw = crop.w * vec.fw;
+  const ch = crop.h * vec.fh;
+  const k = longSide / Math.max(cw, ch);
+  const w = Math.max(1, Math.round(cw * k));
+  const h = Math.max(1, Math.round(ch * k));
+  const view = [crop.x * vec.fw, crop.y * vec.fh, cw, ch].map((n) => Number(n.toFixed(5))).join(' ');
+  const markup = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${view}" preserveAspectRatio="none">${vec.inner}</svg>`;
+  const img = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`, false);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  return c;
+}
+
+const VECTOR_START = 1400; // pixels on the longer side when a vector first comes in
+const VECTOR_MAX = 4096; // and the most it is ever drawn at
+
+// A logo or image file as something to draw from: { img, vector }. For an SVG,
+// img is its visible part already drawn (margins trimmed) and vector is what
+// sharpenVectors needs to draw it again; for anything else vector is null.
+async function loadLogoFile(file) {
+  if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '')) {
+    try {
+      const vec = readSvg(await file.text());
+      if (vec) {
+        const whole = { x: 0, y: 0, w: 1, h: 1 };
+        const full = await rasterVector(vec, whole, VECTOR_START);
+        const box = alphaBox(full);
+        const crop = box ? { x: box.x / full.width, y: box.y / full.height, w: box.w / full.width, h: box.h / full.height } : whole;
+        const img = box ? await rasterVector(vec, crop, VECTOR_START) : full;
+        return { img, vector: { ...vec, crop } };
+      }
+    } catch (e) {
+      // fall through: treat it like any other image
+    }
+  }
+  const img = await loadImage(await readFileAsDataUrl(file), false);
+  return { img, vector: null };
+}
+
 // Recolour a logo to one solid colour while keeping its exact shape.
 function tintedCanvas(source, mode, color) {
   const c = document.createElement('canvas');
@@ -431,6 +546,9 @@ export default function CoverStudio({
   const wordmarkRef = useRef(null);
   const layoutAttachedRef = useRef(null);
   const layoutAllRef = useRef(null);
+  const sharpenRef = useRef(null);
+  const sharpenTimer = useRef(null);
+  const sharpeningRef = useRef(new WeakSet());
   const liveBarsRef = useRef(null);
   const [logoMode, setLogoMode] = useState('logo'); // interview: 'logo' | 'ecosystem'
   const [swapQuery, setSwapQuery] = useState(''); // search in the Edit tab's logo picker
@@ -578,6 +696,7 @@ export default function CoverStudio({
     h.stack.push(c.getObjects().map((o) => ({ o, p: capture(o) })));
     if (h.stack.length > 80) h.stack.shift();
     h.index = h.stack.length - 1;
+    if (sharpenRef.current) sharpenRef.current();
   }, []);
 
   const commitSoon = useCallback(() => {
@@ -614,6 +733,7 @@ export default function CoverStudio({
       });
       c.requestRenderAll();
       bump();
+      if (sharpenRef.current) sharpenRef.current();
     },
     [bump]
   );
@@ -677,6 +797,7 @@ export default function CoverStudio({
     c.on('selection:cleared', () => {
       // items moved together as a group have their own positions again now
       if (layoutAllRef.current) layoutAllRef.current();
+      if (sharpenRef.current) sharpenRef.current();
       setLeftTab((t) => (t === 'edit' ? prevTabRef.current : t));
       bump();
     });
@@ -1067,7 +1188,8 @@ export default function CoverStudio({
           return;
         }
       }
-      const source = prepareLogo(img);
+      // an SVG arrives already drawn and trimmed, with its vector to keep it sharp
+      const source = meta.vector ? img : prepareLogo(img);
       const isSeal = !!meta.seal;
       const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal).length;
       const studio = {
@@ -1079,6 +1201,7 @@ export default function CoverStudio({
         tint: isSeal ? 'white' : 'original',
         tintColor: '#ffffff',
         source,
+        vector: meta.vector || undefined,
         mono: isSeal ? monoEmblem(source) : undefined,
         colors: isSeal ? [] : extractLogoColors(source),
       };
@@ -1162,10 +1285,9 @@ export default function CoverStudio({
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    readFileAsDataUrl(file)
-      .then((url) => loadImage(url, false))
-      .then((img) => {
-        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, '') };
+    loadLogoFile(file)
+      .then(({ img, vector }) => {
+        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, ''), vector };
         const target = logoTargetRef.current;
         logoTargetRef.current = null;
         const c = fabricRef.current;
@@ -2097,12 +2219,11 @@ export default function CoverStudio({
       toast.info('Drop a PNG, JPG, WebP or SVG image.');
       return;
     }
-    readFileAsDataUrl(file)
-      .then((url) => loadImage(url, false))
-      .then((img) => {
+    loadLogoFile(file)
+      .then(({ img, vector }) => {
         const c = fabricRef.current;
         if (!c || !t) return;
-        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, '') };
+        const meta = { symbol: '', name: file.name.replace(/\.[^.]+$/, ''), vector };
         if (t.owner && c.getObjects().includes(t.owner)) {
           if (t.owner.studio.kind === 'photo') placeGuestPhoto(t.owner, img);
           else replaceLogo(t.owner, img, meta);
@@ -2510,6 +2631,52 @@ export default function CoverStudio({
     bump();
   };
 
+  // Keep SVG pictures sharp. After any change, each one that is now shown
+  // larger than the pixels it was drawn at is drawn again from its file, at
+  // twice the size it is shown (the cover's own pixels are what is exported).
+  // The item keeps its exact place and size; nothing is added to the history.
+  const sharpenVectors = async () => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const busy = sharpeningRef.current;
+    const due = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && o.studio.vector && !o.group && !busy.has(o));
+    await Promise.all(
+      due.map(async (o) => {
+        const st = o.studio;
+        const from = st.source;
+        const shown = Math.max(o.getScaledWidth(), o.getScaledHeight());
+        const have = Math.max(from.width, from.height);
+        const want = Math.min(VECTOR_MAX, Math.ceil(shown * 2));
+        if (shown * 1.25 <= have || want <= have) return;
+        busy.add(o);
+        try {
+          const next = await rasterVector(st.vector, st.vector.crop, want);
+          // only if nothing else changed the picture or the item meanwhile
+          if (!c.getObjects().includes(o) || o.studio !== st || st.source !== from || o.group) return;
+          if (c._currentTransform && c._currentTransform.target === o) return; // being dragged right now: the next change tries again
+          const wasW = o.getScaledWidth();
+          const wasH = o.getScaledHeight();
+          st.source = next;
+          st.mono = undefined;
+          const el = paintItem(st);
+          o.setElement(el);
+          o.set({ width: el.width, height: el.height, scaleX: (wasW / el.width) * Math.sign(o.scaleX || 1), scaleY: (wasH / el.height) * Math.sign(o.scaleY || 1) });
+          o.setCoords();
+          c.requestRenderAll();
+          bump();
+        } catch (e) {
+          // the file could not be drawn again: the picture stays as it is
+        } finally {
+          busy.delete(o);
+        }
+      })
+    );
+  };
+  sharpenRef.current = () => {
+    clearTimeout(sharpenTimer.current);
+    sharpenTimer.current = setTimeout(sharpenVectors, 120);
+  };
+
   // Put a new picture into an existing logo, keeping its place on the cover.
   const replaceLogo = (o, img, meta = {}) => {
     const c = fabricRef.current;
@@ -2519,8 +2686,8 @@ export default function CoverStudio({
     const box = st.placeholder && st.slotBox ? st.slotBox : { w: oldW, h: oldH };
     const leftEdge = o.left - oldW / 2;
     const topEdge = o.top - oldH / 2;
-    const source = prepareLogo(img);
-    Object.assign(st, { source, sourceOrig: undefined, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
+    const source = meta.vector ? img : prepareLogo(img);
+    Object.assign(st, { source, vector: meta.vector || undefined, vectorOrig: undefined, sourceOrig: undefined, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
     const el = paintItem(st);
     o.setElement(el);
     const sc = Math.min(box.w / el.width, box.h / el.height);
@@ -2573,6 +2740,16 @@ export default function CoverStudio({
   // orig: the picture as it was before a background was removed (or null).
   const showLogoSource = (o, source, orig) => {
     const c = fabricRef.current;
+    // With its background removed the picture is no longer the file's own
+    // drawing, so it stops being redrawn from the vector; bringing the
+    // background back makes it a vector again.
+    if (orig) {
+      o.studio.vectorOrig = o.studio.vector || o.studio.vectorOrig;
+      o.studio.vector = undefined;
+    } else {
+      o.studio.vector = o.studio.vectorOrig;
+      o.studio.vectorOrig = undefined;
+    }
     o.studio.source = source;
     o.studio.sourceOrig = orig || undefined;
     o.studio.mono = undefined; // a one-colour version made from the old picture no longer fits
