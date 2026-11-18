@@ -37,6 +37,7 @@ import {
 } from './interviewKit';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
+import { makeStudioServer } from './studioServer';
 
 // ---------------------------------------------------------------------------
 // Design Studio: compose a cover by hand.
@@ -591,6 +592,14 @@ export default function CoverStudio({
   const workingTimer = useRef(null);
   const workingChain = useRef(Promise.resolve());
   const userFontsLoadedRef = useRef(null);
+  const refreshDraftsRef = useRef(null);
+  // ---------- the server side: shared backgrounds, and drafts in the account ----------
+  // Signed in, drafts are kept in the person's account (private to it, the
+  // same on every computer). Signed out, they stay in this browser.
+  const server = useMemo(() => makeStudioServer(apiBase, async () => (currentUser ? currentUser.getIdToken() : null)), [apiBase, currentUser]);
+  const [isOwner, setIsOwner] = useState(false); // the owner account manages the shared backgrounds
+  const [sharedBackdrops, setSharedBackdrops] = useState([]);
+  const [sharedRemove, setSharedRemove] = useState(''); // id of the shared background whose Remove was pressed once
   const dropKeyRef = useRef('');
   // Watermark on or off is the owner's call on every cover, so the choice is
   // remembered between visits (this browser only).
@@ -3321,6 +3330,8 @@ export default function CoverStudio({
       if (!result || !result.imageUrl) throw new Error('Generation timed out');
       rememberBackdrop(result.imageUrl);
       await applyImageUrl(result.imageUrl, 'AI backdrop');
+      // the owner account's backdrops go into the shared backgrounds for everyone
+      // (the "offer once" effect picks it up from the recent list)
       toast.success('Backdrop ready. Add your logo and headline on top.');
     } catch (e) {
       toast.error(`Backdrop failed: ${e.message}`);
@@ -3571,10 +3582,25 @@ export default function CoverStudio({
     workingTimer.current = setTimeout(keepWorking, 1200);
   };
 
-  const refreshDrafts = () =>
-    listDrafts(profile)
-      .then(setDrafts)
-      .catch(() => setDrafts([]));
+  // Signed in: the account's drafts, then any still kept only in this browser.
+  const refreshDrafts = async () => {
+    let local = [];
+    let account = [];
+    try {
+      local = await listDrafts(profile);
+    } catch (e) {
+      local = [];
+    }
+    if (currentUser) {
+      try {
+        account = await server.listDrafts(profile);
+      } catch (e) {
+        account = []; // the server could not be reached: the browser's own drafts still show
+      }
+    }
+    setDrafts([...account.map((d) => ({ ...d, where: 'account' })), ...local.map((d) => ({ ...d, where: 'browser' }))]);
+  };
+  refreshDraftsRef.current = refreshDrafts;
 
   // Save the open cover as a draft. asNew: as a separate draft, leaving the
   // one it came from as it was. Returns true when it was saved.
@@ -3585,6 +3611,11 @@ export default function CoverStudio({
     try {
       const now = Date.now();
       const cur = asNew ? null : draftRef.current;
+      // signed in, a draft goes to the account; signed out, into this browser
+      const home = currentUser ? 'account' : 'browser';
+      const curHome = cur ? cur.where || 'browser' : null;
+      // it keeps its id when it stays where it is, or moves from the browser up to the account
+      const keepId = !!cur && (curHome === home || home === 'account');
       let name = String(draftName || '').trim() || headlineText() || 'Untitled cover';
       if (asNew && draftRef.current && name === draftRef.current.name) name = `${name} copy`;
       const cover = await snapshotCover();
@@ -3598,18 +3629,28 @@ export default function CoverStudio({
         cv.requestRenderAll();
         setLeftTab(tabWas);
       }
-      const meta = { id: cur ? cur.id : newDraftId(), profile, name, created: cur && cur.created ? cur.created : now, updated: now, thumb, width: W, height: H };
-      await putDraft(meta, cover);
-      const d = { id: meta.id, name, created: meta.created, updated: now };
+      const meta = { id: keepId ? cur.id : newDraftId(), profile, name, created: keepId && cur.created ? cur.created : now, updated: now, thumb, width: W, height: H };
+      if (home === 'account') {
+        const saved = await server.saveDraft(meta, cover);
+        if (saved && saved.updated) meta.updated = saved.updated;
+        // a draft that was only in this browser now lives in the account instead
+        if (keepId && curHome === 'browser') await deleteDraft(meta.id).catch(() => null);
+      } else {
+        await putDraft(meta, cover);
+      }
+      const d = { id: meta.id, name, created: meta.created, updated: meta.updated, where: home };
       markDraft(d, false);
       setDraftName(name);
       clearTimeout(workingTimer.current);
       await putWorking(profile, { cover, draft: d, dirty: false }).catch(() => null);
       refreshDrafts();
-      toast.success(cur ? `Draft saved: ${name}` : `Saved as a new draft: ${name}`);
+      if (home === 'browser' && curHome === 'account') toast.info(`You are signed out, so "${name}" was saved in this browser only. Sign in to save it to your account.`);
+      else if (home === 'account') toast.success(keepId ? `Draft saved to your account: ${name}` : `Saved to your account as a new draft: ${name}`);
+      else toast.success(keepId ? `Draft saved: ${name}` : `Saved as a new draft: ${name}`);
       return true;
     } catch (e) {
-      toast.error('The draft could not be saved in this browser. Storage may be full or switched off (private windows often block it).');
+      if (currentUser) toast.error(`The draft could not be saved to your account. ${e && e.message ? e.message : ''} Your cover is still here; try again.`);
+      else toast.error('The draft could not be saved in this browser. Storage may be full or switched off (private windows often block it).');
       return false;
     } finally {
       setDraftBusy(false);
@@ -3634,10 +3675,10 @@ export default function CoverStudio({
   const openDraft = async (meta) => {
     setDraftBusy(true);
     try {
-      const cover = await getDraftCover(meta.id);
+      const cover = meta.where === 'account' ? await server.openDraft(meta.id) : await getDraftCover(meta.id);
       if (!cover) throw new Error('missing');
       await loadCover(cover);
-      markDraft({ id: meta.id, name: meta.name, created: meta.created, updated: meta.updated }, false);
+      markDraft({ id: meta.id, name: meta.name, created: meta.created, updated: meta.updated, where: meta.where || 'browser' }, false);
       setDraftName(meta.name);
       setDraftsOpen(false);
       setLeftTab(isInterview ? 'layouts' : 'background');
@@ -3680,9 +3721,10 @@ export default function CoverStudio({
 
   const removeDraft = async (meta) => {
     try {
-      await deleteDraft(meta.id);
+      if (meta.where === 'account') await server.deleteDraft(meta.id);
+      else await deleteDraft(meta.id);
       // the cover on screen stays; it just no longer belongs to a saved draft
-      if (draftRef.current && draftRef.current.id === meta.id) {
+      if (draftRef.current && draftRef.current.id === meta.id && (draftRef.current.where || 'browser') === (meta.where || 'browser')) {
         markDraft(null, true);
         keepWorking();
       }
@@ -3693,6 +3735,106 @@ export default function CoverStudio({
       toast.error('That draft could not be deleted.');
     }
   };
+
+  // A draft kept only in this browser goes up into the signed-in account.
+  const moveDraftToAccount = async (meta) => {
+    if (!currentUser || draftBusy) return;
+    setDraftBusy(true);
+    try {
+      const cover = await getDraftCover(meta.id);
+      if (!cover) throw new Error('That draft is no longer in this browser.');
+      await server.saveDraft({ id: meta.id, profile, name: meta.name, created: meta.created, thumb: meta.thumb || '', width: meta.width, height: meta.height }, cover);
+      await deleteDraft(meta.id).catch(() => null);
+      if (draftRef.current && draftRef.current.id === meta.id && (draftRef.current.where || 'browser') === 'browser') {
+        markDraft({ ...draftRef.current, where: 'account' }, dirtyRef.current);
+        keepWorking();
+      }
+      await refreshDrafts();
+      toast.success(`Moved to your account: ${meta.name}`);
+    } catch (e) {
+      toast.error(`That draft could not be moved to your account. ${e && e.message ? e.message : ''}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  // ---------- shared backgrounds ----------
+  // Everyone sees the list. The owner account's generated backdrops are added
+  // to it, and only that account can remove one.
+  const shareBackdrop = async (url, quiet = false) => {
+    try {
+      const out = await server.addBackdrop(url);
+      if (out && out.backdrops) setSharedBackdrops(out.backdrops);
+      return true;
+    } catch (e) {
+      if (!quiet) toast.error(`This backdrop could not be added to the shared backgrounds. ${e && e.message ? e.message : ''}`);
+      return false;
+    }
+  };
+  const removeShared = async (b) => {
+    try {
+      setSharedBackdrops(await server.removeBackdrop(b.id));
+      setSharedRemove('');
+      toast.info('Removed from the shared backgrounds.');
+    } catch (e) {
+      toast.error(`That background could not be removed. ${e && e.message ? e.message : ''}`);
+    }
+  };
+
+  // Who is signed in decides which drafts show and who manages the shared list.
+  useEffect(() => {
+    let off = false;
+    server
+      .listBackdrops()
+      .then((list) => {
+        if (!off) setSharedBackdrops(list);
+      })
+      .catch(() => null);
+    if (currentUser) {
+      server
+        .me()
+        .then((me) => {
+          if (!off) setIsOwner(!!me.isOwner);
+        })
+        .catch(() => {
+          if (!off) setIsOwner(false);
+        });
+    } else {
+      setIsOwner(false);
+    }
+    if (draftReadyRef.current && refreshDraftsRef.current) refreshDraftsRef.current();
+    return () => {
+      off = true;
+    };
+  }, [server, currentUser]);
+
+  // The owner's backdrops generated before this list existed (kept in this
+  // browser's "Recent backdrops") are offered to it once each. Ones the server
+  // has already cleared away are skipped.
+  useEffect(() => {
+    if (!isOwner || !recentBackdrops.length) return;
+    let done = [];
+    try {
+      done = JSON.parse(localStorage.getItem('cg_studio_shared_sent') || '[]');
+    } catch (e) {
+      done = [];
+    }
+    const todo = recentBackdrops.filter((u) => !done.includes(u));
+    if (!todo.length) return;
+    (async () => {
+      for (const url of [...todo].reverse()) {
+        // eslint-disable-next-line no-await-in-loop
+        await shareBackdrop(url, true);
+        done.push(url);
+      }
+      try {
+        localStorage.setItem('cg_studio_shared_sent', JSON.stringify(done.slice(-200)));
+      } catch (e) {
+        /* storage unavailable: they are simply offered again next time */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, recentBackdrops]);
 
   // On opening the editor: bring back the cover that was open last time.
   useEffect(() => {
@@ -3712,7 +3854,7 @@ export default function CoverStudio({
       }
       if (off) return;
       draftReadyRef.current = true;
-      refreshDrafts();
+      if (refreshDraftsRef.current) refreshDraftsRef.current();
     })();
     return () => {
       off = true;
@@ -3750,7 +3892,7 @@ export default function CoverStudio({
   const draftStatus = draft
     ? dirty
       ? 'Changes not saved to the draft yet'
-      : `Saved ${draftWhen(draft.updated)}`
+      : `Saved ${draft.where === 'account' ? 'to your account ' : ''}${draftWhen(draft.updated)}`
     : dirty
       ? 'Not saved as a draft yet'
       : 'New cover';
@@ -4225,9 +4367,36 @@ export default function CoverStudio({
                 <Ghost onClick={() => fileInputRef.current && fileInputRef.current.click()}>Upload an image</Ghost>
                 <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onBgFile} />
                 {bg.kind === 'image' && <Hint>Current: {bg.imageLabel || 'Image'}</Hint>}
+                {(sharedBackdrops.length > 0 || isOwner) && (
+                  <>
+                    <FieldLabel>Genfinity backgrounds</FieldLabel>
+                    {isOwner && (
+                      <Hint>
+                        You manage this list. Backdrops you generate in the AI backdrop tab while signed in are added here, and everyone who uses the Studio sees them, signed in or not. Remove takes one away for everyone.
+                      </Hint>
+                    )}
+                    <RecentGrid>
+                      {sharedBackdrops.map((b) => (
+                        <SharedTile key={b.id}>
+                          <RecentTile onClick={() => applyImageUrl(b.url, 'Genfinity background')}>
+                            <Thumb $ratio={50}>
+                              <img src={b.thumb} alt="" loading="lazy" />
+                            </Thumb>
+                          </RecentTile>
+                          {isOwner &&
+                            (sharedRemove === b.id ? (
+                              <button type="button" className="danger" onClick={() => removeShared(b)}>Remove for everyone</button>
+                            ) : (
+                              <button type="button" onClick={() => setSharedRemove(b.id)}>Remove</button>
+                            ))}
+                        </SharedTile>
+                      ))}
+                    </RecentGrid>
+                  </>
+                )}
                 {recentBackdrops.length > 0 && (
                   <>
-                    <FieldLabel>Recent backdrops</FieldLabel>
+                    <FieldLabel>{isOwner ? 'Your recent backdrops (this browser)' : 'Recent backdrops'}</FieldLabel>
                     <RecentGrid>
                       {recentBackdrops.map((u) => (
                         <RecentTile key={u} onClick={() => applyImageUrl(u, 'AI backdrop')}>
@@ -5022,14 +5191,20 @@ export default function CoverStudio({
             ) : (
               <DraftGrid>
                 {drafts.map((d) => (
-                  <DraftCard key={d.id} $on={!!draft && draft.id === d.id}>
+                  <DraftCard key={`${d.where}:${d.id}`} $on={!!draft && draft.id === d.id && (draft.where || 'browser') === d.where}>
                     <button type="button" className="thumb" onClick={() => guardDraft('Opening another draft', () => openDraft(d))} disabled={draftBusy} title="Open this draft">
                       {d.thumb ? <img src={d.thumb} alt="" draggable={false} /> : <span>No preview</span>}
                     </button>
                     <b title={d.name}>{d.name}</b>
-                    <small>{draft && draft.id === d.id ? 'Open now. ' : ''}Saved {draftWhen(d.updated)}</small>
+                    <small>
+                      {draft && draft.id === d.id && (draft.where || 'browser') === d.where ? 'Open now. ' : ''}Saved {draftWhen(d.updated)}
+                      {currentUser ? (d.where === 'account' ? '. In your account' : '. This browser only') : ''}
+                    </small>
                     <div className="row">
                       <button type="button" onClick={() => guardDraft('Opening another draft', () => openDraft(d))} disabled={draftBusy}>Open</button>
+                      {currentUser && d.where === 'browser' && (
+                        <button type="button" onClick={() => moveDraftToAccount(d)} disabled={draftBusy} title="Keep this draft in your account so it is on every computer you sign in on">To account</button>
+                      )}
                       {draftDelete === d.id ? (
                         <button type="button" className="danger" onClick={() => removeDraft(d)}>Delete for good</button>
                       ) : (
@@ -5041,7 +5216,9 @@ export default function CoverStudio({
               </DraftGrid>
             )}
             <Muted style={{ marginTop: 8 }}>
-              Drafts are kept in this browser on this computer. They are not uploaded, so they will not appear on another computer or in another browser, and clearing this site's data removes them.
+              {currentUser
+                ? 'You are signed in, so Save draft keeps drafts in your account: only you can see them, and they are there on any computer you sign in on. Drafts marked "This browser only" were made while signed out; "To account" moves one up.'
+                : 'You are not signed in, so drafts are kept in this browser on this computer only. Sign in to keep them in your account and open them anywhere.'}
             </Muted>
           </DraftsBox>
         )}
@@ -5685,6 +5862,31 @@ const RecentGrid = styled.div`
   grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: max-content;
   gap: 0.4rem;
+`;
+
+const SharedTile = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+
+  button {
+    background: #161616;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.22rem 0.2rem;
+    font-size: 0.66rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover {
+    border-color: #00d4ff;
+  }
+  button.danger {
+    color: #f85149;
+    border-color: #5a1e1a;
+  }
 `;
 
 const RecentTile = styled.div`

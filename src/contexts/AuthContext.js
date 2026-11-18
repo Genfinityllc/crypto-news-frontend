@@ -49,7 +49,18 @@ export function AuthProvider({ children }) {
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'profiles', result.user.uid), profileData);
+      // The login itself exists from this point. Saving the profile must not
+      // be able to fail or stall the sign-up (it once hung for good because
+      // the site's security policy blocked Firestore), so it gets a time limit
+      // and its failure is only logged.
+      try {
+        await Promise.race([
+          setDoc(doc(db, 'profiles', result.user.uid), profileData),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Saving the profile took too long')), 8000))
+        ]);
+      } catch (profileError) {
+        console.warn('Account created, but the profile could not be saved yet:', profileError);
+      }
       setUserProfile(profileData);
       
       return result;
