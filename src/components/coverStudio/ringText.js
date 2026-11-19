@@ -16,7 +16,11 @@
 //   gap      distance between the outline and the letters, in cover pixels
 //   size     letter size in cover pixels
 //   spacing  letter spacing in thousandths of the size (as text items use)
+//   leading  line spacing, as a share of the letter size
 //   only     show the text and not the shape itself
+// The text can have several lines (Enter): each is a ring of its own, one
+// line's height farther from (or nearer to) the outline than the one before,
+// in the order they are read.
 // A ring is never changed in place: every edit makes a new one.
 
 export const RING_DEFAULT = {
@@ -27,6 +31,7 @@ export const RING_DEFAULT = {
   gap: 12,
   size: 44,
   spacing: 60,
+  leading: 1.15,
   family: 'Inter',
   weight: 700,
   italic: false,
@@ -93,36 +98,42 @@ export function paintRing(ctx, ring, w, h, r) {
   const gap = Number(ring.gap) || 0;
   const out = ring.side !== 'in';
   const flip = !!ring.flip;
-  // how far the line the letters stand on is from the outline (outward is +)
-  let off;
-  if (out) off = flip ? gap + tall : gap;
-  else off = flip ? -gap : -(gap + tall);
-  // the letters stand on the outline moved out (or in) by that much; moving a
-  // rounded rectangle outward rounds its corners by the same amount
-  const pw = w + off * 2;
-  const ph = h + off * 2;
-  if (pw < 2 || ph < 2) {
-    ctx.restore();
-    return;
-  }
-  const path = outline(pw, ph, Math.max(0, Math.min(r, w / 2, h / 2) + off));
-  const chars = Array.from(String(ring.text));
+  const lines = String(ring.text).replace(/\r/g, '').split('\n');
+  const n = lines.length;
+  const step = size * Math.max(0.6, Math.min(3, Number(ring.leading) || 1.15));
   const space = ((Number(ring.spacing) || 0) / 1000) * size;
-  const widths = chars.map((ch) => ctx.measureText(ch).width);
-  const full = widths.reduce((sum, v) => sum + v, 0) + space * Math.max(0, chars.length - 1);
-  const mid = (Math.max(0, Math.min(1, Number(ring.start) || 0)) + (flip ? 0.5 : 0)) * path.total;
-  let x = 0;
-  chars.forEach((ch, i) => {
-    const centre = x + widths[i] / 2;
-    x += widths[i] + space;
-    if (!ch.trim()) return;
-    const s = flip ? mid + full / 2 - centre : mid - full / 2 + centre;
-    const p = path.at(s);
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.a + (flip ? Math.PI : 0));
-    ctx.fillText(ch, 0, 0);
-    ctx.restore();
+  const corner = Math.min(r, w / 2, h / 2);
+  lines.forEach((text, i) => {
+    if (!text.trim()) return;
+    // How far the line the letters stand on is from the outline (outward is
+    // +). The lines are stacked the way they are read: where the text reads
+    // normally, the first line is the upper one on the cover.
+    let off;
+    if (out) off = flip ? gap + tall + i * step : gap + (n - 1 - i) * step;
+    else off = flip ? -(gap + (n - 1 - i) * step) : -(gap + tall + i * step);
+    // the letters stand on the outline moved out (or in) by that much; moving a
+    // rounded rectangle outward rounds its corners by the same amount
+    const pw = w + off * 2;
+    const ph = h + off * 2;
+    if (pw < 2 || ph < 2) return;
+    const path = outline(pw, ph, Math.max(0, corner + off));
+    const chars = Array.from(text);
+    const widths = chars.map((ch) => ctx.measureText(ch).width);
+    const full = widths.reduce((sum, v) => sum + v, 0) + space * Math.max(0, chars.length - 1);
+    const mid = (Math.max(0, Math.min(1, Number(ring.start) || 0)) + (flip ? 0.5 : 0)) * path.total;
+    let x = 0;
+    chars.forEach((ch, k) => {
+      const centre = x + widths[k] / 2;
+      x += widths[k] + space;
+      if (!ch.trim()) return;
+      const s = flip ? mid + full / 2 - centre : mid - full / 2 + centre;
+      const p = path.at(s);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.a + (flip ? Math.PI : 0));
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+    });
   });
   ctx.restore();
 }

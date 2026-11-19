@@ -6035,8 +6035,10 @@ export default function CoverStudio({
                       <InsCell>
                         <FieldLabel>Text along the outline</FieldLabel>
                         <Input
-                          style={{ width: '100%', boxSizing: 'border-box' }}
-                          placeholder="Type here and the words follow the shape"
+                          as="textarea"
+                          rows={Math.min(6, Math.max(2, String(selRing.text || '').split('\n').length))}
+                          style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.35 }}
+                          placeholder="Type here and the words follow the shape. Press Enter for another line."
                           value={selRing.text}
                           onChange={(e) => setShapeText({ text: e.target.value })}
                           aria-label="Text along the outline of this shape"
@@ -6054,6 +6056,9 @@ export default function CoverStudio({
                             <div style={{ marginTop: 8 }}>
                               <Slider label="Letter size" min={8} max={300} step={1} value={selRing.size} onChange={(v) => setShapeText({ size: v })} fmt={(v) => `${Math.round(v)}px`} />
                               <Slider label="Letter spacing" min={-100} max={1500} step={10} value={selRing.spacing} onChange={(v) => setShapeText({ spacing: v })} fmt={(v) => `${Math.round(v)}`} />
+                              {String(selRing.text || '').includes('\n') && (
+                                <Slider label="Line spacing" min={0.6} max={3} step={0.01} value={selRing.leading} onChange={(v) => setShapeText({ leading: v })} fmt={(v) => `${v.toFixed(2)}`} />
+                              )}
                               <Slider label="Distance from the outline" min={0} max={200} step={1} value={selRing.gap} onChange={(v) => setShapeText({ gap: v })} fmt={(v) => `${Math.round(v)}px`} />
                               <Slider label="Move the text round the shape" min={0} max={1} step={0.005} value={selRing.start} onChange={(v) => setShapeText({ start: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
                             </div>
@@ -6087,7 +6092,7 @@ export default function CoverStudio({
                               Show only the text (hide the shape itself)
                             </Check>
                             <Muted>
-                              The text belongs to this shape: it follows when the shape is moved, resized, rounded or turned. For a ring of words, use a circle. For a second line (one along the top, one along the bottom), duplicate the shape and hide the copy's shape.
+                              The text belongs to this shape: it follows when the shape is moved, resized, rounded or turned. Press Enter in the box for another line; each line follows the outline. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
                             </Muted>
                           </>
                         ) : (
