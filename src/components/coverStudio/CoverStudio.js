@@ -1690,6 +1690,7 @@ export default function CoverStudio({
     const c = fabricRef.current;
     const r = new StudioRect({ originX: 'center', originY: 'center', left: frame.left, top: frame.top, width: 100, height: 40, fill, strokeWidth: 0, objectCaching: false });
     r.studio = { kind: 'shape', name: 'Label bar', round: 0, attach: { to: frame, role: 'bar' } };
+    if (frame.studio && isGrad(frame.studio.barGrad)) r.studio.grad = frame.studio.barGrad;
     r.set({ selectable: false, hoverCursor: 'pointer' }); // clicking it selects the guest it belongs to
     styleObject(r);
     c.insertAt(c.getObjects().indexOf(frame) + 1, r);
@@ -2628,6 +2629,15 @@ export default function CoverStudio({
     if (st.textStyle === 'bar' && !bar) makeBar(o, st.barFill);
     if (st.textStyle !== 'bar' && bar) c.remove(bar);
     if (st.textStyle === 'bar' && bar) bar.set('fill', st.barFill);
+    // the bar's gradient is kept on the guest (barGrad), like its colour, so it
+    // comes back when the bar is switched off and on again
+    if (!isGrad(st.barGrad)) delete st.barGrad;
+    const barNow = st.textStyle === 'bar' ? guestText(o, 'bar') : null;
+    if (barNow) {
+      if (st.barGrad) barNow.studio.grad = st.barGrad;
+      else delete barNow.studio.grad;
+      barNow.dirty = true;
+    }
     if (st.textStyle === 'none') {
       // Keep what was typed (and how it was styled) so that switching back to
       // "Under photo" or "Label bar" brings the same name and title back.
@@ -2748,8 +2758,12 @@ export default function CoverStudio({
     if (st.kind === 'photo') {
       const behind = isGrad(st.backdropGrad);
       const ring = st.ring > 0 && isGrad(st.ringGrad);
-      const key = gradEdit === 'ring' && ring ? 'ring' : behind ? 'backdrop' : ring ? 'ring' : '';
+      const bar = st.textStyle === 'bar' ? kidsOf(o).find((k) => k.studio.attach.role === 'bar' && !k.group && isGrad(k.studio.grad)) : null;
+      const has = { backdrop: behind, ring, bar: !!bar };
+      const key = has[gradEdit] ? gradEdit : behind ? 'backdrop' : ring ? 'ring' : bar ? 'bar' : '';
       if (!key) return null;
+      // the label bar is an item of its own: its dots are placed across it
+      if (key === 'bar') return { o: bar, frame: o, key, grad: bar.studio.grad, box: { x: -bar.width / 2, y: -bar.height / 2, w: bar.width, h: bar.height } };
       return { o, key, grad: key === 'ring' ? st.ringGrad : st.backdropGrad, box: photoGradBox(st, o.width, o.height, key) };
     }
     return null;
@@ -2760,7 +2774,10 @@ export default function CoverStudio({
     const c = fabricRef.current;
     const { o, key } = spec;
     if (key === 'fill') o.studio.grad = grad;
-    else if (key === 'box') o.studio.box = { ...o.studio.box, grad };
+    else if (key === 'bar') {
+      o.studio.grad = grad;
+      if (spec.frame && spec.frame.studio) spec.frame.studio.barGrad = grad;
+    } else if (key === 'box') o.studio.box = { ...o.studio.box, grad };
     else if (key === 'backdrop') {
       o.studio.backdropGrad = grad;
       repaintPhoto(o);
@@ -5304,12 +5321,26 @@ export default function CoverStudio({
                         </Seg>
                       )}
                       {selPhoto.textStyle === 'bar' && (
-                        <SwatchRow style={{ marginTop: 8 }}>
-                          <input type="color" value={normHex(selPhoto.barFill, '#141414')} onChange={(e) => setGuestStyle({ barFill: e.target.value })} />
-                          {paletteSwatches.map((col, i) => (
-                            <Swatch key={i} style={{ background: col }} onClick={() => setGuestStyle({ barFill: col })} />
-                          ))}
-                        </SwatchRow>
+                        <div style={{ marginTop: 8 }}>
+                          <PaintMode
+                            grad={isGrad(selPhoto.barGrad)}
+                            onSolid={() => setGuestStyle({ barGrad: null })}
+                            onGradient={() => {
+                              setGradEdit('bar');
+                              if (!isGrad(selPhoto.barGrad)) setGuestStyle({ barGrad: makeGrad(gradColours(selPhoto.barFill), 2) });
+                            }}
+                          />
+                          {isGrad(selPhoto.barGrad) ? (
+                            <GradControls grad={selPhoto.barGrad} colours={gradColours(selPhoto.barFill)} onChange={(g) => setGuestStyle({ barGrad: g })} onTouch={() => setGradEdit('bar')} />
+                          ) : (
+                            <SwatchRow>
+                              <input type="color" value={normHex(selPhoto.barFill, '#141414')} onChange={(e) => setGuestStyle({ barFill: e.target.value })} />
+                              {paletteSwatches.map((col, i) => (
+                                <Swatch key={i} style={{ background: col }} onClick={() => setGuestStyle({ barFill: col })} />
+                              ))}
+                            </SwatchRow>
+                          )}
+                        </div>
                       )}
                       <Muted style={{ marginTop: 6 }}>The name and title shrink to stay inside the photo's width. Click either one on the cover to change its font or colour.</Muted>
                     </InsCell>
