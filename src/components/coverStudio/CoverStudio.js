@@ -38,7 +38,7 @@ import {
   photoMap,
 } from './interviewKit';
 import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, reachDot, reachOf, resizeGrad } from './gradients';
-import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand, cleanMap, colourMap, mapCss, resizeMap, setAdjust, setAdjustQuick, setBand } from './imageAdjust';
+import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand, cleanMap, colourMap, makeTilt, mapCss, resizeMap, setAdjust, setAdjustQuick, setBand, setTilt } from './imageAdjust';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -545,6 +545,23 @@ const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title:
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, (st.mapColors || []).join(','), adjustKey(st.adjust), st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
 
+// Are two background settings the same to look at? (History uses this to tell
+// a real change from a redraw.)
+const sameBg = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const x = a[k];
+    const y = b[k];
+    if (x === y) continue;
+    if (k === 'palette' && x && y && x.base === y.base && x.a1 === y.a1 && x.a2 === y.a2) continue;
+    if (k === 'adjust' && adjustKey(x) === adjustKey(y)) continue;
+    return false;
+  }
+  return true;
+};
+
 export default function CoverStudio({
   apiBase,
   networks = [],
@@ -587,6 +604,8 @@ export default function CoverStudio({
   const displayScaleRef = useRef(0.5);
   const historyRef = useRef({ stack: [], index: -1 });
   const commitTimer = useRef(null);
+  const commitDueRef = useRef(false); // a change is waiting for its history step (commitSoon)
+  const bgDueRef = useRef(null); // the background that is waiting for its step
   const bgRef = useRef(DEFAULT_BG);
   const fileInputRef = useRef(null);
   const logoFileRef = useRef(null);
@@ -710,12 +729,13 @@ export default function CoverStudio({
     if (c) setObjectCount(c.getObjects().length);
   }, []);
 
+  // bgRef is the truth and is set at once, so a history step taken right
+  // after a background change already holds the new background.
   const setBg = useCallback((patch) => {
-    setBgState((prev) => {
-      const next = { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) };
-      bgRef.current = next;
-      return next;
-    });
+    const prev = bgRef.current;
+    const next = { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) };
+    bgRef.current = next;
+    setBgState(next);
   }, []);
 
   // ---------- object chrome (handles sized for the on-screen scale) ----------
@@ -780,17 +800,28 @@ export default function CoverStudio({
     if (!c) return;
     const h = historyRef.current;
     h.stack = h.stack.slice(0, h.index + 1);
-    h.stack.push(c.getObjects().map((o) => ({ o, p: capture(o) })));
+    const step = c.getObjects().map((o) => ({ o, p: capture(o) }));
+    // The background is part of every step (owner 2026-11-19: changing the
+    // background must be undoable, an uploaded image included). A background
+    // object is never changed in place, so keeping the object is enough.
+    step.bg = bgRef.current;
+    h.stack.push(step);
     if (h.stack.length > 80) h.stack.shift();
     h.index = h.stack.length - 1;
+    commitDueRef.current = false;
+    bgDueRef.current = null;
     if (sharpenRef.current) sharpenRef.current();
     if (touchRef.current) touchRef.current();
   }, []);
 
   const commitSoon = useCallback(() => {
     clearTimeout(commitTimer.current);
-    commitTimer.current = setTimeout(commit, 450);
-  }, [commit]);
+    commitDueRef.current = true;
+    commitTimer.current = setTimeout(() => {
+      commit();
+      bump(); // Undo and Redo are greyed out or not by what the history holds now
+    }, 450);
+  }, [commit, bump]);
 
   const restore = useCallback(
     (index) => {
@@ -819,18 +850,34 @@ export default function CoverStudio({
         o.setCoords();
         c.add(o);
       });
+      // the background as it was at that step (the image itself for an upload)
+      const b = h.stack[index].bg;
+      if (b && !sameBg(b, bgRef.current)) {
+        bgRef.current = b;
+        setBgState(b);
+      }
       c.requestRenderAll();
       bump();
       if (sharpenRef.current) sharpenRef.current();
+      // an undone cover is a changed cover: keep the open copy up to date, or
+      // a refresh would bring the undone thing back
+      if (touchRef.current) touchRef.current();
     },
     [bump]
   );
 
   const undo = useCallback(() => {
+    if (restAdjustRef.current) restAdjustRef.current();
     clearTimeout(commitTimer.current);
+    // a change still waiting for its step (a slider let go a moment ago) gets
+    // it now, so Undo takes back that change and not the one before it too
+    if (commitDueRef.current) commit();
     restore(historyRef.current.index - 1);
+  }, [restore, commit]);
+  const redo = useCallback(() => {
+    if (restAdjustRef.current) restAdjustRef.current();
+    restore(historyRef.current.index + 1);
   }, [restore]);
-  const redo = useCallback(() => restore(historyRef.current.index + 1), [restore]);
 
   // ---------- canvas lifecycle ----------
   useEffect(() => {
@@ -1243,6 +1290,18 @@ export default function CoverStudio({
     });
     return () => cancelAnimationFrame(id);
   }, [bg, syncGrainView, design]);
+
+  // A changed background is a history step of its own (sliders: one step once
+  // they rest). Undo, a draft being opened and a mere redraw change nothing
+  // that the current step does not already hold, so they add none.
+  useEffect(() => {
+    const h = historyRef.current;
+    const at = h.stack[h.index];
+    // (a redraw of a change that is already waiting must not restart the wait)
+    if (!at || sameBg(at.bg, bg) || sameBg(bgDueRef.current, bg)) return;
+    bgDueRef.current = bg;
+    commitSoon();
+  }, [bg, commitSoon]);
 
   // ---------- incoming cover from the Generate tab ----------
   useEffect(() => {
@@ -3632,7 +3691,11 @@ export default function CoverStudio({
         return;
       }
       const tag = ((e.target && e.target.tagName) || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
+      // A slider, colour box or tick box keeps the keyboard after it is used,
+      // but nothing is typed into it: Undo and Redo must still work there
+      // (the arrow keys and Delete stay with the control).
+      const control = tag === 'input' && /^(range|color|checkbox|radio|button|file)$/.test(String(e.target.type || ''));
+      if (!control && (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable))) return;
       const c = fabricRef.current;
       if (!c) return;
       const o = c.getActiveObject();
@@ -3645,6 +3708,7 @@ export default function CoverStudio({
         else undo();
         return;
       }
+      if (control) return;
       if (!o) return;
       if (key === 'delete' || key === 'backspace') {
         e.preventDefault();
@@ -4029,14 +4093,20 @@ export default function CoverStudio({
     setDraftBusy(true);
     try {
       const now = Date.now();
-      const cur = asNew ? null : draftRef.current;
+      const open = draftRef.current;
+      const typed = String(draftName || '').trim();
+      // A draft saved under another name is a NEW draft (owner 2026-11-19):
+      // open one, change it, give it a new name, save, and the original stays
+      // exactly as it was. An emptied name field keeps the draft's own name.
+      const renamed = !!open && !!typed && typed !== open.name;
+      const cur = asNew || renamed ? null : open;
       // signed in, a draft goes to the account; signed out, into this browser
       const home = currentUser ? 'account' : 'browser';
       const curHome = cur ? cur.where || 'browser' : null;
       // it keeps its id when it stays where it is, or moves from the browser up to the account
       const keepId = !!cur && (curHome === home || home === 'account');
-      let name = String(draftName || '').trim() || headlineText() || 'Untitled cover';
-      if (asNew && draftRef.current && name === draftRef.current.name) name = `${name} copy`;
+      let name = typed || (open ? open.name : '') || headlineText() || 'Untitled cover';
+      if (asNew && open && name === open.name) name = `${name} copy`;
       const cover = await snapshotCover();
       // the picture for the list is the finished cover; making it drops the
       // selection, so that is put back afterwards
@@ -4064,6 +4134,7 @@ export default function CoverStudio({
       await putWorking(profile, { cover, draft: d, dirty: false }).catch(() => null);
       refreshDrafts();
       if (home === 'browser' && curHome === 'account') toast.info(`You are signed out, so "${name}" was saved in this browser only. Sign in to save it to your account.`);
+      else if (renamed) toast.success(`Saved${home === 'account' ? ' to your account' : ''} as a new draft: ${name}. "${open.name}" is unchanged.`);
       else if (home === 'account') toast.success(keepId ? `Draft saved to your account: ${name}` : `Saved to your account as a new draft: ${name}`);
       else toast.success(keepId ? `Draft saved: ${name}` : `Saved as a new draft: ${name}`);
       return true;
@@ -4308,8 +4379,12 @@ export default function CoverStudio({
     const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     return sameDay ? `today at ${time}` : `${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at ${time}`;
   };
+  // the name in the field is not the open draft's: Save draft will make a new one
+  const draftRenamed = !!draft && !!String(draftName || '').trim() && String(draftName).trim() !== draft.name;
   const draftStatus = draft
-    ? dirty
+    ? draftRenamed
+      ? 'New name: Save draft will make a new draft'
+      : dirty
       ? 'Changes not saved to the draft yet'
       : `Saved ${draft.where === 'account' ? 'to your account ' : ''}${draftWhen(draft.updated)}`
     : dirty
@@ -5677,14 +5752,14 @@ export default function CoverStudio({
             maxLength={80}
             onChange={(e) => {
               setDraftName(e.target.value);
-              if (draft && touchRef.current) touchRef.current(); // a new name is saved with the next Save draft
+              if (draft && touchRef.current) touchRef.current(); // a new name makes the next Save draft a new draft
             }}
             aria-label="Name of this cover"
           />
-          <FileState $warn={dirty}>{draftStatus}</FileState>
+          <FileState $warn={dirty || draftRenamed}>{draftStatus}</FileState>
           <Spacer />
           <Group>
-            <SaveBtn onClick={() => saveDraft(false)} disabled={draftBusy} title="Save this cover as a draft you can open and edit later (Cmd/Ctrl+S)">{draftBusy ? 'Working...' : 'Save draft'}</SaveBtn>
+            <SaveBtn onClick={() => saveDraft(false)} disabled={draftBusy} title={draftRenamed ? 'The name was changed: this saves a new draft and leaves the original as it was (Cmd/Ctrl+S)' : 'Save this cover as a draft you can open and edit later (Cmd/Ctrl+S)'}>{draftBusy ? 'Working...' : 'Save draft'}</SaveBtn>
             {draft && <Tool onClick={() => saveDraft(true)} disabled={draftBusy} title="Save this as a separate draft and leave the original as it was">Save as new</Tool>}
             <Tool onClick={() => guardDraft('Starting a new cover', newCover)} disabled={draftBusy} title="Clear the cover and start a new file">New cover</Tool>
             <Tool
@@ -5976,6 +6051,30 @@ function AdjustControls({ value, onChange, map = true, palette }) {
       <Slider label={`${band.label}: saturation`} min={-1} max={1} step={0.02} value={t[1]} onChange={(v) => onChange(setBand(value, band.id, 1, v))} fmt={signedPct} />
       <Slider label={`${band.label}: lightness`} min={-1} max={1} step={0.02} value={t[2]} onChange={(v) => onChange(setBand(value, band.id, 2, v))} fmt={signedPct} />
       <Muted>Pick a colour above, then change only that colour in the picture. A dot marks the colours you have changed.</Muted>
+
+      <FieldLabel style={{ marginTop: 4 }}>Focus</FieldLabel>
+      <Slider label="Blur" min={0} max={1} step={0.01} value={a.blur || 0} onChange={(v) => onChange(setAdjust(value, { blur: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+      <FieldLabel style={{ marginTop: 4 }}>Tilt shift</FieldLabel>
+      <Seg>
+        <SegBtn $on={!a.tilt} onClick={() => onChange(setTilt(value, null))}>Off</SegBtn>
+        <SegBtn $on={!!a.tilt && a.tilt.shape === 'band'} onClick={() => onChange(setTilt(value, a.tilt ? { shape: 'band' } : makeTilt('band')))}>Band</SegBtn>
+        <SegBtn $on={!!a.tilt && a.tilt.shape === 'circle'} onClick={() => onChange(setTilt(value, a.tilt ? { shape: 'circle' } : makeTilt('circle')))}>Circle</SegBtn>
+      </Seg>
+      {a.tilt && (
+        <>
+          <Slider label="Blur outside the sharp area" min={0.02} max={1} step={0.01} value={a.tilt.amount} onChange={(v) => onChange(setTilt(value, { amount: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+          <Slider label="Sharp area: up or down" min={0} max={1} step={0.01} value={a.tilt.y} onChange={(v) => onChange(setTilt(value, { y: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+          {a.tilt.shape === 'circle' && (
+            <Slider label="Sharp area: left or right" min={0} max={1} step={0.01} value={a.tilt.x} onChange={(v) => onChange(setTilt(value, { x: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+          )}
+          <Slider label="Sharp area: size" min={0.02} max={1} step={0.01} value={a.tilt.size} onChange={(v) => onChange(setTilt(value, { size: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+          <Slider label="Sharp area: soft edge" min={0.02} max={1} step={0.01} value={a.tilt.feather} onChange={(v) => onChange(setTilt(value, { feather: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+          {a.tilt.shape === 'band' && (
+            <Slider label="Sharp area: angle" min={-90} max={90} step={1} value={a.tilt.angle} onChange={(v) => onChange(setTilt(value, { angle: v }))} fmt={(v) => `${Math.round(v)} degrees`} />
+          )}
+          <Muted>The {a.tilt.shape === 'circle' ? 'circle' : 'band'} stays sharp and the rest of the picture goes out of focus.</Muted>
+        </>
+      )}
 
       {map && (
         <>

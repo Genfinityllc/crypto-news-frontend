@@ -10,6 +10,12 @@
 //   light     -1..1
 //   bands     one [hue, saturation, lightness] triple per colour family, each
 //             -1..1, acting only on that family (the reds, the blues, ...)
+//   blur      0..1    the whole picture out of focus
+//   tilt      tilt shift: one area stays sharp, the rest goes out of focus.
+//             { amount, shape: 'band' | 'circle', x, y, size, feather, angle }
+//             x, y: the middle of the sharp area (0..1 across the picture);
+//             size: how big it is; feather: how gradually it fades; angle:
+//             the band's turn in degrees.
 //   map       a gradient map: 2 to 5 colours, the first for the picture's
 //             blacks, the last for its whites, the others evenly between.
 //             Applied last, to the picture's brightness.
@@ -117,6 +123,26 @@ const cleanBand = (t) => {
   return out[0] || out[1] || out[2] ? out : null;
 };
 
+// ---------- tilt shift ----------
+export const makeTilt = (shape) => ({ amount: 0.5, shape: shape === 'circle' ? 'circle' : 'band', x: 0.5, y: 0.5, size: 0.3, feather: 0.25, angle: 0 });
+
+function cleanTilt(t) {
+  if (!t || typeof t !== 'object') return null;
+  const or = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  return {
+    amount: round3(Math.max(0.02, Math.min(1, or(t.amount, 0.5)))),
+    shape: t.shape === 'circle' ? 'circle' : 'band',
+    x: round3(Math.max(0, Math.min(1, or(t.x, 0.5)))),
+    y: round3(Math.max(0, Math.min(1, or(t.y, 0.5)))),
+    size: round3(Math.max(0.02, Math.min(1, or(t.size, 0.3)))),
+    feather: round3(Math.max(0.02, Math.min(1, or(t.feather, 0.25)))),
+    angle: Math.round(Math.max(-90, Math.min(90, or(t.angle, 0)))),
+  };
+}
+
+// The adjustment with some of its tilt shift changed (null switches it off).
+export const setTilt = (a, patch) => cleanAdjust({ ...(a || {}), tilt: patch ? { ...((a && a.tilt) || makeTilt('band')), ...patch } : null });
+
 // A tidy copy, or null when it changes nothing.
 export function cleanAdjust(a) {
   if (!a || typeof a !== 'object') return null;
@@ -126,6 +152,7 @@ export function cleanAdjust(a) {
     hue: Math.round(num(a.hue, -180, 180)),
     sat: round3(num(a.sat, -1, 1)),
     light: round3(num(a.light, -1, 1)),
+    blur: round3(num(a.blur, 0, 1)),
   };
   const bands = {};
   let any = false;
@@ -139,7 +166,9 @@ export function cleanAdjust(a) {
   if (any) out.bands = bands;
   const map = cleanMap(a.map);
   if (map) out.map = map;
-  return out.darken || out.contrast || out.hue || out.sat || out.light || any || map ? out : null;
+  const tilt = cleanTilt(a.tilt);
+  if (tilt) out.tilt = tilt;
+  return out.darken || out.contrast || out.hue || out.sat || out.light || out.blur || any || map || tilt ? out : null;
 }
 
 export const isAdjusted = (a) => !!cleanAdjust(a);
@@ -169,7 +198,9 @@ export function adjustKey(a) {
   const c = cleanAdjust(a);
   if (!c) return '';
   const bands = c.bands ? BANDS.map((b) => (c.bands[b.id] ? `${b.id}:${c.bands[b.id].join(',')}` : '')).join(';') : '';
-  return [c.darken, c.contrast, c.hue, c.sat, c.light, bands, c.map ? c.map.join(',') : ''].join('|');
+  const t = c.tilt;
+  const tilt = t ? [t.amount, t.shape, t.x, t.y, t.size, t.feather, t.angle].join(',') : '';
+  return [c.darken, c.contrast, c.hue, c.sat, c.light, bands, c.map ? c.map.join(',') : '', c.blur, tilt].join('|');
 }
 
 // ---------- the pixel pass ----------
@@ -360,6 +391,172 @@ function tonePixels(d, c) {
   }
 }
 
+// ---------- out of focus ----------
+// Safari has no ctx.filter, so the blur is worked out on pixels: three box
+// blurs in a row, which is as good as a true soft blur. A blurred picture has
+// no fine detail, so it is worked out small and stretched back.
+const BLUR_LONG = 1100; // never worked out larger than this
+const BLUR_REACH = 0.03; // the strongest blur, as a share of the longer side
+
+function boxSizes(sigma) {
+  const ideal = Math.sqrt((12 * sigma * sigma) / 3 + 1);
+  let lo = Math.floor(ideal);
+  if (lo % 2 === 0) lo -= 1;
+  const hi = lo + 2;
+  const m = Math.round((12 * sigma * sigma - 3 * lo * lo - 12 * lo - 9) / (-4 * lo - 4));
+  return [0, 1, 2].map((i) => Math.max(0, ((i < m ? lo : hi) - 1) / 2));
+}
+
+// One box blur along a line of n pixels (step: how far apart they are in the
+// array). Past the ends the edge pixel repeats, so borders do not darken.
+function boxLine(src, dst, start, n, step, r) {
+  const span = r + r + 1;
+  for (let ch = 0; ch < 4; ch += 1) {
+    const first = src[start + ch];
+    const last = src[start + (n - 1) * step + ch];
+    let sum = first * r;
+    for (let i = 0; i < r; i += 1) sum += src[start + Math.min(n - 1, i) * step + ch];
+    for (let i = 0; i < n; i += 1) {
+      const add = i + r < n ? src[start + (i + r) * step + ch] : last;
+      sum += add;
+      dst[start + i * step + ch] = sum / span;
+      const drop = i - r >= 0 ? src[start + (i - r) * step + ch] : first;
+      sum -= drop;
+    }
+  }
+}
+
+function blurPixels(d, w, h, sigma) {
+  // colours are weighted by how solid they are, so see-through edges do not
+  // pull in the colour hidden under them
+  let a = new Float32Array(d.length);
+  let b = new Float32Array(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    const al = d[i + 3] / 255;
+    a[i] = d[i] * al;
+    a[i + 1] = d[i + 1] * al;
+    a[i + 2] = d[i + 2] * al;
+    a[i + 3] = d[i + 3];
+  }
+  boxSizes(sigma).forEach((r) => {
+    if (r < 1) return;
+    for (let y = 0; y < h; y += 1) boxLine(a, b, y * w * 4, w, 4, r);
+    for (let x = 0; x < w; x += 1) boxLine(b, a, x * 4, h, w * 4, r);
+  });
+  for (let i = 0; i < d.length; i += 4) {
+    const al = a[i + 3];
+    if (al > 0.5) {
+      const k = 255 / al;
+      d[i] = a[i] * k;
+      d[i + 1] = a[i + 1] * k;
+      d[i + 2] = a[i + 2] * k;
+    }
+    d[i + 3] = al;
+  }
+  b = null;
+  a = null;
+}
+
+// A blurred copy of a canvas, the same size. share: the blur as a share of
+// the longer side. Returns null when it would change nothing.
+function blurredCopy(src, share) {
+  const w = src.width;
+  const h = src.height;
+  const long = Math.max(w, h);
+  const sigma = share * long;
+  if (sigma < 0.35) return null;
+  const k = Math.min(1, BLUR_LONG / long, sigma > 5 ? 5 / sigma : 1);
+  const sw = Math.max(8, Math.round(w * k));
+  const sh = Math.max(8, Math.round(h * k));
+  const small = document.createElement('canvas');
+  small.width = sw;
+  small.height = sh;
+  const g = small.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(src, 0, 0, sw, sh);
+  let img;
+  try {
+    img = g.getImageData(0, 0, sw, sh);
+  } catch (e) {
+    return null;
+  }
+  blurPixels(img.data, sw, sh, Math.max(0.6, sigma * (sw / w)));
+  g.putImageData(img, 0, 0);
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const o = out.getContext('2d');
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(small, 0, 0, w, h);
+  return out;
+}
+
+// Keep a layer only away from the sharp area: nothing up to `from` (pixels
+// from the middle of the area), all of it from `to` on, eased between.
+function fadeIn(layer, t, from, to) {
+  const w = layer.width;
+  const h = layer.height;
+  const g = layer.getContext('2d');
+  const px = t.x * w;
+  const py = t.y * h;
+  const reach = Math.hypot(w, h);
+  const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((u) => ({ d: from + (to - from) * u, a: u * u * (3 - 2 * u) }));
+  const paint = (a) => `rgba(0,0,0,${a.toFixed(3)})`;
+  let grad;
+  if (t.shape === 'circle') {
+    grad = g.createRadialGradient(px, py, 0, px, py, reach);
+    grad.addColorStop(0, paint(0));
+    steps.forEach((s) => grad.addColorStop(Math.min(1, s.d / reach), paint(s.a)));
+    grad.addColorStop(1, paint(1));
+  } else {
+    const rad = (t.angle * Math.PI) / 180;
+    const nx = -Math.sin(rad);
+    const ny = Math.cos(rad);
+    grad = g.createLinearGradient(px - nx * reach, py - ny * reach, px + nx * reach, py + ny * reach);
+    grad.addColorStop(0, paint(1));
+    steps
+      .slice()
+      .reverse()
+      .forEach((s) => grad.addColorStop(Math.max(0, 0.5 - s.d / (2 * reach)), paint(s.a)));
+    steps.forEach((s) => grad.addColorStop(Math.min(1, 0.5 + s.d / (2 * reach)), paint(s.a)));
+    grad.addColorStop(1, paint(1));
+  }
+  g.save();
+  g.globalCompositeOperation = 'destination-in';
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+  g.restore();
+}
+
+// Blur and tilt shift, drawn into the canvas itself.
+function soften(canvas, c) {
+  const g = canvas.getContext('2d');
+  if (c.blur > 0) {
+    const all = blurredCopy(canvas, c.blur * BLUR_REACH);
+    if (all) {
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(all, 0, 0);
+    }
+  }
+  const t = c.tilt;
+  if (!t) return;
+  // two strengths, the lighter one nearer the sharp area, so the picture
+  // slides out of focus instead of jumping
+  const ref = t.shape === 'circle' ? Math.min(canvas.width, canvas.height) : canvas.height;
+  const half = (t.size * ref) / 2;
+  const fade = t.feather * ref;
+  const near = blurredCopy(canvas, t.amount * BLUR_REACH * 0.45);
+  const far = blurredCopy(canvas, t.amount * BLUR_REACH);
+  if (near) {
+    fadeIn(near, t, half, half + fade * 0.6);
+    g.drawImage(near, 0, 0);
+  }
+  if (far) {
+    fadeIn(far, t, half + fade * 0.35, half + fade);
+    g.drawImage(far, 0, 0);
+  }
+}
+
 // ---------- a picture with its adjustment applied ----------
 // While a slider is being dragged the work is done on a small copy (quick),
 // and once it rests the picture is done properly. The editor switches this.
@@ -377,7 +574,8 @@ const done = new WeakMap(); // picture -> { key, full, canvas }
 // Returns the picture itself when there is nothing to do or it cannot be read.
 export function adjustedPicture(source, adjust) {
   if (!source) return source;
-  const key = adjustKey(adjust);
+  const clean = cleanAdjust(adjust);
+  const key = adjustKey(clean);
   if (!key) return source;
   const hit = done.get(source);
   if (hit && hit.key === key && (hit.full || quick)) return hit.canvas;
@@ -397,8 +595,19 @@ export function adjustedPicture(source, adjust) {
   } catch (e) {
     return source; // a picture from another site without permission cannot be read
   }
-  adjustPixels(img.data, adjust);
+  // colours first, then focus, then the gradient map over the result
+  const soft = clean.blur > 0 || !!clean.tilt;
+  tonePixels(img.data, clean);
+  if (!soft && clean.map) mapPixels(img.data, clean.map);
   g.putImageData(img, 0, 0);
+  if (soft) {
+    soften(c, clean);
+    if (clean.map) {
+      img = g.getImageData(0, 0, c.width, c.height);
+      mapPixels(img.data, clean.map);
+      g.putImageData(img, 0, 0);
+    }
+  }
   done.set(source, { key, full: !quick, canvas: c });
   return c;
 }
