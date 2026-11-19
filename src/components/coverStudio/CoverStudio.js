@@ -6305,7 +6305,7 @@ export default function CoverStudio({
                               Show only the text (hide the shape itself)
                             </Check>
                             <Muted>
-                              The text belongs to this shape: it follows when the shape is moved, rounded or turned, and dragging a corner of the shape (or the toolbar's Size) scales the shape and its text together. Press Enter in the box for another line; each line follows the outline. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
+                              The text belongs to this shape: it follows when the shape is moved, rounded or turned, and dragging a corner of the shape (or the toolbar's Size) scales the shape and its text together. Press Enter in the box for another line; each line follows the outline. A line too long to go once round carries on along the next ring instead of running over itself; use Letter size or Letter spacing to fit more or less on a ring. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
                             </Muted>
                           </>
                         ) : (

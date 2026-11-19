@@ -20,7 +20,8 @@
 //   only     show the text and not the shape itself
 // The text can have several lines (Enter): each is a ring of its own, one
 // line's height farther from (or nearer to) the outline than the one before,
-// in the order they are read.
+// in the order they are read. A line too long to go once round carries on
+// along the next ring, word by word, so it never runs over its own beginning.
 //   marks    letters with a look of their own: { [place in the text]:
 //            { size, family, weight, italic, color } }, any of them. A place
 //            is the letter's index in `text` (as a text box counts it).
@@ -202,50 +203,122 @@ export function paintRing(ctx, ring, w, h, r) {
   const out = ring.side !== 'in';
   const flip = !!ring.flip;
   const lines = String(ring.text).replace(/\r/g, '').split('\n');
-  const n = lines.length;
   const step = size * Math.max(0.6, Math.min(3, Number(ring.leading) || 1.15));
   const corner = Math.min(r, w / 2, h / 2);
   const marked = hasMarks(ring);
-  // where each line begins in the whole text
-  const lineStart = [];
-  lines.reduce((sum, line) => {
-    lineStart.push(sum);
-    return sum + line.length + 1;
-  }, 0);
-  lines.forEach((text, i) => {
-    if (!text.trim()) return;
-    // How far the line the letters stand on is from the outline (outward is
-    // +). The lines are stacked the way they are read: where the text reads
-    // normally, the first line is the upper one on the cover.
+  const gapAfter = (L) => ((Number(ring.spacing) || 0) / 1000) * L.size;
+
+  // every typed line as letters, each with its own look and width
+  let at = 0;
+  const typed = lines.map((text) => {
+    const letters = [];
+    Array.from(text).forEach((ch) => {
+      const look = marked ? lookAt(ring, at) : null;
+      const L = { ch, look, size: look ? Math.max(4, Number(look.size) || size) : size };
+      if (look) ctx.font = ringFont(look);
+      L.w = ctx.measureText(ch).width;
+      letters.push(L);
+      at += ch.length;
+    });
+    at += 1; // the line break
+    return letters;
+  });
+  if (marked) ctx.font = ringFont(ring);
+  const widthOf = (letters) => letters.reduce((sum, L, k) => sum + L.w + (k < letters.length - 1 ? gapAfter(L) : 0), 0);
+
+  // The path ring number i of n stands on. Its distance from the outline
+  // (outward is +) stacks the rings the way they are read: where the text
+  // reads normally, the first one is the upper one on the cover. The letters
+  // stand on the outline moved out (or in) by that much; moving a rounded
+  // rectangle outward rounds its corners by the same amount.
+  const pathOf = (i, n) => {
     let off;
     if (out) off = flip ? gap + tall + i * step : gap + (n - 1 - i) * step;
     else off = flip ? -(gap + (n - 1 - i) * step) : -(gap + tall + i * step);
-    // the letters stand on the outline moved out (or in) by that much; moving a
-    // rounded rectangle outward rounds its corners by the same amount
     const pw = w + off * 2;
     const ph = h + off * 2;
-    if (pw < 2 || ph < 2) return;
-    const path = outline(pw, ph, Math.max(0, corner + off));
-    // each letter with its own look (and its place in the whole text)
-    const chars = [];
-    let at = lineStart[i];
-    Array.from(text).forEach((ch) => {
-      const look = marked ? lookAt(ring, at) : null;
-      const letter = { ch, look, size: look ? Math.max(4, Number(look.size) || size) : size };
-      if (look) ctx.font = ringFont(look);
-      letter.w = ctx.measureText(ch).width;
-      chars.push(letter);
-      at += ch.length;
+    if (pw < 2 || ph < 2) return null;
+    return outline(pw, ph, Math.max(0, corner + off));
+  };
+  // how much text fits once round, leaving a little air where the end meets the start
+  const roomOf = (path) => (path ? Math.max(size, path.total - size * 0.45) : Infinity);
+
+  // Words that do not fit once round carry on along the next ring (owner
+  // 2026-11-19: a long line used to run over its own beginning). A typed
+  // line break always starts a new ring.
+  const wrap = (n, share = 1) => {
+    const rings = [];
+    typed.forEach((letters) => {
+      // words, with the spaces before each
+      const words = [];
+      let cur = null;
+      letters.forEach((L) => {
+        const blank = !L.ch.trim();
+        if (!cur || (blank && cur.word.length)) {
+          cur = { space: [], word: [] };
+          words.push(cur);
+        }
+        if (blank) cur.space.push(L);
+        else cur.word.push(L);
+      });
+      let line = [];
+      words.forEach((wd) => {
+        if (!wd.word.length) return; // spaces at the end of a line
+        const room = roomOf(pathOf(rings.length, n)) * share;
+        const joined = line.concat(wd.space, wd.word);
+        if (line.length && widthOf(joined) > room) {
+          rings.push(line);
+          line = wd.word.slice();
+        } else line = line.length ? joined : wd.word.slice();
+      });
+      rings.push(line);
     });
-    const gapAfter = (L) => ((Number(ring.spacing) || 0) / 1000) * L.size;
-    const full = chars.reduce((sum, L, k) => sum + L.w + (k < chars.length - 1 ? gapAfter(L) : 0), 0);
+    return rings;
+  };
+  // How many rings there are decides how large each one is, and that decides
+  // how many are needed. So: the smallest number of rings that holds it all.
+  let n = typed.length;
+  let rings = wrap(n);
+  for (let tries = 0; tries < 80 && rings.length > n; tries += 1) {
+    n += 1;
+    rings = wrap(n);
+  }
+  // One ring more can make the outer rings large enough to take everything
+  // and leave the last one empty. If the text nearly fits without that extra
+  // ring, it is drawn a touch tighter instead; otherwise each ring is filled a
+  // little less, so all of them are used.
+  const snug = (list) => Math.min(...list.map((letters, i) => (letters.length ? roomOf(pathOf(i, list.length)) / Math.max(1, widthOf(letters)) : 1)));
+  if (rings.length < n && snug(rings) < 0.88) {
+    let lo = 0.3;
+    let hi = 1;
+    let best = null;
+    for (let k = 0; k < 12; k += 1) {
+      const mid = (lo + hi) / 2;
+      const trial = wrap(n, mid);
+      if (trial.length < n) hi = mid;
+      else {
+        if (trial.length === n) best = trial;
+        lo = mid;
+      }
+    }
+    if (best) rings = best;
+  }
+  n = rings.length;
+
+  rings.forEach((letters, i) => {
+    if (!letters.length) return;
+    const path = pathOf(i, n);
+    if (!path) return;
+    const full = widthOf(letters);
+    // a ring that is still too long (one very long word) is drawn tighter
+    const tight = Math.min(1, roomOf(path) / Math.max(1, full));
     const mid = (Math.max(0, Math.min(1, Number(ring.start) || 0)) + (flip ? 0.5 : 0)) * path.total;
     let x = 0;
-    chars.forEach((L) => {
-      const centre = x + L.w / 2;
+    letters.forEach((L) => {
+      const centre = (x + L.w / 2) * tight;
       x += L.w + gapAfter(L);
       if (!L.ch.trim()) return;
-      const s = flip ? mid + full / 2 - centre : mid - full / 2 + centre;
+      const s = flip ? mid + (full * tight) / 2 - centre : mid - (full * tight) / 2 + centre;
       const p = path.at(s);
       ctx.save();
       if (L.look) {
@@ -257,10 +330,6 @@ export function paintRing(ctx, ring, w, h, r) {
       ctx.fillText(L.ch, 0, 0);
       ctx.restore();
     });
-    if (marked) {
-      ctx.font = ringFont(ring);
-      ctx.fillStyle = ring.color || '#ffffff';
-    }
   });
   ctx.restore();
 }
