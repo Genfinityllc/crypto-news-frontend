@@ -35,8 +35,10 @@ import {
   removePlainBackground,
   drawLayoutThumb,
   photoGradBox,
+  photoMap,
 } from './interviewKit';
 import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, reachDot, reachOf, resizeGrad } from './gradients';
+import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand, cleanMap, colourMap, mapCss, resizeMap, setAdjust, setAdjustQuick, setBand } from './imageAdjust';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -291,12 +293,15 @@ async function loadLogoFile(file) {
 }
 
 // Recolour a logo to one solid colour while keeping its exact shape.
-function tintedCanvas(source, mode, color) {
+// w, h: the size to make it (a colour-edited picture can be smaller than the
+// original, and the item must keep the original's size).
+function tintedCanvas(source, mode, color, w = source.width, h = source.height) {
   const c = document.createElement('canvas');
-  c.width = source.width;
-  c.height = source.height;
+  c.width = w;
+  c.height = h;
   const g = c.getContext('2d');
-  g.drawImage(source, 0, 0);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(source, 0, 0, w, h);
   if (mode !== 'original') {
     g.globalCompositeOperation = 'source-in';
     g.fillStyle = mode === 'white' ? '#ffffff' : mode === 'black' ? '#000000' : color || '#ffffff';
@@ -366,7 +371,13 @@ function monoEmblem(source) {
 }
 
 // The picture an item should show for its current colour setting.
-const paintItem = (st) => tintedCanvas(st.tint === 'original' ? st.source : st.mono || st.source, st.tint, st.tintColor);
+// Colour edits (st.adjust, see imageAdjust.js) show only in the picture's own
+// colours: White, Black and Custom replace every colour anyway.
+const paintItem = (st) => {
+  const base = st.tint === 'original' ? st.source : st.mono || st.source;
+  const pic = st.tint === 'original' ? adjustedPicture(base, st.adjust) : base;
+  return tintedCanvas(pic, st.tint, st.tintColor, base.width, base.height);
+};
 
 // Redraw a guest frame after any of its settings change.
 function repaintPhoto(o) {
@@ -395,6 +406,7 @@ const DEFAULT_BG = {
   centerVignette: 0,
   contrast: 0,
   dim: 0,
+  adjust: null, // colour edits of a background image (imageAdjust.js)
   zoom: 1,
   shiftX: 0,
   shiftY: 0,
@@ -531,7 +543,7 @@ const HEADLINE_SPACING = -55;
 const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title: { rel: 0.09, rel0: 0.09, wide: 1.4, dy: 0.08 } };
 
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
-const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
+const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, (st.mapColors || []).join(','), adjustKey(st.adjust), st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
 
 export default function CoverStudio({
   apiBase,
@@ -614,6 +626,10 @@ export default function CoverStudio({
   const [ringAll, setRingAll] = useState(false);
   const [cutting, setCutting] = useState(false);
   const [gradEdit, setGradEdit] = useState(''); // for a photo with two gradients: 'backdrop' or 'ring'
+  const [adjustOpen, setAdjustOpen] = useState(false); // the selected picture's colour tools are shown
+  const [bgAdjustOpen, setBgAdjustOpen] = useState(false); // the same for the background image
+  const adjustRestRef = useRef(null); // { timer, redo }: a colour slider is moving (see liveAdjust)
+  const restAdjustRef = useRef(null); // finish that now (before a file is made)
   const [dropBox, setDropBox] = useState(null);
   // ---------- drafts (working files kept in this browser) ----------
   const [draft, setDraft] = useState(null); // the saved draft this cover belongs to: { id, name, created, updated }
@@ -792,7 +808,7 @@ export default function CoverStudio({
         if (st && o.studio) {
           const was = o.studio;
           o.studio = snapStudio(st);
-          if (st.kind === 'logo' && (was.tint !== st.tint || was.tintColor !== st.tintColor || was.source !== st.source)) {
+          if (st.kind === 'logo' && (was.tint !== st.tint || was.tintColor !== st.tintColor || was.source !== st.source || adjustKey(was.adjust) !== adjustKey(st.adjust))) {
             const el = paintItem(o.studio);
             o.setElement(el);
             o.set({ width: el.width, height: el.height });
@@ -1047,6 +1063,9 @@ export default function CoverStudio({
       window.removeEventListener('resize', onWinResize);
       clearTimeout(commitTimer.current);
       clearTimeout(grainTimer.current);
+      if (adjustRestRef.current) clearTimeout(adjustRestRef.current.timer);
+      adjustRestRef.current = null;
+      setAdjustQuick(false);
       fabricRef.current = null;
       c.dispose();
       if (el.parentNode) el.parentNode.removeChild(el);
@@ -1232,7 +1251,7 @@ export default function CoverStudio({
     loadImage(corsUrl(incoming.url))
       .then((img) => {
         if (cancelled) return;
-        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, contrast: 0, vignette: 0, centerVignette: 0, grain: 0 });
+        setBg({ kind: 'image', image: img, imageLabel: 'Generated cover', dim: 0, contrast: 0, adjust: null, vignette: 0, centerVignette: 0, grain: 0 });
         setBgTab('image');
         setLeftTab('background');
         if (incoming.hadWatermark) {
@@ -1957,7 +1976,7 @@ export default function CoverStudio({
           const t = guestText(o, r);
           return t ? typed(t) : st.kept && st.kept[r] ? st.kept[r].text : undefined;
         };
-        return { src: st.src, srcOrig: st.srcOrig, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, backdropGrad: st.backdropGrad, name: line('name'), title: line('title') };
+        return { src: st.src, srcOrig: st.srcOrig, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, mapColors: st.mapColors, adjust: st.adjust, backdrop: st.backdrop, backdropGrad: st.backdropGrad, name: line('name'), title: line('title') };
       });
     // grain put on a layout's colour panel goes with it to the next panel
     const panels = objs.filter((o) => o.studio && o.studio.tpl && o.studio.kind === 'shape' && !o.studio.attach);
@@ -1968,7 +1987,7 @@ export default function CoverStudio({
   const fillGuest = (o, g, upper) => {
     if (!g) return;
     const st = o.studio;
-    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop, backdropGrad: g.backdropGrad });
+    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, mapColors: g.mapColors, adjust: g.adjust, backdrop: g.backdrop, backdropGrad: g.backdropGrad });
     if (g.src && g.treatment === 'tint') st.tintColor = g.tintColor;
     repaintPhoto(o);
     [['name', g.name], ['title', g.title]].forEach(([r, v]) => {
@@ -3270,6 +3289,25 @@ export default function CoverStudio({
     bump();
   };
 
+  // Put a layer at a place in the Layers list (0 = in front of everything).
+  // slot is the gap it was dropped in, counted with the layer still in the
+  // list: 0 = above the first row, 1 = between the first and second, ...
+  const moveLayer = (o, slot) => {
+    const c = fabricRef.current;
+    if (!c || !o) return;
+    const objs = c.getObjects();
+    const n = objs.length;
+    const at = objs.indexOf(o);
+    if (at < 0) return;
+    const from = n - 1 - at;
+    const to = Math.max(0, Math.min(n - 1, slot > from ? slot - 1 : slot));
+    if (to === from) return;
+    c.moveObjectTo(o, n - 1 - to);
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
   const alignTo = (where) => {
     const c = fabricRef.current;
     const o = active1();
@@ -3301,6 +3339,59 @@ export default function CoverStudio({
     commitSoon();
     bump();
   };
+
+  // ---------- colour edits of a picture (imageAdjust.js) ----------
+  // While a slider moves, the picture is redone on a small copy so the cover
+  // keeps up; a moment after the slider rests it is done properly.
+  // redo(): paints whatever is being edited.
+  const restAdjust = () => {
+    const r = adjustRestRef.current;
+    if (!r) return;
+    clearTimeout(r.timer);
+    adjustRestRef.current = null;
+    setAdjustQuick(false);
+    r.redo();
+  };
+  const liveAdjust = (redo) => {
+    if (adjustRestRef.current) clearTimeout(adjustRestRef.current.timer);
+    setAdjustQuick(true);
+    redo();
+    adjustRestRef.current = { redo, timer: setTimeout(restAdjust, 240) };
+  };
+  restAdjustRef.current = restAdjust;
+
+  // The selected image or guest photo. next: an adjustment, or null for none.
+  const setItemAdjust = (next) => {
+    const c = fabricRef.current;
+    const o = active1();
+    const kind = o && o.studio ? o.studio.kind : '';
+    if (!c || (kind !== 'logo' && kind !== 'photo')) return;
+    if (next) o.studio.adjust = next;
+    else delete o.studio.adjust;
+    liveAdjust(() => {
+      if (!c.getObjects().includes(o)) return;
+      if (kind === 'photo') repaintPhoto(o);
+      else {
+        o.setElement(paintItem(o.studio));
+        o.set({ dirty: true });
+      }
+      c.requestRenderAll();
+    });
+    commitSoon();
+    bump();
+  };
+
+  // The background image.
+  const setBgAdjust = (next) => {
+    let first = true;
+    liveAdjust(() => {
+      setBg(first ? { adjust: next || null } : {}); // the second call only redraws it
+      first = false;
+    });
+  };
+
+  // A guest photo's gradient map (it took the place of the one-colour Tint).
+  const setPhotoMap = (colors) => setPhoto({ treatment: 'map', mapColors: cleanMap(colors) || ['#000000', '#ffffff'] });
 
   // Italic is kept only where the chosen weight really has one; the browser
   // would otherwise fake it by slanting the upright letters.
@@ -3609,7 +3700,7 @@ export default function CoverStudio({
   const applyImageUrl = async (url, label) => {
     try {
       const img = await loadImage(corsUrl(url));
-      setBg({ kind: 'image', image: img, imageLabel: label || 'Image', dim: 0, contrast: 0 });
+      setBg({ kind: 'image', image: img, imageLabel: label || 'Image', dim: 0, contrast: 0, adjust: null });
     } catch (e) {
       toast.error('Could not load that image.');
     }
@@ -3672,7 +3763,7 @@ export default function CoverStudio({
     if (!file) return;
     readFileAsDataUrl(file)
       .then((url) => loadImage(url, false))
-      .then((img) => setBg({ kind: 'image', image: img, imageLabel: file.name, dim: 0, contrast: 0 }))
+      .then((img) => setBg({ kind: 'image', image: img, imageLabel: file.name, dim: 0, contrast: 0, adjust: null }))
       .catch(() => toast.error('Could not read that image.'));
   };
 
@@ -3680,6 +3771,8 @@ export default function CoverStudio({
   const exportDataUrl = () => {
     const c = fabricRef.current;
     if (!c) return null;
+    if (restAdjustRef.current) restAdjustRef.current(); // no quick copies in the file
+    setAdjustQuick(false);
     c.discardActiveObject();
     // Compose the real file: background with its grain baked in at 1800x900,
     // then logos and text, then the watermark (and top grain if chosen).
@@ -4693,6 +4786,14 @@ export default function CoverStudio({
                 <Ghost onClick={() => fileInputRef.current && fileInputRef.current.click()}>Upload an image</Ghost>
                 <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onBgFile} />
                 {bg.kind === 'image' && <Hint>Current: {bg.imageLabel || 'Image'}</Hint>}
+                {bg.kind === 'image' && (
+                  <>
+                    <Ghost onClick={() => setBgAdjustOpen((v) => !v)} aria-expanded={bgAdjustOpen}>
+                      {bgAdjustOpen ? 'Close image editing' : bg.adjust ? 'Edit this image (edited)' : 'Edit this image'}
+                    </Ghost>
+                    {bgAdjustOpen && <AdjustControls value={bg.adjust || null} onChange={setBgAdjust} palette={bg.palette} />}
+                  </>
+                )}
                 {(sharedBackdrops.length > 0 || isOwner) && (
                   <>
                     <FieldLabel>Genfinity backgrounds</FieldLabel>
@@ -4969,23 +5070,17 @@ export default function CoverStudio({
         {leftTab === 'layers' && (
           <PanelBody>
             {layerList.length === 0 && <Hint>Nothing on the cover yet. Add a logo or text.</Hint>}
-            {layerList.map((o, i) => (
-              <LayerRow
-                key={i}
-                $on={selection.includes(o)}
-                onClick={() => {
-                  c.setActiveObject(o);
-                  c.requestRenderAll();
-                  bump();
-                }}
-              >
-                <em>{kindLabel(o)}</em>
-                <span>{layerName(o)}</span>
-                <button type="button" title="Bring forward" onClick={(e) => { e.stopPropagation(); reorder(o, 'up'); }}>Up</button>
-                <button type="button" title="Send backward" onClick={(e) => { e.stopPropagation(); reorder(o, 'down'); }}>Down</button>
-              </LayerRow>
-            ))}
-            {layerList.length > 0 && <Hint>Top of the list is in front.</Hint>}
+            <LayerList
+              rows={layerList.map((o) => ({ o, kind: kindLabel(o), name: layerName(o), on: selection.includes(o) }))}
+              onPick={(o) => {
+                c.setActiveObject(o);
+                c.requestRenderAll();
+                bump();
+              }}
+              onMove={moveLayer}
+              onStep={reorder}
+            />
+            {layerList.length > 0 && <Hint>Top of the list is in front. Drag a layer up or down to put it where it belongs.</Hint>}
           </PanelBody>
         )}
 
@@ -5201,17 +5296,37 @@ export default function CoverStudio({
                       )}
                       <FieldLabel style={{ marginTop: 10 }}>Photo look</FieldLabel>
                       <Seg>
-                        {[['color', 'Colour'], ['bw', 'Black and white'], ['tint', 'Tint']].map(([id, label]) => (
-                          <SegBtn key={id} $on={selPhoto.treatment === id} onClick={() => setPhoto({ treatment: id })}>{label}</SegBtn>
-                        ))}
+                        <SegBtn $on={!photoMap(selPhoto) && selPhoto.treatment !== 'bw'} onClick={() => setPhoto({ treatment: 'color' })}>Colour</SegBtn>
+                        <SegBtn $on={selPhoto.treatment === 'bw'} onClick={() => setPhoto({ treatment: 'bw' })}>Black and white</SegBtn>
+                        <SegBtn
+                          $on={!!photoMap(selPhoto)}
+                          onClick={() => {
+                            if (photoMap(selPhoto)) return;
+                            // the colours it had last time, or black, the cover's accent, white
+                            setPhotoMap(cleanMap(selPhoto.mapColors) || ['#000000', normHex(bg.palette.a1, '#6a4cf5'), '#ffffff']);
+                          }}
+                        >
+                          Gradient map
+                        </SegBtn>
                       </Seg>
-                      {selPhoto.treatment === 'tint' && (
-                        <SwatchRow style={{ marginTop: 8 }}>
-                          <input type="color" value={normHex(selPhoto.tintColor)} onChange={(e) => setPhoto({ tintColor: e.target.value })} />
-                          {[bg.palette.a1, bg.palette.a2].map((col, i) => (
-                            <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ tintColor: col })} />
-                          ))}
-                        </SwatchRow>
+                      {photoMap(selPhoto) && (
+                        <div style={{ marginTop: 8 }}>
+                          <MapControls colors={photoMap(selPhoto)} onChange={setPhotoMap} />
+                        </div>
+                      )}
+                      {selPhoto.src && (
+                        <>
+                          <Row style={{ marginTop: 10 }}>
+                            <Ghost onClick={() => setAdjustOpen((v) => !v)} aria-expanded={adjustOpen}>
+                              {adjustOpen ? 'Close photo editing' : selPhoto.adjust ? 'Edit photo (edited)' : 'Edit photo'}
+                            </Ghost>
+                          </Row>
+                          {adjustOpen && (
+                            <div style={{ marginTop: 8 }}>
+                              <AdjustControls value={selPhoto.adjust || null} onChange={setItemAdjust} map={false} />
+                            </div>
+                          )}
+                        </>
                       )}
                     </InsCell>
                     <InsCell>
@@ -5399,6 +5514,24 @@ export default function CoverStudio({
                         <Muted style={{ marginTop: 6 }}>
                           "Remove the background" is for photos of people; it runs on your computer and the image is not uploaded. "Remove plain background" is for a logo on one flat colour.
                         </Muted>
+                      </InsCell>
+                    )}
+                    {!sel.studio.placeholder && sel.studio.source && (
+                      <InsCell>
+                        <FieldLabel>Colours of this image</FieldLabel>
+                        <Row>
+                          <Ghost onClick={() => setAdjustOpen((v) => !v)} aria-expanded={adjustOpen} disabled={sel.studio.tint !== 'original'}>
+                            {adjustOpen && sel.studio.tint === 'original' ? 'Close image editing' : sel.studio.adjust ? 'Edit image (edited)' : 'Edit image'}
+                          </Ghost>
+                        </Row>
+                        {sel.studio.tint !== 'original' && (
+                          <Muted style={{ marginTop: 6 }}>Set the colour below to {sel.studio.seal ? 'Full colour' : 'Original'} to edit the image's own colours.</Muted>
+                        )}
+                        {adjustOpen && sel.studio.tint === 'original' && (
+                          <div style={{ marginTop: 8 }}>
+                            <AdjustControls value={sel.studio.adjust || null} onChange={setItemAdjust} palette={bg.palette} />
+                          </div>
+                        )}
                       </InsCell>
                     )}
                     <InsCell>
@@ -5769,6 +5902,236 @@ export default function CoverStudio({
         </FootHint>
       </Main>
     </Wrap>
+  );
+}
+
+// ---------- colour tools for a picture (imageAdjust.js) ----------
+const signedPct = (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}`;
+
+// A gradient map: the picture's blacks take the first colour, its whites the
+// last, and everything between follows the ramp. Two to five colours.
+function MapControls({ colors, onChange }) {
+  const list = cleanMap(colors) || ['#000000', '#ffffff'];
+  const n = list.length;
+  const setCount = (v) => {
+    const want = Math.max(MAP_MIN, Math.min(MAP_MAX, Math.round(Number(v) || MAP_MIN)));
+    if (want !== n) onChange(resizeMap(list, want));
+  };
+  const nameOf = (i) => (i === 0 ? 'Blacks' : i === n - 1 ? 'Whites' : n === 3 ? 'Middle' : `Between ${i}`);
+  return (
+    <GradBox>
+      <GradCount>
+        <span>Colours</span>
+        <button type="button" onClick={() => setCount(n - 1)} disabled={n <= MAP_MIN} aria-label="One colour fewer">-</button>
+        <input type="number" min={MAP_MIN} max={MAP_MAX} step={1} value={n} onChange={(e) => setCount(e.target.value)} aria-label="Number of colours in the gradient map" />
+        <button type="button" onClick={() => setCount(n + 1)} disabled={n >= MAP_MAX} aria-label="One colour more">+</button>
+      </GradCount>
+      <GradStrip style={{ background: mapCss(list), height: 14 }} />
+      <MapRow>
+        {list.map((col, i) => (
+          <label key={i} title={`Colour for the ${nameOf(i).toLowerCase()}`}>
+            <input type="color" value={normHex(col)} onChange={(e) => onChange(colourMap(list, i, e.target.value))} />
+            <b>{nameOf(i)}</b>
+          </label>
+        ))}
+      </MapRow>
+      <Muted>The dark parts of the picture take the colour on the left, the bright parts the colour on the right.</Muted>
+    </GradBox>
+  );
+}
+
+// The sliders. value: an adjustment or null; onChange gets the next one (null
+// when everything is back to zero). map: also offer a gradient map.
+function AdjustControls({ value, onChange, map = true, palette }) {
+  const [bandId, setBandId] = useState('red');
+  const a = value || {};
+  const band = BANDS.find((b) => b.id === bandId) || BANDS[0];
+  const t = bandOf(value, band.id);
+  const bandSet = !!(a.bands && a.bands[band.id]);
+  return (
+    <AdjustBox>
+      <Slider label="Darken" min={0} max={0.9} step={0.01} value={a.darken || 0} onChange={(v) => onChange(setAdjust(value, { darken: v }))} fmt={(v) => `${Math.round(v * 100)}%`} />
+      <Slider label="Contrast" min={-1} max={1} step={0.02} value={a.contrast || 0} onChange={(v) => onChange(setAdjust(value, { contrast: v }))} fmt={signedPct} />
+      <Slider label="Hue" min={-180} max={180} step={1} value={a.hue || 0} onChange={(v) => onChange(setAdjust(value, { hue: v }))} fmt={(v) => `${v > 0 ? '+' : ''}${Math.round(v)} degrees`} />
+      <Slider label="Saturation" min={-1} max={1} step={0.02} value={a.sat || 0} onChange={(v) => onChange(setAdjust(value, { sat: v }))} fmt={signedPct} />
+      <Slider label="Lightness" min={-1} max={1} step={0.02} value={a.light || 0} onChange={(v) => onChange(setAdjust(value, { light: v }))} fmt={signedPct} />
+
+      <FieldLabel style={{ marginTop: 4 }}>One colour at a time</FieldLabel>
+      <BandRow>
+        {BANDS.map((b) => (
+          <BandChip
+            key={b.id}
+            type="button"
+            title={b.label}
+            aria-label={b.label}
+            aria-pressed={b.id === band.id}
+            $on={b.id === band.id}
+            $set={!!(a.bands && a.bands[b.id])}
+            style={{ background: b.chip }}
+            onClick={() => setBandId(b.id)}
+          />
+        ))}
+      </BandRow>
+      <Slider label={`${band.label}: hue`} min={-1} max={1} step={0.02} value={t[0]} onChange={(v) => onChange(setBand(value, band.id, 0, v))} fmt={signedPct} />
+      <Slider label={`${band.label}: saturation`} min={-1} max={1} step={0.02} value={t[1]} onChange={(v) => onChange(setBand(value, band.id, 1, v))} fmt={signedPct} />
+      <Slider label={`${band.label}: lightness`} min={-1} max={1} step={0.02} value={t[2]} onChange={(v) => onChange(setBand(value, band.id, 2, v))} fmt={signedPct} />
+      <Muted>Pick a colour above, then change only that colour in the picture. A dot marks the colours you have changed.</Muted>
+
+      {map && (
+        <>
+          <FieldLabel style={{ marginTop: 4 }}>Gradient map</FieldLabel>
+          <Seg>
+            <SegBtn $on={!a.map} onClick={() => onChange(setAdjust(value, { map: null }))}>Off</SegBtn>
+            <SegBtn
+              $on={!!a.map}
+              onClick={() => {
+                if (!a.map) onChange(setAdjust(value, { map: ['#000000', normHex(palette && palette.a1, '#6a4cf5'), '#ffffff'] }));
+              }}
+            >
+              On
+            </SegBtn>
+          </Seg>
+          {a.map && <MapControls colors={a.map} onChange={(list) => onChange(setAdjust(value, { map: list }))} />}
+        </>
+      )}
+
+      <Row>
+        <Ghost onClick={() => onChange(clearBand(value, band.id))} disabled={!bandSet}>Reset {band.label.toLowerCase()}</Ghost>
+        <Ghost onClick={() => onChange(null)} disabled={!value}>Reset everything</Ghost>
+      </Row>
+    </AdjustBox>
+  );
+}
+
+// The Layers list. A row can be dragged up or down to change what is in
+// front; a line shows where it will go. rows: [{ o, kind, name, on }], front
+// first. onMove(o, slot): slot is the gap it was dropped in (0 = above the
+// first row). The Up and Down buttons stay for small steps and the keyboard.
+function LayerList({ rows, onPick, onMove, onStep }) {
+  const boxRef = useRef(null);
+  const dragRef = useRef(null);
+  const skipClickRef = useRef(false);
+  const [drag, setDrag] = useState(null); // { from, slot, lineY, ghostY }
+  const live = useRef({ rows, onMove });
+  live.current = { rows, onMove };
+
+  const place = (clientY) => {
+    const box = boxRef.current;
+    const d = dragRef.current;
+    if (!box || !d) return null;
+    const els = box.querySelectorAll('[data-layer-row]');
+    if (!els.length) return null;
+    const top = box.getBoundingClientRect().top;
+    let slot = els.length;
+    for (let i = 0; i < els.length; i += 1) {
+      const r = els[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) {
+        slot = i;
+        break;
+      }
+    }
+    const gap = 6;
+    const lineY = slot < els.length ? els[slot].getBoundingClientRect().top - top - gap / 2 : els[els.length - 1].getBoundingClientRect().bottom - top + gap / 2;
+    return { from: d.from, slot, lineY, ghostY: clientY - top - d.grab };
+  };
+
+  const stop = () => {
+    const d = dragRef.current;
+    if (!d) return;
+    window.removeEventListener('pointermove', d.move);
+    window.removeEventListener('pointerup', d.up);
+    window.removeEventListener('pointercancel', d.cancel);
+    clearInterval(d.scroll);
+    dragRef.current = null;
+    setDrag(null);
+  };
+  useEffect(() => stop, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const down = (e, i) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    // a finger scrolls the list; it drags a layer only by the grip
+    if (e.pointerType === 'touch' && !e.target.closest('[data-layer-grip]')) return;
+    stop();
+    const row = e.currentTarget;
+    const d = { from: i, startY: e.clientY, lastY: e.clientY, grab: e.clientY - row.getBoundingClientRect().top, started: false, id: e.pointerId };
+    // the panel that scrolls, so a long list can be dragged past its edge
+    let pane = row.parentElement;
+    while (pane && !(pane.scrollHeight > pane.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(pane).overflowY))) pane = pane.parentElement;
+    d.move = (ev) => {
+      if (ev.pointerId !== d.id) return;
+      d.lastY = ev.clientY;
+      if (!d.started && Math.abs(ev.clientY - d.startY) < 5) return;
+      d.started = true;
+      ev.preventDefault();
+      setDrag(place(ev.clientY));
+    };
+    d.up = (ev) => {
+      if (ev.pointerId !== d.id) return;
+      const at = d.started ? place(ev.clientY) : null;
+      const picked = live.current.rows[d.from];
+      stop();
+      if (!at) return;
+      // the click that follows a drag must not also pick the row
+      skipClickRef.current = true;
+      setTimeout(() => {
+        skipClickRef.current = false;
+      }, 0);
+      if (picked && at.slot !== d.from && at.slot !== d.from + 1) live.current.onMove(picked.o, at.slot);
+    };
+    d.cancel = (ev) => {
+      if (ev.pointerId === d.id) stop();
+    };
+    d.scroll = setInterval(() => {
+      if (!d.started || !pane) return;
+      const r = pane.getBoundingClientRect();
+      const edge = 40;
+      let step = 0;
+      if (d.lastY < r.top + edge) step = -Math.ceil((r.top + edge - d.lastY) / 4);
+      else if (d.lastY > r.bottom - edge) step = Math.ceil((d.lastY - (r.bottom - edge)) / 4);
+      if (!step) return;
+      const was = pane.scrollTop;
+      pane.scrollTop = was + Math.max(-14, Math.min(14, step));
+      if (pane.scrollTop !== was) setDrag(place(d.lastY));
+    }, 16);
+    dragRef.current = d;
+    window.addEventListener('pointermove', d.move, { passive: false });
+    window.addEventListener('pointerup', d.up);
+    window.addEventListener('pointercancel', d.cancel);
+  };
+
+  const dragged = drag ? rows[drag.from] : null;
+  return (
+    <LayerBox ref={boxRef} $dragging={!!drag}>
+      {rows.map((r, i) => (
+        <LayerRow
+          key={i}
+          data-layer-row=""
+          $on={r.on}
+          $lifted={!!drag && drag.from === i}
+          onPointerDown={(e) => down(e, i)}
+          onClick={() => {
+            if (!skipClickRef.current) onPick(r.o);
+          }}
+        >
+          <LayerGrip data-layer-grip="" aria-hidden="true" title="Drag to reorder">
+            <i />
+            <i />
+            <i />
+          </LayerGrip>
+          <em>{r.kind}</em>
+          <span>{r.name}</span>
+          <button type="button" title="Bring forward" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'up'); }}>Up</button>
+          <button type="button" title="Send backward" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'down'); }}>Down</button>
+        </LayerRow>
+      ))}
+      {drag && <LayerLine data-layer-line="" style={{ top: drag.lineY }} />}
+      {drag && dragged && (
+        <LayerGhost data-layer-ghost="" style={{ top: drag.ghostY }}>
+          <em>{dragged.kind}</em>
+          <span>{dragged.name}</span>
+        </LayerGhost>
+      )}
+    </LayerBox>
   );
 }
 
@@ -6785,6 +7148,7 @@ const LayerRow = styled.div`
   border-radius: 8px;
   padding: 0.45rem 0.55rem;
   cursor: pointer;
+  opacity: ${(p) => (p.$lifted ? 0.35 : 1)};
 
   em {
     font-style: normal;
@@ -6812,6 +7176,143 @@ const LayerRow = styled.div`
     border-radius: 6px;
     font-size: 0.68rem;
     padding: 0.2rem 0.4rem;
+    cursor: pointer;
+  }
+`;
+
+// the Layers list: rows can be dragged (see LayerList)
+const LayerBox = styled.div`
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: ${(p) => (p.$dragging ? 'grabbing' : 'auto')};
+`;
+const LayerGrip = styled.div`
+  display: grid;
+  gap: 2px;
+  width: 12px;
+  flex-shrink: 0;
+  padding: 4px 0;
+  cursor: grab;
+  touch-action: none;
+  i {
+    display: block;
+    height: 2px;
+    border-radius: 1px;
+    background: #4a5058;
+  }
+`;
+const LayerLine = styled.div`
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: #00d4ff;
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.18);
+  pointer-events: none;
+  z-index: 3;
+`;
+const LayerGhost = styled.div`
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem 0.45rem 1.6rem;
+  background: #12222b;
+  border: 1px solid #00d4ff;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  opacity: 0.92;
+  pointer-events: none;
+  z-index: 4;
+  em {
+    font-style: normal;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #8b949e;
+    width: 34px;
+    flex-shrink: 0;
+  }
+  span {
+    flex: 1;
+    min-width: 0;
+    color: #e6edf3;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+// colour tools for a picture (see AdjustControls)
+const AdjustBox = styled.div`
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+`;
+const BandRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+const BandChip = styled.button`
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid ${(p) => (p.$on ? '#ffffff' : 'transparent')};
+  box-shadow: ${(p) => (p.$on ? '0 0 0 2px #00d4ff' : '0 0 0 1px #333333')};
+  cursor: pointer;
+  &::after {
+    content: '';
+    display: ${(p) => (p.$set ? 'block' : 'none')};
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: #e6edf3;
+  }
+`;
+const MapRow = styled.div`
+  display: flex;
+  gap: 6px;
+  label {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    cursor: pointer;
+  }
+  b {
+    font-weight: 400;
+    font-size: 10px;
+    color: #b8b8b8;
+    white-space: nowrap;
+  }
+  input[type='color'] {
+    width: 100%;
+    max-width: 48px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    background: none;
     cursor: pointer;
   }
 `;

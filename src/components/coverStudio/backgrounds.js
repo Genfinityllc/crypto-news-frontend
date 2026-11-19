@@ -4,6 +4,8 @@
 // it is instant, free, and fully recolourable. Nothing is AI generated.
 // Only gradients and paths are used (no ctx.filter) so Safari renders the same.
 
+import { adjustedPicture } from './imageAdjust';
+
 export const COVER_W = 1800;
 export const COVER_H = 900;
 
@@ -686,6 +688,7 @@ export function drawCenterVignette(ctx, w, h, amount) {
 //   kind: 'template' | 'image',
 //   templateId, palette:{base,a1,a2}, intensity, seed, flip,
 //   image (HTMLImageElement|canvas), dim (0..1), tint,
+//   adjust (colour edits of the image, see imageAdjust.js),
 //   zoom (1 = fills the cover), shiftX / shiftY (share of width / height),
 //   grain (0..1), grainCoarse, vignette (0..1), centerVignette (0..1)
 // }
@@ -731,7 +734,9 @@ export function renderBackground(canvas, spec, opts = {}) {
   }
 
   if (spec.kind === 'image' && spec.image) {
-    const img = spec.image;
+    // the image's own colour edits (spec.adjust, see imageAdjust.js) are part
+    // of the picture; Darken and Contrast below act on top of them
+    const img = adjustedPicture(spec.image, spec.adjust);
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
     const scale = Math.max(DW / iw, DH / ih);

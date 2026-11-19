@@ -1,6 +1,7 @@
 import tateUrl from './hosts/tate.jpg';
 import ryanUrl from './hosts/ryan.jpg';
 import { isGrad, paintGrad } from './gradients';
+import { adjustedPicture, cleanMap, mapPixels } from './imageAdjust';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -102,41 +103,38 @@ function shrink(img, max) {
 // Keep an uploaded photo at a sensible working size.
 export const preparePhoto = (img) => shrink(img, 1800);
 
-// Black and white, or a one-colour tint, without ctx.filter (Safari has none).
+// The colours of a photo's gradient map (first = its blacks, last = its
+// whites). The old one-colour Tint is the same thing with two colours, black
+// and the tint, so covers saved with a tint still look as they did.
+export function photoMap(st) {
+  if (!st) return null;
+  if (st.treatment === 'map') return cleanMap(st.mapColors) || ['#000000', '#ffffff'];
+  if (st.treatment === 'tint') return cleanMap(['#000000', st.tintColor]) || ['#000000', '#ffffff'];
+  return null;
+}
+
+// Black and white, or a gradient map, without ctx.filter (Safari has none).
 // Cached on the item so moving a slider does not redo it.
+// The photo's own colour edits (st.adjust, see imageAdjust.js) come first, so
+// the look is laid over the edited photo.
 function treated(st) {
   if (!st.src) return null;
-  if (st.treatment !== 'bw' && st.treatment !== 'tint') return st.src;
-  const key = `${st.treatment}|${st.treatment === 'tint' ? st.tintColor : ''}`;
-  if (st._proc && st._proc.key === key && st._proc.from === st.src) return st._proc.canvas;
-  const c = shrink(st.src, 1800);
+  const base = adjustedPicture(st.src, st.adjust);
+  const map = photoMap(st);
+  if (st.treatment !== 'bw' && !map) return base;
+  const key = map ? `map|${map.join(',')}` : 'bw';
+  if (st._proc && st._proc.key === key && st._proc.from === base) return st._proc.canvas;
+  const c = shrink(base, 1800);
   const g = c.getContext('2d');
   let img;
   try {
     img = g.getImageData(0, 0, c.width, c.height);
   } catch (e) {
-    return st.src;
+    return base;
   }
-  const d = img.data;
-  let tr = 255;
-  let tg = 255;
-  let tb = 255;
-  if (st.treatment === 'tint') {
-    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(st.tintColor || '');
-    if (m) {
-      tr = parseInt(m[1], 16);
-      tg = parseInt(m[2], 16);
-      tb = parseInt(m[3], 16);
-    }
-  }
-  for (let i = 0; i < d.length; i += 4) {
-    const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
-    d[i] = Math.round(l * tr);
-    d[i + 1] = Math.round(l * tg);
-    d[i + 2] = Math.round(l * tb);
-  }
+  mapPixels(img.data, map || ['#000000', '#ffffff']);
   g.putImageData(img, 0, 0);
-  st._proc = { key, from: st.src, canvas: c };
+  st._proc = { key, from: base, canvas: c };
   return c;
 }
 
