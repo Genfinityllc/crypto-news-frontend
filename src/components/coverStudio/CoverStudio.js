@@ -605,6 +605,7 @@ export default function CoverStudio({
   const historyRef = useRef({ stack: [], index: -1 });
   const commitTimer = useRef(null);
   const commitDueRef = useRef(false); // a change is waiting for its history step (commitSoon)
+  const groupRef = useRef({}); // { group, ungroup } for the keyboard
   const bgDueRef = useRef(null); // the background that is waiting for its step
   const bgRef = useRef(DEFAULT_BG);
   const fileInputRef = useRef(null);
@@ -699,7 +700,7 @@ export default function CoverStudio({
   const [showGuides, setShowGuides] = useState(false);
   const [snap, setSnap] = useState(true);
   const snapRef = useRef(true);
-  const [guides, setGuides] = useState({ v: null, h: null });
+  const [guides, setGuides] = useState({ v: null, h: null, vi: false, hi: false }); // vi, hi: the line belongs to another item
   const [, setTick] = useState(0);
   const [leftTab, setLeftTab] = useState(isInterview ? 'layouts' : 'background');
   const [bgTab, setBgTab] = useState('templates');
@@ -940,6 +941,48 @@ export default function CoverStudio({
       bump();
     });
     // Clicking something on the cover opens its controls beside the canvas.
+    // Groups (owner 2026-11-19): items that share studio.gid are picked up
+    // together. A click on one selects them all, BEFORE fabric starts the
+    // drag, so the first drag already moves (and snaps) the whole group.
+    // Shift (add to the selection) and Cmd/Ctrl (this item only) are left
+    // alone, and so is an item that is already selected on its own.
+    c.on('mouse:down:before', (e) => {
+      const ev = e.e;
+      if (!ev || ev.button || ev.shiftKey || ev.metaKey || ev.ctrlKey) return;
+      const info = c.findTarget(ev);
+      const hit = info && info.target;
+      if (!hit || !hit.studio || !hit.studio.gid || hit.isEditing || c.getActiveObject() === hit) return;
+      const mates = c.getObjects().filter((x) => x.studio && x.studio.gid === hit.studio.gid && x.selectable !== false && x.visible !== false);
+      if (mates.length < 2) return;
+      c.setActiveObject(new ActiveSelection(mates, { canvas: c }));
+      // fabric worked out what is under the pointer before this handler ran;
+      // have it look again, so it finds the group now selected
+      if (typeof c._cacheTransformEventData === 'function') c._cacheTransformEventData(ev);
+    });
+    // Double-click an item of a selected group to work on that item alone
+    // (a text goes straight into typing).
+    c.on('mouse:dblclick', (e) => {
+      const act = c.getActiveObject();
+      if (!act || act.studio || typeof act.getObjects !== 'function') return;
+      const members = act.getObjects().slice();
+      if (!members.some((m) => m.studio && m.studio.gid)) return;
+      const at = c.getScenePoint(e.e);
+      c.discardActiveObject(); // every item is back at its own place on the cover
+      const hit = c
+        .getObjects()
+        .slice()
+        .reverse()
+        .find((m) => members.includes(m) && m.containsPoint(at));
+      if (!hit) {
+        c.setActiveObject(new ActiveSelection(members, { canvas: c }));
+        c.requestRenderAll();
+        return;
+      }
+      c.setActiveObject(hit);
+      if (hit.studio && hit.studio.kind === 'text' && hit.editable !== false && typeof hit.enterEditing === 'function') hit.enterEditing(e.e);
+      c.requestRenderAll();
+      bump();
+    });
     c.on('mouse:down', (e) => {
       const hit = e.target;
       if (hit && hit.studio && hit.studio.attach && hit.studio.attach.role === 'bar' && c.getObjects().includes(hit.studio.attach.to)) {
@@ -1003,17 +1046,42 @@ export default function CoverStudio({
     };
     c.on('object:scaling', follow);
 
-    // Snap to the centre lines and the safe margins while dragging.
+    // While dragging: Shift keeps the item on the line it started on, and it
+    // snaps to the cover's centre lines and safe margins and to the edges and
+    // centres of the other items.
+    const noGuides = (g) => (g.v === null && g.h === null ? g : { v: null, h: null, vi: false, hi: false });
+    let others = { drag: null, rects: [] }; // the other items' boxes, worked out once per drag
+    const boxOf = (x) => {
+      const pts = Object.values(x.calcACoords());
+      const xs = pts.map((q) => q.x);
+      const ys = pts.map((q) => q.y);
+      const left = Math.min(...xs);
+      const right = Math.max(...xs);
+      const top = Math.min(...ys);
+      const bottom = Math.max(...ys);
+      return { left, right, top, bottom, cx: (left + right) / 2, cy: (top + bottom) / 2 };
+    };
     c.on('object:moving', (e) => {
       const o = e.target;
       if (!o) return;
       if (altDragRef.current) altDragRef.current.moved = true;
+      const ev = e.e;
+      const from = e.transform && e.transform.original;
+      // Shift (owner 2026-11-19): stay on the straight line through where it
+      // started, across or up and down, whichever the pointer has moved along
+      // more. With Option held too, the copy lands in line with its original.
+      let lock = '';
+      if (ev && ev.shiftKey && from && Number.isFinite(from.left) && Number.isFinite(from.top)) {
+        lock = Math.abs(o.left - from.left) >= Math.abs(o.top - from.top) ? 'y' : 'x';
+        if (lock === 'y') o.set('top', from.top);
+        else o.set('left', from.left);
+      }
       // Snapping can be switched off, or bypassed for one drag by holding
       // Cmd, for placing something freely near a guide. (Option/Alt used to
       // do this too; it now drags a copy, which should still snap.)
-      const ev = e.e;
-      if (!snapRef.current || (ev && ev.metaKey)) {
-        setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null }));
+      const snapping = snapRef.current && !(ev && ev.metaKey);
+      if (!snapping && !lock) {
+        setGuides(noGuides);
         return;
       }
       // fabric has already moved the object to the pointer but only refreshes
@@ -1023,33 +1091,78 @@ export default function CoverStudio({
       o.setCoords();
       const T = 6 / (displayScaleRef.current || 0.5);
       const br = o.getBoundingRect();
-      const pick = (cands) => {
-        let best = null;
-        cands.forEach(([d, line]) => {
-          if (Math.abs(d) < T && (!best || Math.abs(d) < Math.abs(best[0]))) best = [d, line];
-        });
-        return best;
-      };
-      const sx = pick([
-        [W / 2 - (br.left + br.width / 2), W / 2],
-        [SAFE - br.left, SAFE],
-        [W - SAFE - (br.left + br.width), W - SAFE],
-      ]);
-      const sy = pick([
-        [H / 2 - (br.top + br.height / 2), H / 2],
-        [SAFE - br.top, SAFE],
-        [H - SAFE - (br.top + br.height), H - SAFE],
-      ]);
-      if (sx) o.set('left', o.left + sx[0]);
-      if (sy) o.set('top', o.top + sy[0]);
-      setGuides((g) => {
-        const v = sx ? sx[1] : null;
-        const h = sy ? sy[1] : null;
-        return g.v === v && g.h === h ? g : { v, h };
-      });
+      const mine = { left: br.left, right: br.left + br.width, top: br.top, bottom: br.top + br.height, cx: br.left + br.width / 2, cy: br.top + br.height / 2 };
+      let sx = null;
+      let sy = null;
+      if (snapping) {
+        // the other items: not the ones being moved, not what travels with
+        // them (a guest's name, title and bar), not seals (backdrop pieces)
+        if (others.drag !== e.transform) {
+          const moving = new Set(typeof o.getObjects === 'function' ? o.getObjects() : [o]);
+          moving.add(o);
+          const alt = altDragRef.current;
+          const standIns = new Set(alt ? alt.plan.map((q) => q.cl).filter(Boolean) : []);
+          const rects = [];
+          c.getObjects().forEach((x) => {
+            const st = x.studio;
+            if (!st || moving.has(x) || standIns.has(x) || x.visible === false || st.seal) return;
+            if (st.attach && (st.attach.role === 'bar' || moving.has(st.attach.to))) return;
+            rects.push(boxOf(x));
+          });
+          // a copy being pulled off also lines up with where it came from
+          if (alt && from) {
+            const dx = from.left - o.left;
+            const dy = from.top - o.top;
+            rects.push({ left: mine.left + dx, right: mine.right + dx, top: mine.top + dy, bottom: mine.bottom + dy, cx: mine.cx + dx, cy: mine.cy + dy });
+          }
+          others = { drag: e.transform, rects };
+        }
+        const pick = (cands) => {
+          let best = null;
+          cands.forEach((cand) => {
+            if (Math.abs(cand[0]) < T && (!best || Math.abs(cand[0]) < Math.abs(best[0]))) best = cand;
+          });
+          return best;
+        };
+        // [how far to move, where the guide goes, is it another item's line]
+        if (lock !== 'x') {
+          const cands = [
+            [W / 2 - mine.cx, W / 2, false],
+            [SAFE - mine.left, SAFE, false],
+            [W - SAFE - mine.right, W - SAFE, false],
+          ];
+          others.rects.forEach((r) => {
+            [r.left, r.cx, r.right].forEach((line) => {
+              [mine.left, mine.cx, mine.right].forEach((m) => cands.push([line - m, line, true]));
+            });
+          });
+          sx = pick(cands);
+        }
+        if (lock !== 'y') {
+          const cands = [
+            [H / 2 - mine.cy, H / 2, false],
+            [SAFE - mine.top, SAFE, false],
+            [H - SAFE - mine.bottom, H - SAFE, false],
+          ];
+          others.rects.forEach((r) => {
+            [r.top, r.cy, r.bottom].forEach((line) => {
+              [mine.top, mine.cy, mine.bottom].forEach((m) => cands.push([line - m, line, true]));
+            });
+          });
+          sy = pick(cands);
+        }
+        if (sx) o.set('left', o.left + sx[0]);
+        if (sy) o.set('top', o.top + sy[0]);
+      }
+      // the line it is held on is shown too, through the item's middle
+      const v = sx ? sx[1] : lock === 'x' ? mine.cx : null;
+      const h = sy ? sy[1] : lock === 'y' ? mine.cy : null;
+      const vi = sx ? sx[2] : lock === 'x';
+      const hi = sy ? sy[2] : lock === 'y';
+      setGuides((g) => (g.v === v && g.h === h && !!g.vi === vi && !!g.hi === hi ? g : { v, h, vi, hi }));
     });
     c.on('object:moving', follow);
-    c.on('mouse:up', () => setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null })));
+    c.on('mouse:up', () => setGuides(noGuides));
     c.on('mouse:up', () => {
       if (altDragRef.current && altDupRef.current.end) altDupRef.current.end();
     });
@@ -2618,7 +2731,16 @@ export default function CoverStudio({
         r = Math.max(r, q.left + q.width);
         b = Math.max(b, q.top + q.height);
       });
-      units.push({ o, parent, l, t, r, b });
+      // the items of a group move as one piece
+      const gid = !parent && o.studio.gid ? o.studio.gid : '';
+      const mate = gid ? units.find((u) => u.gid === gid) : null;
+      if (mate) {
+        mate.os.push(o);
+        mate.l = Math.min(mate.l, l);
+        mate.t = Math.min(mate.t, t);
+        mate.r = Math.max(mate.r, r);
+        mate.b = Math.max(mate.b, b);
+      } else units.push({ os: [o], parent, gid, l, t, r, b });
     });
     const horizontal = mode === 'left' || mode === 'hcenter' || mode === 'right' || mode === 'hspace';
     const enough = units.length >= (mode === 'hspace' || mode === 'vspace' ? 3 : 2);
@@ -2629,9 +2751,11 @@ export default function CoverStudio({
       const B = Math.max(...units.map((u) => u.b));
       const move = (u, dx, dy) => {
         if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
-        u.o.set({ left: u.o.left + dx, top: u.o.top + dy });
-        u.o.setCoords();
-        layoutAttached(u.parent || u.o);
+        u.os.forEach((o) => {
+          o.set({ left: o.left + dx, top: o.top + dy });
+          o.setCoords();
+          layoutAttached(u.parent || o);
+        });
       };
       if (mode === 'hspace' || mode === 'vspace') {
         // the outer two stay put; the gaps between neighbours become equal
@@ -3158,6 +3282,7 @@ export default function CoverStudio({
     if (!c || !o || !o.studio) return;
     const cl = await cloneItem(o);
     delete cl.studio.set;
+    delete cl.studio.gid; // one item copied out of a group is on its own
     // a copied name or caption becomes a free text block
     if (cl.studio.attach) {
       delete cl.studio.attach;
@@ -3211,6 +3336,7 @@ export default function CoverStudio({
       p.start = placeOf(p.o);
     });
     const st = { target, t0: { left: target.left, top: target.top }, members, plan, moved: false, done: false, placed: false, failed: false, cursor: c.moveCursor };
+    const stamp = Date.now().toString(36);
     c.moveCursor = 'copy';
     st.ready = (async () => {
       try {
@@ -3219,6 +3345,8 @@ export default function CoverStudio({
           cl.set(p.start);
           if (p.kind === 'kid') cl.studio.attach = { ...p.o.studio.attach, to: plan.find((q) => q.o === p.parent).cl };
           else delete cl.studio.set;
+          // copies of a group form a group of their own, never one with the originals
+          if (cl.studio.gid) cl.studio.gid = `${cl.studio.gid}-${stamp}`;
           if (p.kind === 'free') {
             delete cl.studio.attach;
             cl.set({ selectable: true });
@@ -3230,6 +3358,11 @@ export default function CoverStudio({
         st.failed = true;
         return;
       }
+      // a copy that ended up the only one of its group is simply an item
+      plan.forEach((p) => {
+        const id = p.cl.studio.gid;
+        if (id && plan.filter((q) => q.cl.studio.gid === id).length < 2) delete p.cl.studio.gid;
+      });
       if (st.done || fabricRef.current !== c) return;
       // each stand-in sits just beneath its original while that is dragged off
       plan.forEach((p) => {
@@ -3369,8 +3502,10 @@ export default function CoverStudio({
 
   const alignTo = (where) => {
     const c = fabricRef.current;
-    const o = active1();
-    if (!c || !o) return;
+    const act = c ? c.getActiveObject() : null;
+    if (!act) return;
+    const many = !act.studio && typeof act.getObjects === 'function';
+    const o = act;
     const br = o.getBoundingRect();
     const d = { x: 0, y: 0 };
     if (where === 'left') d.x = SAFE - br.left;
@@ -3379,13 +3514,75 @@ export default function CoverStudio({
     if (where === 'top') d.y = SAFE - br.top;
     if (where === 'vcenter') d.y = H / 2 - (br.top + br.height / 2);
     if (where === 'bottom') d.y = H - SAFE - (br.top + br.height);
-    o.set({ left: o.left + d.x, top: o.top + d.y });
-    o.setCoords();
-    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
+    if (many) {
+      // several items (a group, or anything selected together) are placed as
+      // one block: each moves by the same amount
+      const picked = act.getObjects().slice();
+      const tabWas = leftTab;
+      c.discardActiveObject();
+      picked.forEach((x) => {
+        if (!x.studio) return;
+        const parent = x.studio.attach ? x.studio.attach.to : null;
+        if (parent && picked.includes(parent)) return; // travels with its guest
+        x.set({ left: x.left + d.x, top: x.top + d.y });
+        x.setCoords();
+        layoutAttached(parent || x);
+      });
+      const still = picked.filter((x) => c.getObjects().includes(x));
+      if (still.length > 1) c.setActiveObject(new ActiveSelection(still, { canvas: c }));
+      setLeftTab(tabWas);
+    } else {
+      o.set({ left: o.left + d.x, top: o.top + d.y });
+      o.setCoords();
+      if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
+    }
     c.requestRenderAll();
     commit();
     bump();
   };
+
+  // ---------- groups ----------
+  // A group is nothing more than a shared id (studio.gid) on its items: they
+  // stay ordinary items, and a click on one selects them all (see the
+  // 'mouse:down:before' handler). A name, title or caption belongs to its
+  // owner, so it is the owner that joins the group.
+  const groupSelected = () => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const roots = new Set();
+    c.getActiveObjects().forEach((x) => {
+      if (!x.studio) return;
+      const root = x.studio.attach ? x.studio.attach.to : x;
+      if (root && root.studio && root.selectable !== false) roots.add(root);
+    });
+    if (roots.size < 2) return;
+    const gid = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    // anything grouped with one of them before joins the new group too
+    const old = new Set([...roots].map((x) => x.studio.gid).filter(Boolean));
+    c.getObjects().forEach((x) => {
+      if (x.studio && (roots.has(x) || (x.studio.gid && old.has(x.studio.gid)))) x.studio.gid = gid;
+    });
+    const mates = c.getObjects().filter((x) => x.studio && x.studio.gid === gid);
+    const tabWas = leftTab;
+    c.discardActiveObject();
+    c.setActiveObject(new ActiveSelection(mates, { canvas: c }));
+    setLeftTab(tabWas);
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+  const ungroupSelected = () => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const ids = new Set(c.getActiveObjects().map((x) => x.studio && x.studio.gid).filter(Boolean));
+    if (!ids.size) return;
+    c.getObjects().forEach((x) => {
+      if (x.studio && ids.has(x.studio.gid)) delete x.studio.gid;
+    });
+    commit();
+    bump();
+  };
+  groupRef.current = { group: groupSelected, ungroup: ungroupSelected };
 
   const setTint = (mode, color) => {
     const c = fabricRef.current;
@@ -3709,6 +3906,12 @@ export default function CoverStudio({
         return;
       }
       if (control) return;
+      if (meta && key === 'g') {
+        e.preventDefault();
+        if (e.shiftKey) groupRef.current.ungroup();
+        else groupRef.current.group();
+        return;
+      }
       if (!o) return;
       if (key === 'delete' || key === 'backspace') {
         e.preventDefault();
@@ -4556,7 +4759,16 @@ export default function CoverStudio({
   const sizePieces = c && selection.length ? piecesOf(selection) : [];
   const sizeNow = sizePieces.length ? spanOf(sizePieces).w : 0;
   // how many separate pieces are selected (a guest with its name and title is one)
-  const alignCount = selection.filter((o) => o.studio && !(o.studio.attach && selection.includes(o.studio.attach.to))).length;
+  // (and the items of a group are one)
+  const alignCount = new Set(
+    selection.filter((o) => o.studio && !(o.studio.attach && selection.includes(o.studio.attach.to))).map((o) => (!o.studio.attach && o.studio.gid) || o)
+  ).size;
+  // groups: can the selection be made one, and is any of it in one already
+  const selGids = new Set(selection.map((o) => o.studio && o.studio.gid).filter(Boolean));
+  const selRoots = new Set(selection.filter((o) => o.studio).map((o) => (o.studio.attach ? o.studio.attach.to : o)));
+  const oneGroup = selGids.size === 1 && [...selRoots].every((o) => o && o.studio && o.studio.gid && selGids.has(o.studio.gid));
+  const canGroup = selRoots.size >= 2 && !oneGroup;
+  const canUngroup = selGids.size > 0;
   // Guests that show a name plate, in reading order, for the name strip.
   const plateGuests = guestList
     .filter((o) => o.studio.textStyle !== 'none')
@@ -5172,10 +5384,31 @@ export default function CoverStudio({
           )}
           {selection.length > 1 && (
             <>
+              <FieldLabel style={{ marginTop: 10 }}>Group</FieldLabel>
+              <Row>
+                <Ghost onClick={groupSelected} disabled={!canGroup}>Group these items</Ghost>
+                <Ghost onClick={ungroupSelected} disabled={!canUngroup}>Ungroup</Ghost>
+              </Row>
+              <Muted style={{ marginTop: 6 }}>
+                {oneGroup
+                  ? 'This is a group: a click on one of its items selects them all, and they move and snap to the guides as one. Double-click an item to work on it alone.'
+                  : 'A group moves as one piece: its middle and edges snap to the centre of the cover and to other items.'}
+              </Muted>
+              <FieldLabel style={{ marginTop: 10 }}>Place on cover (all of them as one block)</FieldLabel>
+              <Seg>
+                {[['left', 'Left'], ['hcenter', 'Centre'], ['right', 'Right']].map(([id, label]) => (
+                  <SegBtn key={id} onClick={() => alignTo(id)}>{label}</SegBtn>
+                ))}
+              </Seg>
+              <Seg style={{ marginTop: 6 }}>
+                {[['top', 'Top'], ['vcenter', 'Middle'], ['bottom', 'Bottom']].map(([id, label]) => (
+                  <SegBtn key={id} onClick={() => alignTo(id)}>{label}</SegBtn>
+                ))}
+              </Seg>
               <FieldLabel style={{ marginTop: 10 }}>Line up and space out</FieldLabel>
               <AlignTools count={alignCount} onAlign={alignSelected} />
               <Muted style={{ marginTop: 6 }}>
-                The first six line the items up with each other. The last two give three or more items equal gaps; the outer two stay where they are.
+                The first six line the items up with each other. The last two give three or more items equal gaps; the outer two stay where they are. A group counts as one item here.
               </Muted>
             </>
           )}
@@ -5862,7 +6095,7 @@ export default function CoverStudio({
             <ToolCheck>
               <input type="checkbox" checked={showGuides} onChange={(e) => setShowGuides(e.target.checked)} /> Safe area
             </ToolCheck>
-            <ToolCheck title="Pull items to the centre lines and safe margins while dragging. Hold Cmd to place freely.">
+            <ToolCheck title="While dragging, pull items to the centre lines, the safe margins, and the edges and centres of other items. Hold Cmd to place freely.">
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap
             </ToolCheck>
           </Group>
@@ -5882,6 +6115,10 @@ export default function CoverStudio({
           <Group title={alignCount < 2 ? 'Select two or more items first: hold Shift and click them, or drag a box around them' : undefined}>
             <ToolLabel>Align</ToolLabel>
             <AlignTools count={alignCount} onAlign={alignSelected} />
+          </Group>
+          <Group>
+            <Tool disabled={!canGroup} onClick={groupSelected} title="Make the selected items a group: a click on one selects them all, and they move and snap as one (Cmd/Ctrl+G)">Group</Tool>
+            <Tool disabled={!canUngroup} onClick={ungroupSelected} title="Make the items of this group separate again (Shift+Cmd/Ctrl+G)">Ungroup</Tool>
           </Group>
           <Group title="Sizes the selected piece as a whole: a guest with its name and title, Hosted by with its badge, or everything you have selected. Drag a part on the cover to size only that part.">
             <ToolLabel>Size</ToolLabel>
@@ -5962,8 +6199,8 @@ export default function CoverStudio({
           )}
           {showGuides && <SafeBox $w={W} $h={H} />}
           <GradDots specRef={gradSpecRef} syncRef={gradSyncRef} stageRef={stageRef} coverW={W} coverH={H} onMove={moveGradDot} onReach={reachGradDot} onDone={endGradDot} />
-          {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
-          {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
+          {guides.v !== null && <GuideV $item={!!guides.vi} style={{ left: `${(guides.v / W) * 100}%` }} />}
+          {guides.h !== null && <GuideH $item={!!guides.hi} style={{ top: `${(guides.h / H) * 100}%` }} />}
           {objectCount === 0 && (
             <EmptyHint>
               <b>{isInterview ? 'Pick a layout to start, or add guests, logos and text yourself.' : 'Start with a background, then add a logo and a headline.'}</b>
@@ -5973,7 +6210,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt and drag to pull off a copy. A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Shift while dragging to keep an item on the line it started on, across or up and down. Hold Option/Alt and drag to pull off a copy (with Shift, the copy stays in line with the original). Items snap to the cover's centre lines and margins (pink line) and to the edges and centres of other items (blue line). A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+G groups the selected items (a click on one then selects them all; double-click one to work on it alone), Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
@@ -8007,7 +8244,7 @@ const GuideV = styled.div`
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #ff3d9a;
+  background: ${(p) => (p.$item ? '#00d4ff' : '#ff3d9a')};
   pointer-events: none;
 `;
 
@@ -8017,7 +8254,7 @@ const GuideH = styled.div`
   left: 0;
   right: 0;
   height: 1px;
-  background: #ff3d9a;
+  background: ${(p) => (p.$item ? '#00d4ff' : '#ff3d9a')};
   pointer-events: none;
 `;
 
