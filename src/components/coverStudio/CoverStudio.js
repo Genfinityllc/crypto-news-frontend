@@ -6268,6 +6268,15 @@ export default function CoverStudio({
                                 <Slider label="Line spacing" min={0.6} max={3} step={0.01} value={selRing.leading} onChange={(v) => setShapeText({ leading: v })} fmt={(v) => `${v.toFixed(2)}`} />
                               )}
                               <Slider label="Distance from the outline" min={0} max={200} step={1} value={selRing.gap} onChange={(v) => setShapeText({ gap: v })} fmt={(v) => `${Math.round(v)}px`} />
+                              <Check>
+                                <input type="checkbox" checked={selRing.fit !== 'centre'} onChange={(e) => setShapeText({ fit: e.target.checked ? 'auto' : 'centre' })} />
+                                Close the ring: no gap where a line ends
+                              </Check>
+                              <Muted>
+                                {selRing.fit !== 'centre'
+                                  ? 'A line that goes most of the way round is spread evenly so it meets its own beginning. A line a little too long for its ring is drawn slightly smaller to fit it, and a much longer one is shared evenly between rings. A short line stays where it is.'
+                                  : 'Every line keeps its typed spacing and sits centred on its place.'}
+                              </Muted>
                               <Slider label="Move the text round the shape" min={0} max={1} step={0.005} value={selRing.start} onChange={(v) => setShapeText({ start: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
                             </div>
                             <FieldLabel style={{ marginTop: 8 }}>{selRingRange ? 'Font of the highlighted letters' : 'Font'}</FieldLabel>
@@ -6305,7 +6314,7 @@ export default function CoverStudio({
                               Show only the text (hide the shape itself)
                             </Check>
                             <Muted>
-                              The text belongs to this shape: it follows when the shape is moved, rounded or turned, and dragging a corner of the shape (or the toolbar's Size) scales the shape and its text together. Press Enter in the box for another line; each line follows the outline. A line too long to go once round carries on along the next ring instead of running over itself; use Letter size or Letter spacing to fit more or less on a ring. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
+                              The text belongs to this shape: it follows when the shape is moved, rounded or turned, and dragging a corner of the shape (or the toolbar's Size) scales the shape and its text together. Press Enter in the box for another line; each line follows the outline. Text never runs over itself: see "Close the ring" above. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
                             </Muted>
                           </>
                         ) : (

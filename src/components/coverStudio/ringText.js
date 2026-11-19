@@ -17,6 +17,10 @@
 //   size     letter size in cover pixels
 //   spacing  letter spacing in thousandths of the size (as text items use)
 //   leading  line spacing, as a share of the letter size
+//   fit      'auto' (the usual): a line that fills most of its ring is spread
+//            evenly all the way round, so the ring closes with no gap, and a
+//            long line is shared evenly between its rings. 'centre': every
+//            line keeps its typed spacing and sits centred on its place.
 //   only     show the text and not the shape itself
 // The text can have several lines (Enter): each is a ring of its own, one
 // line's height farther from (or nearer to) the outline than the one before,
@@ -36,6 +40,7 @@ export const RING_DEFAULT = {
   size: 44,
   spacing: 60,
   leading: 1.15,
+  fit: 'auto',
   family: 'Inter',
   weight: 700,
   italic: false,
@@ -188,6 +193,11 @@ function outline(w, h, r) {
   };
 }
 
+// A line that fills at least this share of its ring is spread all the way round.
+const CLOSE_FROM = 0.6;
+// A typed line up to this many times too long for its ring is made smaller to fit it.
+const OVER = 1.45;
+
 // Draw the ring of a shape w x h with corner radius r, centred on the origin.
 export function paintRing(ctx, ring, w, h, r) {
   if (!hasRing(ring) || w <= 0 || h <= 0) return;
@@ -224,6 +234,7 @@ export function paintRing(ctx, ring, w, h, r) {
     return letters;
   });
   if (marked) ctx.font = ringFont(ring);
+  const spaceW = ctx.measureText(' ').width;
   const widthOf = (letters) => letters.reduce((sum, L, k) => sum + L.w + (k < letters.length - 1 ? gapAfter(L) : 0), 0);
 
   // The path ring number i of n stands on. Its distance from the outline
@@ -240,15 +251,37 @@ export function paintRing(ctx, ring, w, h, r) {
     if (pw < 2 || ph < 2) return null;
     return outline(pw, ph, Math.max(0, corner + off));
   };
-  // how much text fits once round, leaving a little air where the end meets the start
-  const roomOf = (path) => (path ? Math.max(size, path.total - size * 0.45) : Infinity);
+  const auto = ring.fit !== 'centre';
+  // How much text fits once round. Typed spacing leaves a little air where the
+  // end meets the start; a ring that will be closed (see below) is filled right up.
+  const roomOf = (path) => (path ? Math.max(size, auto ? path.total : path.total - size * 0.45) : Infinity);
 
   // Words that do not fit once round carry on along the next ring (owner
   // 2026-11-19: a long line used to run over its own beginning). A typed
   // line break always starts a new ring.
+  // share: how full a ring may get (1 = all of it), one for every typed line
+  // or one for all. The result also says how many rings each typed line took.
   const wrap = (n, share = 1) => {
     const rings = [];
-    typed.forEach((letters) => {
+    const counts = [];
+    typed.forEach((letters, j) => {
+      const fill = Array.isArray(share) ? share[j] : share;
+      const before = rings.length;
+      // A typed line that is only somewhat too long for its ring stays on that
+      // one ring: closing the ring draws its letters that much smaller (the
+      // same words on an inner, shorter ring come out a little smaller
+      // instead of splitting in two). Only a much longer line is shared out.
+      if (auto) {
+        let end = letters.length;
+        while (end > 0 && !letters[end - 1].ch.trim()) end -= 1;
+        const whole = letters.slice(0, end);
+        const here = pathOf(rings.length, n);
+        if (whole.length && here && widthOf(whole) <= here.total * OVER) {
+          rings.push(whole);
+          counts.push(1);
+          return;
+        }
+      }
       // words, with the spaces before each
       const words = [];
       let cur = null;
@@ -264,7 +297,7 @@ export function paintRing(ctx, ring, w, h, r) {
       let line = [];
       words.forEach((wd) => {
         if (!wd.word.length) return; // spaces at the end of a line
-        const room = roomOf(pathOf(rings.length, n)) * share;
+        const room = roomOf(pathOf(rings.length, n)) * fill;
         const joined = line.concat(wd.space, wd.word);
         if (line.length && widthOf(joined) > room) {
           rings.push(line);
@@ -272,7 +305,9 @@ export function paintRing(ctx, ring, w, h, r) {
         } else line = line.length ? joined : wd.word.slice();
       });
       rings.push(line);
+      counts.push(rings.length - before);
     });
+    rings.counts = counts;
     return rings;
   };
   // How many rings there are decides how large each one is, and that decides
@@ -305,20 +340,62 @@ export function paintRing(ctx, ring, w, h, r) {
   }
   n = rings.length;
 
+  // No odd gaps (owner 2026-11-19). First share the words evenly: a typed
+  // line that needs several rings fills each as little as still fits it into
+  // that many, so there is no full ring followed by a short leftover.
+  if (auto && rings.length > typed.length) {
+    const counts = rings.counts;
+    const shares = typed.map(() => 1);
+    typed.forEach((unused, j) => {
+      if (counts[j] < 2) return; // it has a ring to itself
+      let lo = 0.3; // too little room: it would need another ring
+      let hi = 1; // enough room
+      for (let k = 0; k < 10; k += 1) {
+        const mid = (lo + hi) / 2;
+        shares[j] = mid;
+        const trial = wrap(n, shares);
+        if (trial.length === n && trial.counts[j] === counts[j]) hi = mid;
+        else lo = mid;
+      }
+      shares[j] = hi;
+    });
+    const even = wrap(n, shares);
+    if (even.length === n) rings = even;
+  }
+
+  // rings that share one typed line always close: it is running text
+  const shared = [];
+  (rings.counts || []).forEach((count) => {
+    for (let k = 0; k < count; k += 1) shared.push(count > 1);
+  });
+
   rings.forEach((letters, i) => {
     if (!letters.length) return;
     const path = pathOf(i, n);
     if (!path) return;
     const full = widthOf(letters);
-    // a ring that is still too long (one very long word) is drawn tighter
-    const tight = Math.min(1, roomOf(path) / Math.max(1, full));
     const mid = (Math.max(0, Math.min(1, Number(ring.start) || 0)) + (flip ? 0.5 : 0)) * path.total;
+    // Then close the ring: a line that fills most of it (or shares its typed
+    // line with other rings) is spread evenly all the way round, the gap
+    // between its last and first letter the same as between any two. A
+    // shorter line stays as typed, centred on its place.
+    const closed = auto && letters.length > 1 && (shared[i] || full / path.total >= CLOSE_FROM);
+    // with the way back to its first letter: a word space, since the last
+    // word and the first are two words
+    const whole = full + gapAfter(letters[letters.length - 1]) + (closed ? spaceW + (size * (Number(ring.spacing) || 0)) / 1000 : 0);
+    // closing: more air between the letters when it is short of the ring,
+    // smaller letters when it is too long for it
+    const extra = closed && whole < path.total ? (path.total - whole) / letters.length : 0;
+    const shrink = closed && whole > path.total ? path.total / whole : 1;
+    const span = closed ? path.total : full;
+    // a line left as typed that is still too long (one very long word) is drawn tighter
+    const tight = closed ? shrink : Math.min(1, roomOf(path) / Math.max(1, full));
     let x = 0;
     letters.forEach((L) => {
       const centre = (x + L.w / 2) * tight;
-      x += L.w + gapAfter(L);
+      x += L.w + gapAfter(L) + extra;
       if (!L.ch.trim()) return;
-      const s = flip ? mid + (full * tight) / 2 - centre : mid - (full * tight) / 2 + centre;
+      const s = flip ? mid + (closed ? span : span * tight) / 2 - centre : mid - (closed ? span : span * tight) / 2 + centre;
       const p = path.at(s);
       ctx.save();
       if (L.look) {
@@ -327,6 +404,7 @@ export function paintRing(ctx, ring, w, h, r) {
       }
       ctx.translate(p.x, p.y);
       ctx.rotate(p.a + (flip ? Math.PI : 0));
+      if (shrink < 1) ctx.scale(shrink, shrink);
       ctx.fillText(L.ch, 0, 0);
       ctx.restore();
     });
