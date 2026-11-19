@@ -39,6 +39,7 @@ import {
 } from './interviewKit';
 import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, reachDot, reachOf, resizeGrad } from './gradients';
 import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand, cleanMap, colourMap, makeTilt, mapCss, resizeMap, setAdjust, setAdjustQuick, setBand, setTilt } from './imageAdjust';
+import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } from './patterns';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -450,6 +451,21 @@ function LayoutThumb({ layout, palette }) {
 // in place of its plain colour. Everything else is fabric's own rectangle.
 class StudioRect extends Rect {
   _renderFill(ctx) {
+    const pat = this.studio && this.studio.pattern;
+    if (pat) {
+      // A pattern (patterns.js) takes the place of the fill. It is drawn in
+      // cover pixels whatever the item's stretch is, so resizing the item
+      // shows more or less of the pattern and never stretches it.
+      const sx = Math.abs(this.scaleX) || 1;
+      const sy = Math.abs(this.scaleY) || 1;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0)';
+      ctx.clip();
+      ctx.scale(1 / sx, 1 / sy);
+      paintPattern(ctx, this, pat, typeof this.fill === 'string' && this.fill ? this.fill : '#ffffff', this.width * sx, this.height * sy);
+      ctx.restore();
+      return;
+    }
     const g = this.studio && this.studio.grad;
     if (!isGrad(g)) {
       super._renderFill(ctx);
@@ -542,6 +558,14 @@ const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.046, hostlabel: 0.225,
 const HEADLINE_SPACING = -55;
 const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title: { rel: 0.09, rel0: 0.09, wide: 1.4, dy: 0.08 } };
 
+// A locked item cannot be picked up, moved or resized on the cover: clicks go
+// straight through it to what is underneath. It is still selected from the
+// Layers list (or the Patterns tab) to change its settings.
+const applyLock = (o) => {
+  if (!o || !o.studio || !('locked' in o.studio)) return;
+  const free = !o.studio.locked;
+  o.set({ selectable: free, evented: free, hasControls: free });
+};
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
 const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, (st.mapColors || []).join(','), adjustKey(st.adjust), st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
 
@@ -847,6 +871,11 @@ export default function CoverStudio({
           }
           if (st.kind === 'photo' && (photoSig(was) !== photoSig(st) || was.src !== st.src)) repaintPhoto(o);
           if (st.kind === 'text') applyTextBox(o);
+          if ('locked' in st || 'locked' in was) {
+            if (!('locked' in o.studio)) o.studio.locked = false;
+            applyLock(o);
+          }
+          if (st.pattern) o.dirty = true;
         }
         o.setCoords();
         c.add(o);
@@ -1105,7 +1134,7 @@ export default function CoverStudio({
           const rects = [];
           c.getObjects().forEach((x) => {
             const st = x.studio;
-            if (!st || moving.has(x) || standIns.has(x) || x.visible === false || st.seal) return;
+            if (!st || moving.has(x) || standIns.has(x) || x.visible === false || st.seal || st.pattern) return;
             if (st.attach && (st.attach.role === 'bar' || moving.has(st.attach.to))) return;
             rects.push(boxOf(x));
           });
@@ -2915,6 +2944,55 @@ export default function CoverStudio({
     bump();
   };
 
+  // ---------- patterns (patterns.js) ----------
+  // A pattern is a shape whose fill is the pattern. It starts over the whole
+  // cover, behind everything, and locked, so it is never picked up by
+  // accident; its settings are in the Edit panel.
+  const addPattern = (type) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const def = patternDef(type);
+    const o = makeShape({ x: 0, y: 0, w: W, h: H, round: 0, name: def.name, fill: '#ffffff' });
+    o.set({ fill: '#ffffff', opacity: def.opacity });
+    o.studio.pattern = def.make();
+    o.studio.locked = true;
+    applyLock(o);
+    c.sendObjectToBack(o);
+    finishAdd(o, 'patterns');
+  };
+  const setPattern = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || !o.studio.pattern) return;
+    o.studio.pattern = { ...o.studio.pattern, ...patch }; // never changed in place (history keeps the old one)
+    o.dirty = true;
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+  const setLocked = (locked) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio) return;
+    o.studio.locked = !!locked;
+    applyLock(o);
+    o.setCoords();
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+  const fillCover = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
+    o.studio.round = 0;
+    o.set({ left: W / 2, top: H / 2, width: W, height: H, scaleX: 1, scaleY: 1, angle: 0, rx: 0, ry: 0 });
+    o.setCoords();
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
   const addInterviewText = async (kind) => {
     const c = fabricRef.current;
     if (!c) return;
@@ -3273,6 +3351,7 @@ export default function CoverStudio({
     if (k === 'text') applyTextBox(cl);
     if (o.selectable === false) cl.set({ selectable: false, hoverCursor: 'pointer' });
     styleObject(cl);
+    applyLock(cl);
     return cl;
   };
 
@@ -4175,6 +4254,7 @@ export default function CoverStudio({
     if (!o) return null;
     o.studio = st;
     styleObject(o);
+    applyLock(o);
     if (shadowOn) o.set('shadow', softShadow());
     if (kind === 'text') applyTextBox(o);
     o.setCoords();
@@ -4732,11 +4812,12 @@ export default function CoverStudio({
     ...(userFonts.length ? [{ label: 'Your fonts', fonts: userFonts }] : []),
     ...['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => ({ label: kind, fonts: FONTS.filter((f) => f.kind === kind) })),
   ];
+  const patternList = c ? c.getObjects().filter((o) => o.studio && o.studio.pattern).reverse() : [];
   const kindLabel = (o) => {
     const k = o.studio && o.studio.kind;
     if (k === 'text') return 'Text';
     if (k === 'photo') return 'Guest';
-    if (k === 'shape') return 'Shape';
+    if (k === 'shape') return o.studio.pattern ? 'Pattern' : 'Shape';
     return o.studio && o.studio.seal ? 'Seal' : 'Logo';
   };
   const layerName = (o) => {
@@ -4798,6 +4879,7 @@ export default function CoverStudio({
                 ['logos', 'Logos'],
                 ['text', 'Text'],
                 ['shapes', 'Shapes'],
+                ['patterns', 'Patterns'],
                 ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
                 ['edit', 'Edit'],
               ]
@@ -4806,6 +4888,7 @@ export default function CoverStudio({
                 ['logos', 'Logos'],
                 ['seals', 'Seals'],
                 ['text', 'Text'],
+                ['patterns', 'Patterns'],
                 ['layers', `Layers${objectCount ? ` (${objectCount})` : ''}`],
                 ['edit', 'Edit'],
               ]
@@ -4953,6 +5036,41 @@ export default function CoverStudio({
               <SegBtn onClick={() => addShapePreset('bar')}>Bottom band</SegBtn>
             </Seg>
             <Hint>Panels are placed behind everything else.</Hint>
+          </PanelBody>
+        )}
+        {leftTab === 'patterns' && (
+          <PanelBody>
+            <Hint>A pattern adds interest over a background or a panel. It covers the whole cover to begin with, sits behind everything and cannot be picked up by accident; its size, colour and strength are in the Edit tab.</Hint>
+            {PATTERNS.map((p) => (
+              <PatternAdd key={p.id} type="button" onClick={() => addPattern(p.id)}>
+                <PatternThumb type={p.id} />
+                <span>
+                  <b>{p.name}</b>
+                  <small>{p.note}</small>
+                </span>
+              </PatternAdd>
+            ))}
+            {patternList.length > 0 && <FieldLabel>Patterns on this cover</FieldLabel>}
+            {patternList.map((o, i) => (
+              <LayerRow
+                key={i}
+                $on={selection.includes(o)}
+                onClick={() => {
+                  c.setActiveObject(o);
+                  c.requestRenderAll();
+                  prevTabRef.current = 'patterns';
+                  setLeftTab('edit');
+                  bump();
+                }}
+              >
+                <em>{o.studio.locked ? 'Locked' : 'Free'}</em>
+                <span>{o.studio.name || 'Pattern'}</span>
+              </LayerRow>
+            ))}
+            {patternList.length > 0 && <Hint>Click one to change it. To put a pattern over a panel, drag it above the panel in the Layers tab.</Hint>}
+            <FieldLabel>Picture overlays</FieldLabel>
+            <Ghost onClick={() => logoFileRef.current && logoFileRef.current.click()}>Add a PNG from my computer</Ghost>
+            <Hint>A PNG with a see-through background (arrows, coins, light streaks) is added as an image you can move, size, layer and fade. You can also drag the file straight onto the cover.</Hint>
           </PanelBody>
         )}
         <input ref={guestFileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onGuestFile} />
@@ -5770,7 +5888,45 @@ export default function CoverStudio({
                   </>
                 )}
 
-                {selKind === 'shape' && (
+                {selKind === 'shape' && sel.studio.pattern && (
+                  <>
+                    <InsCell>
+                      <FieldLabel>{patternDef(sel.studio.pattern.type).name}</FieldLabel>
+                      <PatternControls pat={sel.studio.pattern} onChange={setPattern} />
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Colour</FieldLabel>
+                      <SwatchRow>
+                        <input type="color" value={normHex(sel.fill, '#ffffff')} onChange={(e) => setShape({ fill: e.target.value })} />
+                        {['#ffffff', '#000000', bg.palette.a1, bg.palette.a2].map((col, i) => (
+                          <Swatch key={i} style={{ background: col }} onClick={() => setShape({ fill: col })} title={col} />
+                        ))}
+                      </SwatchRow>
+                      <Muted style={{ marginTop: 6 }}>How strong the pattern is: the Opacity slider below.</Muted>
+                    </InsCell>
+                    <InsCell>
+                      <FieldLabel>Where it shows</FieldLabel>
+                      <Check>
+                        <input type="checkbox" checked={!!sel.studio.locked} onChange={(e) => setLocked(e.target.checked)} />
+                        Locked in place
+                      </Check>
+                      <Muted>
+                        {sel.studio.locked
+                          ? 'Locked: clicks on the cover go through it to the items underneath. Untick to move it or drag its corners so it covers only part of the cover.'
+                          : 'You can drag it and its corners on the cover now. Resizing shows more or less of the pattern; it never stretches. Tick the box again when it is in place.'}
+                      </Muted>
+                      <Slider label="Width" min={10} max={W} step={2} value={sel.width} onChange={(v) => setShape({ width: v })} fmt={(v) => `${Math.round(v)}px`} />
+                      <Slider label="Height" min={10} max={H} step={2} value={sel.height} onChange={(v) => setShape({ height: v })} fmt={(v) => `${Math.round(v)}px`} />
+                      <Slider label="Rounded corners" min={0} max={1} step={0.01} value={sel.studio.round || 0} onChange={(v) => setShape({ round: v })} />
+                      <Row>
+                        <Ghost onClick={fillCover}>Cover the whole cover</Ghost>
+                        <Ghost onClick={() => reorder(sel, 'back')}>Send behind everything</Ghost>
+                      </Row>
+                      <Muted>To put it over a panel, drag it above the panel in the Layers tab.</Muted>
+                    </InsCell>
+                  </>
+                )}
+                {selKind === 'shape' && !sel.studio.pattern && (
                   <>
                     <InsCell>
                       <FieldLabel>Fill colour</FieldLabel>
@@ -6214,6 +6370,53 @@ export default function CoverStudio({
         </FootHint>
       </Main>
     </Wrap>
+  );
+}
+
+// ---------- patterns (patterns.js) ----------
+function PatternThumb({ type }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) drawPatternThumb(ref.current, type);
+  }, [type]);
+  return <canvas ref={ref} width={192} height={108} />;
+}
+
+// The sliders of one pattern. onChange gets the values that changed.
+function PatternControls({ pat, onChange }) {
+  const cell = patternCell(pat);
+  const px = (v) => `${Math.round(v)}px`;
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const ratio = pat.ratio || 0;
+  const sizeLabel = pat.type === 'plus' ? 'Line length between each plus' : pat.type === 'tiles' ? 'Size of the tiles' : 'Size of the squares';
+  return (
+    <>
+      <Slider label={sizeLabel} min={6} max={600} step={1} value={pat.size} onChange={(v) => onChange({ size: v })} fmt={px} />
+      <Slider
+        label="Square, or a rectangle"
+        min={-1}
+        max={1}
+        step={0.02}
+        value={ratio}
+        onChange={(v) => onChange({ ratio: Math.abs(v) < 0.04 ? 0 : v })}
+        fmt={() => (ratio === 0 ? 'Square' : `${cell.cw} by ${cell.ch}px, ${ratio > 0 ? 'wide' : 'tall'}`)}
+      />
+      {pat.type !== 'tiles' && <Slider label="Line thickness" min={1} max={20} step={1} value={pat.weight} onChange={(v) => onChange({ weight: v })} fmt={px} />}
+      {pat.type === 'plus' && (
+        <>
+          <Slider label="Size of each plus" min={2} max={200} step={1} value={pat.plus} onChange={(v) => onChange({ plus: v })} fmt={px} />
+          <Slider label="Lines between the pluses" min={0} max={1} step={0.01} value={pat.lines} onChange={(v) => onChange({ lines: v })} fmt={(v) => (v <= 0 ? 'None' : pct(v))} />
+        </>
+      )}
+      {pat.type === 'tiles' && (
+        <>
+          <Slider label="Gap between the tiles" min={1} max={40} step={1} value={pat.gap} onChange={(v) => onChange({ gap: v })} fmt={px} />
+          <Slider label="Rounded corners of the tiles" min={0} max={1} step={0.01} value={pat.round} onChange={(v) => onChange({ round: v })} fmt={pct} />
+        </>
+      )}
+      <Slider label="Slide the pattern left or right" min={0} max={1} step={0.01} value={pat.offX || 0} onChange={(v) => onChange({ offX: v })} fmt={pct} />
+      <Slider label="Slide the pattern up or down" min={0} max={1} step={0.01} value={pat.offY || 0} onChange={(v) => onChange({ offY: v })} fmt={pct} />
+    </>
   );
 }
 
@@ -6845,14 +7048,15 @@ const Tabs = styled.div`
 `;
 
 const Tab = styled.button`
-  flex: ${(p) => (p.$quarter ? '1 1 20%' : '1 1 auto')}; /* interview: nine tabs, five to a row */
+  flex: ${(p) => (p.$quarter ? '0 0 20%' : '1 1 auto')}; /* interview: ten tabs, five to a row */
+  min-width: 0;
   background: ${(p) => (p.$on ? '#161616' : 'transparent')};
   color: ${(p) => (p.$on ? '#e6edf3' : '#8b949e')};
   opacity: ${(p) => (p.$dim && !p.$on ? 0.45 : 1)};
   border: none;
   border-bottom: 2px solid ${(p) => (p.$on ? '#00d4ff' : 'transparent')};
-  padding: 0.85rem 0.2rem;
-  font-size: 0.76rem;
+  padding: ${(p) => (p.$quarter ? '0.85rem 0' : '0.85rem 0.2rem')};
+  font-size: ${(p) => (p.$quarter ? '0.72rem' : '0.76rem')};
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -7586,6 +7790,43 @@ const LayerGhost = styled.div`
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+`;
+
+// the Patterns tab: one button per pattern, with a small picture of it
+const PatternAdd = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #0a0a0a;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  canvas {
+    width: 96px;
+    height: 54px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    border: 1px solid #222222;
+  }
+  span {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  b {
+    color: #e6edf3;
+    font-size: 15px;
+  }
+  small {
+    color: #8b949e;
+    font-size: 0.74rem;
+  }
+  &:hover {
+    border-color: #00d4ff;
   }
 `;
 
