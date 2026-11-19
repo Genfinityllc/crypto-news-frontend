@@ -199,6 +199,30 @@ export function paintPhoto(st) {
     const y = cy - dh / 2 + (st.panY || 0) * (Math.abs(dh - bh) / 2);
     g.imageSmoothingQuality = 'high';
     g.drawImage(pic, x, y, dw, dh);
+  } else if (st.mask) {
+    // an empty image mask (a shape turned into one): the shape's own colour
+    // with a small picture sign, so it reads as "an image goes here"
+    g.fillStyle = st.maskFill || '#262b33';
+    g.fillRect(0, 0, c.width, c.height);
+    const m = Math.min(bw, bh);
+    const iw = m * 0.3;
+    const ih = iw * 0.74;
+    g.strokeStyle = 'rgba(255,255,255,0.55)';
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.lineWidth = Math.max(4, m * 0.014);
+    g.lineJoin = 'round';
+    g.strokeRect(cx - iw / 2, cy - ih / 2, iw, ih);
+    g.beginPath();
+    g.arc(cx - iw * 0.22, cy - ih * 0.18, iw * 0.07, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(cx - iw * 0.36, cy + ih * 0.34);
+    g.lineTo(cx - iw * 0.08, cy - ih * 0.02);
+    g.lineTo(cx + iw * 0.08, cy + ih * 0.16);
+    g.lineTo(cx + iw * 0.2, cy + ih * 0.02);
+    g.lineTo(cx + iw * 0.38, cy + ih * 0.34);
+    g.closePath();
+    g.fill();
   } else {
     // empty slot: a plain card with a head-and-shoulders outline
     g.fillStyle = '#262b33';

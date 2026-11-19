@@ -577,6 +577,32 @@ const ATTACH_REL = { name: 0.105, title: 0.06, caption: 0.046, hostlabel: 0.225,
 const HEADLINE_SPACING = -55;
 const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title: { rel: 0.09, rel0: 0.09, wide: 1.4, dy: 0.08 } };
 
+// A text's per-letter sizes and colours (fabric's `styles`), copied so that
+// history never shares them with the live text.
+const copyStyles = (styles) => {
+  const out = {};
+  Object.keys(styles || {}).forEach((line) => {
+    const row = {};
+    Object.keys(styles[line] || {}).forEach((ch) => {
+      if (styles[line][ch] && Object.keys(styles[line][ch]).length) row[ch] = { ...styles[line][ch] };
+    });
+    if (Object.keys(row).length) out[line] = row;
+  });
+  return out;
+};
+const hasLetterStyles = (o) => !!o && Object.keys(copyStyles(o.styles)).length > 0;
+// When the whole text changes size, letters with a size of their own keep
+// their share of it.
+const scaleLetterSizes = (o, k) => {
+  if (!o || !o.styles || !(k > 0) || k === 1) return;
+  Object.keys(o.styles).forEach((line) => {
+    Object.keys(o.styles[line] || {}).forEach((ch) => {
+      const st = o.styles[line][ch];
+      if (st && st.fontSize) st.fontSize = Math.max(4, Math.round(st.fontSize * k * 10) / 10);
+    });
+  });
+};
+
 // A locked item cannot be picked up, moved or resized on the cover: clicks go
 // straight through it to what is underneath. It is still selected from the
 // Layers list (or the Patterns tab) to change its settings.
@@ -586,7 +612,7 @@ const applyLock = (o) => {
   o.set({ selectable: free, evented: free, hasControls: free });
 };
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
-const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, (st.mapColors || []).join(','), adjustKey(st.adjust), st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
+const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, (st.mapColors || []).join(','), adjustKey(st.adjust), st.mask ? st.maskFill : '', st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
 
 // Are two background settings the same to look at? (History uses this to tell
 // a real change from a redraw.)
@@ -831,6 +857,7 @@ export default function CoverStudio({
         lineHeight: o.lineHeight,
         textAlign: o.textAlign,
         width: o.width,
+        styles: copyStyles(o.styles), // per-letter sizes and colours
       });
     } else if (o.studio) {
       Object.assign(p, { tint: o.studio.tint, tintColor: o.studio.tintColor });
@@ -879,6 +906,7 @@ export default function CoverStudio({
       h.stack[index].forEach(({ o, p }) => {
         // eslint-disable-next-line no-unused-vars
         const { shadowOn, tint, tintColor, st, ...props } = p;
+        if (props.styles) props.styles = copyStyles(props.styles);
         o.set(props);
         o.set('shadow', shadowOn ? softShadow() : null);
         if (st && o.studio) {
@@ -1051,6 +1079,8 @@ export default function CoverStudio({
       }
     });
     c.on('text:changed', onSel);
+    c.on('text:selection:changed', onSel); // the panel shows the highlighted letters' size and colour
+    c.on('text:editing:entered', onSel);
     c.on('text:editing:exited', (e) => {
       const t = e && e.target;
       if (t && t.studio && t.studio.attach && layoutAttachedRef.current) layoutAttachedRef.current(t.studio.attach.to);
@@ -1064,6 +1094,7 @@ export default function CoverStudio({
       // Corner-dragging a text box scales it; fold that into the font size so
       // the size shown in the inspector is always the real one.
       if (o && o.studio && o.studio.kind === 'text' && (o.scaleX !== 1 || o.scaleY !== 1)) {
+        scaleLetterSizes(o, Math.max(8, Math.round(o.fontSize * o.scaleY)) / o.fontSize);
         o.set({
           fontSize: Math.max(8, Math.round(o.fontSize * o.scaleY)),
           width: o.width * o.scaleX,
@@ -2189,7 +2220,7 @@ export default function CoverStudio({
       if (slot === 'ecosystem' && cap) texts.caption = typed(cap);
     });
     const now = objs
-      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host && !o.studio.mask)
       .sort(readingOrder)
       .map((o) => {
         const st = o.studio;
@@ -2254,7 +2285,7 @@ export default function CoverStudio({
     // always move into the new layout's guest places.
     const all = c.getObjects();
     // (a "Hosted by" host is something the person added: it stays put)
-    const builtBy = (o) => o.studio && (o.studio.tpl || (o.studio.kind === 'photo' && !o.studio.host));
+    const builtBy = (o) => o.studio && (o.studio.tpl || (o.studio.kind === 'photo' && !o.studio.host && !o.studio.mask));
     const mine = fresh ? [] : all.filter((o) => o.studio && !builtBy(o) && !(o.studio.attach && builtBy(o.studio.attach.to)));
     c.remove(...all.filter((o) => !mine.includes(o)));
     const had = new Set(c.getObjects());
@@ -2633,7 +2664,7 @@ export default function CoverStudio({
     if (!c) return;
     c.discardActiveObject();
     c.getObjects()
-      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host && !o.studio.mask)
       .forEach((frame) => {
         const sc = Math.max(0.02, width / frame.width);
         frame.set({ scaleX: sc, scaleY: sc });
@@ -2652,7 +2683,7 @@ export default function CoverStudio({
     if (!c || !ref) return;
     const k = width / Math.max(1, ref.getScaledWidth());
     c.getObjects()
-      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host)
+      .filter((o) => o.studio && o.studio.kind === 'photo' && !o.studio.host && !o.studio.mask)
       .forEach((frame) => {
         frame.set({ scaleX: Math.max(0.02, frame.scaleX * k), scaleY: Math.max(0.02, frame.scaleY * k) });
         frame.setCoords();
@@ -3008,6 +3039,78 @@ export default function CoverStudio({
     o.studio.round = 0;
     o.set({ left: W / 2, top: H / 2, width: W, height: H, scaleX: 1, scaleY: 1, angle: 0, rx: 0, ry: 0 });
     o.setCoords();
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
+  // ---------- a shape as a mask for an image ----------
+  // "Make it a mask" (owner 2026-11-19) swaps the shape for a picture frame of
+  // the same outline, place, size, turn and layer: the same kind of item a
+  // guest photo is, without a name or title and not counted as a guest. An
+  // image dropped on it (or chosen in its Edit panel) is cropped to the shape.
+  const makeMask = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'shape' || o.studio.attach || o.studio.pattern) return;
+    const w = Math.max(8, o.width * o.scaleX);
+    const h = Math.max(8, o.height * o.scaleY);
+    const round = o.studio.round || 0;
+    const circle = Math.abs(w - h) < 1.5 && round >= 0.98;
+    const at = c.getObjects().indexOf(o);
+    const mid = o.getCenterPoint();
+    const frame = makePhoto({ shape: circle ? 'circle' : 'rect', aspect: w / h, rounding: circle ? 0 : round, size: w, cx: mid.x, cy: mid.y, style: 'none' });
+    Object.assign(frame.studio, { mask: true, maskFill: typeof o.fill === 'string' && o.fill ? o.fill : '#262b33', name: 'Image mask' });
+    if (o.studio.gid) frame.studio.gid = o.studio.gid;
+    if (o.studio.tpl) frame.studio.tpl = o.studio.tpl;
+    frame.set({ angle: o.angle, opacity: o.opacity });
+    if (o.shadow) frame.set('shadow', softShadow());
+    repaintPhoto(frame);
+    c.discardActiveObject();
+    c.remove(o);
+    if (at >= 0) c.moveObjectTo(frame, at);
+    c.setActiveObject(frame);
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+
+  // ---------- part of a text in its own size or colour ----------
+  // While a text is being typed in (double-click) and some of it is
+  // highlighted, Size and Colour change only the highlighted letters (owner
+  // 2026-11-19). fabric keeps such per-letter values in the text's `styles`.
+  const textRange = (o) => (o && o.isEditing && o.selectionStart !== o.selectionEnd ? [Math.min(o.selectionStart, o.selectionEnd), Math.max(o.selectionStart, o.selectionEnd)] : null);
+  const styleText = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'text') return;
+    const range = textRange(o);
+    if (!range) {
+      // the whole text: letters with a size of their own keep their share of it
+      if (patch.fontSize && o.fontSize) scaleLetterSizes(o, patch.fontSize / o.fontSize);
+      change(patch);
+      return;
+    }
+    o.setSelectionStyles(patch, range[0], range[1]);
+    o.initDimensions();
+    o.set({ dirty: true });
+    o.setCoords();
+    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
+    c.requestRenderAll();
+    if (typeof o.renderCursorOrSelection === 'function') o.renderCursorOrSelection(); // keep the highlight in view
+    commitSoon();
+    bump();
+  };
+  // every letter back to the text's own size and colour
+  const clearLetterStyles = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'text') return;
+    o.set('styles', {});
+    o.initDimensions();
+    o.set({ dirty: true });
+    o.setCoords();
+    if (o.studio) layoutAttached(o.studio.attach ? o.studio.attach.to : o);
     c.requestRenderAll();
     commit();
     bump();
@@ -4884,13 +4987,16 @@ export default function CoverStudio({
     ...['Sans', 'Condensed', 'Serif', 'Display', 'Mono'].map((kind) => ({ label: kind, fonts: FONTS.filter((f) => f.kind === kind) })),
   ];
   const patternList = c ? c.getObjects().filter((o) => o.studio && o.studio.pattern).reverse() : [];
+  // letters highlighted in a text that is being typed in, and their own size and colour
+  const selRange = selKind === 'text' && sel.isEditing && sel.selectionStart !== sel.selectionEnd;
+  const selLetter = selRange ? sel.getSelectionStyles(Math.min(sel.selectionStart, sel.selectionEnd), Math.min(sel.selectionStart, sel.selectionEnd) + 1)[0] || {} : {};
   // the selected shape's outline text (its settings, or the starting ones)
   const selRing = selKind === 'shape' ? { ...RING_DEFAULT, ...(sel.studio.ring || {}) } : RING_DEFAULT;
   const selRingFont = findFont(selRing.family, userFonts);
   const kindLabel = (o) => {
     const k = o.studio && o.studio.kind;
     if (k === 'text') return 'Text';
-    if (k === 'photo') return 'Guest';
+    if (k === 'photo') return o.studio.mask ? 'Mask' : 'Guest';
     if (k === 'shape') return o.studio.pattern ? 'Pattern' : 'Shape';
     return o.studio && o.studio.seal ? 'Seal' : 'Logo';
   };
@@ -4899,7 +5005,7 @@ export default function CoverStudio({
     if (k === 'text') return String(o.text || '').replace(/\s+/g, ' ').slice(0, 26) || 'Text';
     if (k === 'photo') {
       const nm = guestText(o, 'name');
-      return (nm && String(nm.text || '').replace(/\s+/g, ' ').slice(0, 26)) || 'Guest';
+      return (nm && String(nm.text || '').replace(/\s+/g, ' ').slice(0, 26)) || (o.studio.mask ? 'Image mask' : 'Guest');
     }
     return (o.studio && o.studio.name) || 'Logo';
   };
@@ -4909,7 +5015,7 @@ export default function CoverStudio({
   // or the label when its logo is selected
   const selCap = selKind === 'text' && sel.studio.attach && sel.studio.attach.role === 'caption' ? sel.studio.attach.to : null;
   const logoCap = selKind === 'logo' && !sel.studio.attach ? guestText(sel, 'caption') : null;
-  const sizedGuests = guestList.filter((o) => !o.studio.host).length; // guests that size together (a host is not one)
+  const sizedGuests = guestList.filter((o) => !o.studio.host && !o.studio.mask).length; // guests that size together (a host is not one)
   // the whole pieces behind the selection, for the toolbar's Size control
   const sizePieces = c && selection.length ? piecesOf(selection) : [];
   const sizeNow = sizePieces.length ? spanOf(sizePieces).w : 0;
@@ -5045,7 +5151,7 @@ export default function CoverStudio({
               ))}
             </HostGrid>
             <Hint>To put a host into a guest that is already on the cover, click that guest and pick the host under Photo.</Hint>
-            {guestList.filter((o) => !o.studio.host).length > 1 && (
+            {guestList.filter((o) => !o.studio.host && !o.studio.mask).length > 1 && (
               <>
                 <FieldLabel>All guests</FieldLabel>
                 <Slider
@@ -5054,7 +5160,7 @@ export default function CoverStudio({
                   max={1200}
                   step={2}
                   value={(() => {
-                    const only = guestList.filter((o) => !o.studio.host);
+                    const only = guestList.filter((o) => !o.studio.host && !o.studio.mask);
                     return only.reduce((sum, o) => sum + o.getScaledWidth(), 0) / Math.max(1, only.length);
                   })()}
                   onChange={resizeAllGuests}
@@ -5076,7 +5182,7 @@ export default function CoverStudio({
                   bump();
                 }}
               >
-                <em>{o.studio.host ? 'Host' : 'Guest'}</em>
+                <em>{o.studio.host ? 'Host' : o.studio.mask ? 'Mask' : 'Guest'}</em>
                 <span>{layerName(o)}</span>
                 <button type="button" onClick={(e) => { e.stopPropagation(); pickGuestPhoto(o); }}>{o.studio.src ? 'Replace photo' : 'Choose photo'}</button>
               </LayerRow>
@@ -5630,7 +5736,7 @@ export default function CoverStudio({
                       onChange={(v) => resizeWhole(sel.studio.attach.to, v)}
                       fmt={(v) => `${Math.round(v)}px wide`}
                     />
-                    {sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' && !sel.studio.attach.to.studio.host && sizedGuests > 1 && (
+                    {sel.studio.attach.to.studio && sel.studio.attach.to.studio.kind === 'photo' && !sel.studio.attach.to.studio.host && !sel.studio.attach.to.studio.mask && sizedGuests > 1 && (
                       <Slider
                         label="Size of all guests together"
                         min={60}
@@ -5684,20 +5790,30 @@ export default function CoverStudio({
                         </>
                       ) : (
                         <>
-                          <Slider label="Size" min={12} max={260} step={1} value={sel.fontSize} onChange={(v) => change({ fontSize: v })} fmt={(v) => `${Math.round(v)}px`} />
+                          <Slider label={selRange ? 'Size of the highlighted letters' : 'Size'} min={12} max={260} step={1} value={selLetter.fontSize || sel.fontSize} onChange={(v) => styleText({ fontSize: v })} fmt={(v) => `${Math.round(v)}px`} />
                           <Slider label="Letter spacing" min={-80} max={500} step={5} value={sel.charSpacing} onChange={(v) => change({ charSpacing: v })} fmt={(v) => `${Math.round(v)}`} />
                         </>
                       )}
                       <Slider label="Line height" min={0.8} max={1.8} step={0.02} value={sel.lineHeight} onChange={(v) => change({ lineHeight: v })} fmt={(v) => v.toFixed(2)} />
                     </InsCell>
                     <InsCell>
-                      <FieldLabel>Colour</FieldLabel>
+                      <FieldLabel>{selRange ? 'Colour of the highlighted letters' : 'Colour'}</FieldLabel>
                       <SwatchRow>
-                        <input type="color" value={normHex(sel.fill)} onChange={(e) => change({ fill: e.target.value })} />
+                        <input type="color" value={normHex(selLetter.fill || sel.fill)} onChange={(e) => styleText({ fill: e.target.value })} />
                         {['#ffffff', '#0f172a', bg.palette.a1, bg.palette.a2].map((col, i) => (
-                          <Swatch key={i} style={{ background: col }} onClick={() => change({ fill: col })} title={col} />
+                          <Swatch key={i} style={{ background: col }} onClick={() => styleText({ fill: col })} title={col} />
                         ))}
                       </SwatchRow>
+                      <Muted style={{ marginTop: 6 }}>
+                        {selRange
+                          ? 'Size and Colour now change only the highlighted letters.'
+                          : 'For part of the text only: double-click the text on the cover, highlight the letters, then change Size or Colour here.'}
+                      </Muted>
+                      {hasLetterStyles(sel) && (
+                        <Row style={{ marginTop: 6 }}>
+                          <Ghost onClick={clearLetterStyles}>Make every letter the same again</Ghost>
+                        </Row>
+                      )}
                       <FieldLabel style={{ marginTop: 10 }}>Align text</FieldLabel>
                       <Seg>
                         {[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']].map(([id, label]) => (
@@ -5756,12 +5872,12 @@ export default function CoverStudio({
                     <InsCell>
                       <FieldLabel>Whole guest</FieldLabel>
                       <Slider label="Size (photo, name, title and bar together)" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => resizeWhole(sel, v)} fmt={(v) => `${Math.round(v)}px wide`} />
-                      {!selPhoto.host && sizedGuests > 1 && (
+                      {!selPhoto.host && !selPhoto.mask && sizedGuests > 1 && (
                         <Slider label="Size of all guests together" min={60} max={1500} step={2} value={sel.getScaledWidth()} onChange={(v) => scaleAllGuests(sel, v)} fmt={(v) => `${Math.round(v)}px wide`} />
                       )}
                       <Muted>
                         Dragging a corner of the photo does the same. The name and title keep their share of the size.
-                        {!selPhoto.host && sizedGuests > 1 ? ' The second slider sizes every guest by the same amount, each with its photo shape, name and title; each guest stays where it is.' : ''}
+                        {!selPhoto.host && !selPhoto.mask && sizedGuests > 1 ? ' The second slider sizes every guest by the same amount, each with its photo shape, name and title; each guest stays where it is.' : ''}
                       </Muted>
                     </InsCell>
                     <InsCell>
@@ -6029,6 +6145,17 @@ export default function CoverStudio({
                         <Slider label="Rounded corners" min={0} max={1} step={0.01} value={sel.studio.round || 0} onChange={(v) => setShape({ round: v })} />
                         <Slider label="Grain on this shape" min={0} max={1} step={0.02} value={sel.studio.grain || 0} onChange={(v) => setShape({ grain: v })} />
                         <Muted>Only this shape gets the grain. Guests, bars and text on top of it stay clean.</Muted>
+                      </InsCell>
+                    )}
+                    {!sel.studio.attach && (
+                      <InsCell>
+                        <FieldLabel>Image inside this shape</FieldLabel>
+                        <Row>
+                          <Ghost onClick={makeMask}>Make it a mask</Ghost>
+                        </Row>
+                        <Muted style={{ marginTop: 6 }}>
+                          The shape becomes a frame, like a guest photo's: drag an image from your computer onto it and the image is cropped to the shape, where you can zoom and move it. The shape's own text, gradient and grain are not carried over; Undo brings the shape back.
+                        </Muted>
                       </InsCell>
                     )}
                     {!sel.studio.attach && (
