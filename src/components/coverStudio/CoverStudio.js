@@ -549,6 +549,8 @@ export default function CoverStudio({
   const wordmarkRef = useRef(null);
   const layoutAttachedRef = useRef(null);
   const layoutAllRef = useRef(null);
+  const altDragRef = useRef(null); // an Option/Alt drag-a-copy in progress
+  const altDupRef = useRef({}); // its start / end handlers (set further down)
   const sharpenRef = useRef(null);
   const sharpenTimer = useRef(null);
   const sharpeningRef = useRef(new WeakSet());
@@ -845,6 +847,11 @@ export default function CoverStudio({
           return 'edit';
         });
       }
+      // Option/Alt + drag pulls a copy off the item (or off everything selected)
+      const tr = c._currentTransform;
+      if (e.e && e.e.altKey && hit && hit === c.getActiveObject() && tr && tr.action === 'drag' && !hit.isEditing && altDupRef.current.start) {
+        altDupRef.current.start(hit);
+      }
     });
     c.on('text:changed', onSel);
     c.on('text:editing:exited', (e) => {
@@ -855,6 +862,8 @@ export default function CoverStudio({
 
     c.on('object:modified', (e) => {
       const o = e.target;
+      // a copy is being dragged off: its own handler finishes the move
+      if (altDragRef.current && altDragRef.current.moved) return;
       // Corner-dragging a text box scales it; fold that into the font size so
       // the size shown in the inspector is always the real one.
       if (o && o.studio && o.studio.kind === 'text' && (o.scaleX !== 1 || o.scaleY !== 1)) {
@@ -893,10 +902,12 @@ export default function CoverStudio({
     c.on('object:moving', (e) => {
       const o = e.target;
       if (!o) return;
+      if (altDragRef.current) altDragRef.current.moved = true;
       // Snapping can be switched off, or bypassed for one drag by holding
-      // Option/Alt (or Cmd), for placing something freely near a guide.
+      // Cmd, for placing something freely near a guide. (Option/Alt used to
+      // do this too; it now drags a copy, which should still snap.)
       const ev = e.e;
-      if (!snapRef.current || (ev && (ev.altKey || ev.metaKey))) {
+      if (!snapRef.current || (ev && ev.metaKey)) {
         setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null }));
         return;
       }
@@ -934,6 +945,9 @@ export default function CoverStudio({
     });
     c.on('object:moving', follow);
     c.on('mouse:up', () => setGuides((g) => (g.v === null && g.h === null ? g : { v: null, h: null })));
+    c.on('mouse:up', () => {
+      if (altDragRef.current && altDupRef.current.end) altDupRef.current.end();
+    });
 
     // Fit the 1800x900 canvas to the available width (CSS only: the backing
     // store stays 1800x900 so the export never changes).
@@ -2940,6 +2954,157 @@ export default function CoverStudio({
     bump();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bump, commit, styleObject]);
+
+  // ---------- Option/Alt + drag: drag a copy away ----------
+  // A copy cannot be made the instant the mouse goes down (pictures are copied
+  // asynchronously), so the ORIGINAL is what travels under the pointer while a
+  // stand-in copy fills its place. On release the two change places: the
+  // original is back where it started, untouched, and the copy sits where it
+  // was dropped, selected. One Undo removes it. Works for one item (a guest or
+  // logo brings its name, title, bar and caption) and for several selected
+  // together.
+  const placeOf = (o) => {
+    if (!o.group) return { left: o.left, top: o.top, scaleX: o.scaleX, scaleY: o.scaleY, angle: o.angle };
+    const d = util.qrDecompose(o.calcTransformMatrix());
+    return { left: d.translateX, top: d.translateY, scaleX: d.scaleX, scaleY: d.scaleY, angle: d.angle };
+  };
+  const startAltDrag = (target) => {
+    const c = fabricRef.current;
+    if (!c || altDragRef.current) return;
+    const members = target.studio ? [target] : typeof target.getObjects === 'function' ? target.getObjects().filter((o) => o.studio) : [];
+    if (!members.length) return;
+    // what gets copied: each picked item, the pieces attached to it, and a
+    // picked name or caption whose owner was not picked (it becomes free text)
+    const plan = [];
+    members.forEach((o) => {
+      if (!o.studio.attach) {
+        plan.push({ o, kind: 'main' });
+        kidsOf(o).forEach((k) => plan.push({ o: k, kind: 'kid', parent: o }));
+      } else if (!members.includes(o.studio.attach.to)) plan.push({ o, kind: 'free' });
+    });
+    if (!plan.length) return;
+    plan.forEach((p) => {
+      p.start = placeOf(p.o);
+    });
+    const st = { target, t0: { left: target.left, top: target.top }, members, plan, moved: false, done: false, placed: false, failed: false, cursor: c.moveCursor };
+    c.moveCursor = 'copy';
+    st.ready = (async () => {
+      try {
+        for (const p of plan) {
+          const cl = await cloneItem(p.o);
+          cl.set(p.start);
+          if (p.kind === 'kid') cl.studio.attach = { ...p.o.studio.attach, to: plan.find((q) => q.o === p.parent).cl };
+          else delete cl.studio.set;
+          if (p.kind === 'free') {
+            delete cl.studio.attach;
+            cl.set({ selectable: true });
+          }
+          cl.setCoords();
+          p.cl = cl;
+        }
+      } catch (err) {
+        st.failed = true;
+        return;
+      }
+      if (st.done || fabricRef.current !== c) return;
+      // each stand-in sits just beneath its original while that is dragged off
+      plan.forEach((p) => {
+        p.evented = p.cl.evented;
+        p.cl.set({ evented: false });
+        const at = c.getObjects().indexOf(p.o);
+        if (at >= 0) c.insertAt(at, p.cl);
+        else c.add(p.cl);
+      });
+      st.placed = true;
+      c.requestRenderAll();
+    })();
+    altDragRef.current = st;
+  };
+  const endAltDrag = async () => {
+    const st = altDragRef.current;
+    const c = fabricRef.current;
+    if (!st || st.ending) return;
+    st.ending = true;
+    if (c) c.moveCursor = st.cursor;
+    if (!st.moved) {
+      // only a click with Option held: nothing is copied
+      st.done = true;
+      altDragRef.current = null;
+      await st.ready;
+      if (st.placed && fabricRef.current === c) {
+        c.remove(...st.plan.map((p) => p.cl));
+        c.requestRenderAll();
+      }
+      return;
+    }
+    await st.ready;
+    st.done = true;
+    altDragRef.current = null;
+    if (!c || fabricRef.current !== c) return;
+    const finish = () => {
+      autoLayoutRef.current.on = false;
+      c.requestRenderAll();
+      commit();
+      bump();
+    };
+    if (st.failed || !st.placed) {
+      // the copy could not be made: this was an ordinary move
+      if (st.target.studio) layoutAttached(st.target.studio.attach ? st.target.studio.attach.to : st.target);
+      finish();
+      return;
+    }
+    const grouped = !st.target.studio;
+    // where everything was dropped, read before the originals go back
+    st.plan.forEach((p) => {
+      if (p.kind === 'kid') {
+        // an attached piece is laid out again from its owner: hand it the
+        // original's latest notes and put it where those notes say it is
+        const a = { ...p.o.studio.attach, to: p.cl.studio.attach.to };
+        p.cl.studio.attach = a;
+        p.drop = a.lastLeft == null ? null : { left: a.lastLeft, top: a.lastTop };
+      } else p.drop = placeOf(p.o);
+    });
+    // the originals return to where they started
+    if (grouped && c.getActiveObject() === st.target) {
+      st.target.set(st.t0);
+      st.target.setCoords();
+      c.discardActiveObject();
+    } else if (grouped) {
+      st.plan.forEach((p) => {
+        if (p.kind === 'kid') return;
+        p.o.set(p.start);
+        p.o.setCoords();
+      });
+    } else {
+      st.target.set(st.t0);
+      st.target.setCoords();
+    }
+    st.plan.forEach((p) => {
+      if (p.kind === 'main') layoutAttached(p.o);
+    });
+    // the copies take the dropped places, in front, as Duplicate puts them
+    st.plan.forEach((p) => {
+      p.cl.set({ evented: p.evented });
+      if (p.drop) p.cl.set(p.drop);
+      p.cl.setCoords();
+      c.bringObjectToFront(p.cl);
+    });
+    st.plan.forEach((p) => {
+      if (p.kind === 'main') layoutAttached(p.cl);
+    });
+    const picked = st.members
+      .map((m) => st.plan.find((p) => p.o === m))
+      .filter((p) => p && p.cl.selectable !== false)
+      .map((p) => p.cl);
+    if (picked.length > 1) c.setActiveObject(new ActiveSelection(picked, { canvas: c }));
+    else if (picked.length === 1) c.setActiveObject(picked[0]);
+    setLeftTab((t) => {
+      if (t !== 'edit') prevTabRef.current = t;
+      return 'edit';
+    });
+    finish();
+  };
+  altDupRef.current = { start: startAltDrag, end: endAltDrag };
 
   const reorder = (o, how) => {
     const c = fabricRef.current;
@@ -5287,7 +5452,7 @@ export default function CoverStudio({
             <ToolCheck>
               <input type="checkbox" checked={showGuides} onChange={(e) => setShowGuides(e.target.checked)} /> Safe area
             </ToolCheck>
-            <ToolCheck title="Pull items to the centre lines and safe margins while dragging. Hold Option/Alt to place freely.">
+            <ToolCheck title="Pull items to the centre lines and safe margins while dragging. Hold Cmd to place freely.">
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap
             </ToolCheck>
           </Group>
@@ -5397,7 +5562,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt and drag to pull off a copy. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
