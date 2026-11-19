@@ -1,5 +1,6 @@
 import tateUrl from './hosts/tate.jpg';
 import ryanUrl from './hosts/ryan.jpg';
+import { isGrad, paintGrad } from './gradients';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -24,6 +25,8 @@ export const DEFAULT_PHOTO = {
   treatment: 'color', // color | bw | tint
   tintColor: '#8b6cf6',
   backdrop: '', // colour behind a cut-out photo ('' = none)
+  // backdropGrad / ringGrad: a gradient (see gradients.js) used in place of the
+  // plain colour when set
   ring: 0, // border width, in mask units
   ringColor: '#ffffff',
 };
@@ -167,20 +170,23 @@ export function paintPhoto(st) {
   const g = c.getContext('2d');
   const cx = c.width / 2;
   const cy = c.height / 2;
-  const outline = () => {
+  const outline = (k = g) => {
     if (circle) {
-      g.beginPath();
-      g.arc(cx, cy, PHOTO_BASE / 2, 0, Math.PI * 2);
-      g.closePath();
+      k.beginPath();
+      k.arc(cx, cy, PHOTO_BASE / 2, 0, Math.PI * 2);
+      k.closePath();
     } else {
-      roundedOutline(g, pts.map(([x, y]) => [x - ox + cx, y - oy + cy]), st.rounding);
+      roundedOutline(k, pts.map(([x, y]) => [x - ox + cx, y - oy + cy]), st.rounding);
     }
   };
 
   g.save();
   outline();
   g.clip();
-  if (st.backdrop) {
+  if (isGrad(st.backdropGrad)) {
+    // its dots are placed across the mask's own box (see photoGradBox)
+    paintGrad(g, st.backdropGrad, cx - bw / 2, cy - bh / 2, bw, bh);
+  } else if (st.backdrop) {
     g.fillStyle = st.backdrop;
     g.fillRect(0, 0, c.width, c.height);
   }
@@ -210,7 +216,22 @@ export function paintPhoto(st) {
   }
   g.restore();
 
-  if (ring > 0) {
+  if (ring > 0 && isGrad(st.ringGrad)) {
+    // the border is drawn on a sheet of its own and the gradient is poured
+    // into it, so only the border takes the colours
+    const m = document.createElement('canvas');
+    m.width = c.width;
+    m.height = c.height;
+    const k = m.getContext('2d');
+    outline(k);
+    k.lineWidth = ring;
+    k.lineJoin = 'round';
+    k.strokeStyle = '#ffffff';
+    k.stroke();
+    k.globalCompositeOperation = 'source-in';
+    paintGrad(k, st.ringGrad, 0, 0, m.width, m.height);
+    g.drawImage(m, 0, 0);
+  } else if (ring > 0) {
     outline();
     g.lineWidth = ring;
     g.lineJoin = 'round';
@@ -218,6 +239,15 @@ export function paintPhoto(st) {
     g.stroke();
   }
   return c;
+}
+
+// The box a photo's gradient dots are placed across, in the painted picture's
+// own pixels measured from its centre (w, h: the picture's size).
+//   'backdrop': the mask itself     'ring': the whole picture, border included
+export function photoGradBox(st, w, h, which) {
+  if (which === 'ring') return { x: -w / 2, y: -h / 2, w, h };
+  const pad = Math.ceil(Math.max(0, st.ring || 0) / 2) + 2;
+  return { x: -w / 2 + pad, y: -h / 2 + pad, w: Math.max(1, w - pad * 2), h: Math.max(1, h - pad * 2) };
 }
 
 // Stand-in for a logo that has not been chosen yet.

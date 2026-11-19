@@ -34,7 +34,9 @@ import {
   drawElementThumb,
   removePlainBackground,
   drawLayoutThumb,
+  photoGradBox,
 } from './interviewKit';
+import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, resizeGrad } from './gradients';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -432,6 +434,45 @@ function LayoutThumb({ layout, palette }) {
   return <canvas ref={ref} width={320} height={180} />;
 }
 
+// A shape that can be filled with a gradient (studio.grad, see gradients.js)
+// in place of its plain colour. Everything else is fabric's own rectangle.
+class StudioRect extends Rect {
+  _renderFill(ctx) {
+    const g = this.studio && this.studio.grad;
+    if (!isGrad(g)) {
+      super._renderFill(ctx);
+      return;
+    }
+    // a soft shadow is cast by a plain fill; the gradient is laid over it
+    if (this.shadow) super._renderFill(ctx);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0)';
+    ctx.clip();
+    paintGrad(ctx, g, -this.width / 2, -this.height / 2, this.width, this.height);
+    ctx.restore();
+  }
+}
+
+// The filled box behind a text (see applyTextBox), in the text's own pixels
+// measured from its centre. null when there is nothing to draw.
+function textBoxRect(o) {
+  const b = o.studio && o.studio.box;
+  const n = o._textLines ? o._textLines.length : 0;
+  if (!b || !b.on || !n) return null;
+  let minOff = Infinity;
+  let maxRight = -Infinity;
+  for (let i = 0; i < n; i += 1) {
+    const off = o._getLineLeftOffset(i);
+    minOff = Math.min(minOff, off);
+    maxRight = Math.max(maxRight, off + o.getLineWidth(i));
+  }
+  const x = -o.width / 2 + minOff - b.padX;
+  const y = -o.height / 2 - b.padY;
+  const w = maxRight - minOff + b.padX * 2;
+  const h = o.height + b.padY * 2;
+  return { x, y, w, h, r: Math.max(0, Math.min(b.radius || 0, h / 2, w / 2)) };
+}
+
 // Text can carry a filled box behind it (a pill, a highlight bar). fabric only
 // draws a tight background, so the box is painted here with its own padding
 // and corner radius. The override lives on the one object; caching is off for
@@ -451,22 +492,10 @@ function applyTextBox(o) {
   o.objectCaching = false;
   o._renderBackground = function renderBox(ctx) {
     const b = this.studio && this.studio.box;
-    const n = this._textLines ? this._textLines.length : 0;
-    if (!b || !b.on || !n) return;
-    let minOff = Infinity;
-    let maxRight = -Infinity;
-    for (let i = 0; i < n; i += 1) {
-      const off = this._getLineLeftOffset(i);
-      minOff = Math.min(minOff, off);
-      maxRight = Math.max(maxRight, off + this.getLineWidth(i));
-    }
-    const x = -this.width / 2 + minOff - b.padX;
-    const y = -this.height / 2 - b.padY;
-    const w = maxRight - minOff + b.padX * 2;
-    const h = this.height + b.padY * 2;
-    const r = Math.max(0, Math.min(b.radius || 0, h / 2, w / 2));
+    const box = textBoxRect(this);
+    if (!box) return;
+    const { x, y, w, h, r } = box;
     ctx.save();
-    ctx.fillStyle = b.color || '#000000';
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -474,7 +503,13 @@ function applyTextBox(o) {
     ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
-    ctx.fill();
+    if (isGrad(b.grad)) {
+      ctx.clip();
+      paintGrad(ctx, b.grad, x, y, w, h);
+    } else {
+      ctx.fillStyle = b.color || '#000000';
+      ctx.fill();
+    }
     ctx.restore();
   };
 }
@@ -496,7 +531,7 @@ const HEADLINE_SPACING = -55;
 const HOST_LINE = { name: { rel: 0.16, rel0: 0.16, wide: 1.4, dy: 0.08 }, title: { rel: 0.09, rel0: 0.09, wide: 1.4, dy: 0.08 } };
 
 const snapStudio = (st) => (st ? { ...st, attach: st.attach ? { ...st.attach } : undefined, box: st.box ? { ...st.box } : undefined } : null);
-const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor].join('|');
+const photoSig = (st) => [st.shape, st.sides, st.rounding, st.aspect, st.maskAngle, st.zoom, st.panX, st.panY, st.treatment, st.tintColor, st.backdrop, st.ring, st.ringColor, gradKey(st.backdropGrad), gradKey(st.ringGrad)].join('|');
 
 export default function CoverStudio({
   apiBase,
@@ -551,6 +586,9 @@ export default function CoverStudio({
   const layoutAllRef = useRef(null);
   const altDragRef = useRef(null); // an Option/Alt drag-a-copy in progress
   const altDupRef = useRef({}); // its start / end handlers (set further down)
+  const gradSpecRef = useRef(null); // which gradient's dots to show on the cover (set further down)
+  const gradSyncRef = useRef(null); // moves the dots to where the gradient's item is now
+  const cutBusyRef = useRef(false);
   const sharpenRef = useRef(null);
   const sharpenTimer = useRef(null);
   const sharpeningRef = useRef(new WeakSet());
@@ -575,6 +613,7 @@ export default function CoverStudio({
   const [bgNote, setBgNote] = useState('');
   const [ringAll, setRingAll] = useState(false);
   const [cutting, setCutting] = useState(false);
+  const [gradEdit, setGradEdit] = useState(''); // for a photo with two gradients: 'backdrop' or 'ring'
   const [dropBox, setDropBox] = useState(null);
   // ---------- drafts (working files kept in this browser) ----------
   const [draft, setDraft] = useState(null); // the saved draft this cover belongs to: { id, name, created, updated }
@@ -827,6 +866,9 @@ export default function CoverStudio({
     c.on('selection:created', onSel);
     c.on('selection:updated', onSel);
     c.on('after:render', () => shapeGrainSoonRef.current());
+    c.on('after:render', () => {
+      if (gradSyncRef.current) gradSyncRef.current();
+    });
     c.on('selection:cleared', () => {
       // items moved together as a group have their own positions again now
       if (layoutAllRef.current) layoutAllRef.current();
@@ -1646,7 +1688,7 @@ export default function CoverStudio({
 
   const makeBar = (frame, fill) => {
     const c = fabricRef.current;
-    const r = new Rect({ originX: 'center', originY: 'center', left: frame.left, top: frame.top, width: 100, height: 40, fill, strokeWidth: 0, objectCaching: false });
+    const r = new StudioRect({ originX: 'center', originY: 'center', left: frame.left, top: frame.top, width: 100, height: 40, fill, strokeWidth: 0, objectCaching: false });
     r.studio = { kind: 'shape', name: 'Label bar', round: 0, attach: { to: frame, role: 'bar' } };
     r.set({ selectable: false, hoverCursor: 'pointer' }); // clicking it selects the guest it belongs to
     styleObject(r);
@@ -1696,7 +1738,7 @@ export default function CoverStudio({
     const w = opt.w || 420;
     const h = opt.h || 240;
     const round = opt.round || 0;
-    const r = new Rect({
+    const r = new StudioRect({
       originX: 'center',
       originY: 'center',
       left: (opt.x == null ? W / 2 - w / 2 : opt.x) + w / 2,
@@ -1914,7 +1956,7 @@ export default function CoverStudio({
           const t = guestText(o, r);
           return t ? typed(t) : st.kept && st.kept[r] ? st.kept[r].text : undefined;
         };
-        return { src: st.src, srcOrig: st.srcOrig, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, name: line('name'), title: line('title') };
+        return { src: st.src, srcOrig: st.srcOrig, zoom: st.zoom, panX: st.panX, panY: st.panY, treatment: st.treatment, tintColor: st.tintColor, backdrop: st.backdrop, backdropGrad: st.backdropGrad, name: line('name'), title: line('title') };
       });
     // grain put on a layout's colour panel goes with it to the next panel
     const panels = objs.filter((o) => o.studio && o.studio.tpl && o.studio.kind === 'shape' && !o.studio.attach);
@@ -1925,7 +1967,7 @@ export default function CoverStudio({
   const fillGuest = (o, g, upper) => {
     if (!g) return;
     const st = o.studio;
-    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop });
+    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, backdrop: g.backdrop, backdropGrad: g.backdropGrad });
     if (g.src && g.treatment === 'tint') st.tintColor = g.tintColor;
     repaintPhoto(o);
     [['name', g.name], ['title', g.title]].forEach(([r, v]) => {
@@ -2163,15 +2205,20 @@ export default function CoverStudio({
     if (who) fillPersonWords(target, who);
     layoutAttached(target);
     finishAdd(target);
+    // a colour behind the photo only shows once the photo is cut out, so a
+    // frame that already has one gets its new photo cut out straight away
+    if (target.studio.backdrop || isGrad(target.studio.backdropGrad)) cutOutPhoto(target);
   };
 
   // ---------- erase the background of a guest photo ----------
   // Runs in this browser (see photoCutout.js). The untouched photo is kept in
   // studio.srcOrig so the background can be brought back.
-  const cutOutPhoto = async () => {
+  // item: the guest to cut out; left out (or a click event), it is the selected one.
+  const cutOutPhoto = async (item) => {
     const c = fabricRef.current;
-    const o = active1();
-    if (!c || !o || !o.studio || o.studio.kind !== 'photo' || !o.studio.src || cutting) return;
+    const o = item && item.studio && item.studio.kind === 'photo' ? item : active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo' || !o.studio.src || cutting || cutBusyRef.current) return;
+    cutBusyRef.current = true;
     setCutting(true);
     const note = toast.info('Removing the background. The first time takes a little longer while the tool loads.', { autoClose: false });
     // let the message appear before the work starts; the work itself holds the page for a moment
@@ -2196,6 +2243,7 @@ export default function CoverStudio({
       toast.error('The background could not be removed in this browser.');
     } finally {
       toast.dismiss(note);
+      cutBusyRef.current = false;
       setCutting(false);
     }
   };
@@ -2295,11 +2343,17 @@ export default function CoverStudio({
     const o = active1();
     if (!c || !o || !o.studio || o.studio.kind !== 'photo') return;
     Object.assign(o.studio, patch);
+    if ('backdropGrad' in patch && !patch.backdropGrad) delete o.studio.backdropGrad;
     repaintPhoto(o);
     layoutAttached(o);
     c.requestRenderAll();
     commitSoon();
     bump();
+    // Choosing a colour (or gradient) to sit behind the photo is also the
+    // request to remove its background: without that the colour cannot show.
+    // Owner 2026-11-19: one step, not two.
+    const wantsBehind = (patch.backdrop && patch.backdrop !== '') || isGrad(patch.backdropGrad);
+    if (wantsBehind && o.studio.src && !o.studio.srcOrig) cutOutPhoto(o);
   };
 
   // The border, for the selected guest or (with the tick box) every guest.
@@ -2310,6 +2364,7 @@ export default function CoverStudio({
     const targets = all ? c.getObjects().filter((g) => g.studio && g.studio.kind === 'photo') : [o];
     targets.forEach((g) => {
       Object.assign(g.studio, patch);
+      if ('ringGrad' in patch && !patch.ringGrad) delete g.studio.ringGrad;
       repaintPhoto(g);
       layoutAttached(g);
     });
@@ -2629,6 +2684,11 @@ export default function CoverStudio({
     if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
     if (patch.round != null) o.studio.round = patch.round;
     if (patch.grain != null) o.studio.grain = patch.grain;
+    if ('grad' in patch) {
+      if (isGrad(patch.grad)) o.studio.grad = patch.grad;
+      else delete o.studio.grad;
+      o.dirty = true;
+    }
     if (patch.width != null) o.set('width', patch.width);
     if (patch.height != null) o.set('height', patch.height);
     if (patch.fill) {
@@ -2660,11 +2720,76 @@ export default function CoverStudio({
     if (!c || !o || !o.studio || o.studio.kind !== 'text') return;
     const size = o.fontSize || 40;
     o.studio.box = { on: false, color: bgRef.current.palette.a1, padX: Math.round(size * 0.5), padY: Math.round(size * 0.18), radius: 0, ...(o.studio.box || {}), ...patch };
+    if (!isGrad(o.studio.box.grad)) delete o.studio.box.grad;
     applyTextBox(o);
     o.dirty = true;
     c.requestRenderAll();
     commitSoon();
     bump();
+  };
+
+  // ---------- gradients: the dots on the cover ----------
+  // Which gradient the dots belong to right now: the selected item's, and for
+  // a guest photo with two (behind the photo, and its border) the one last
+  // touched in the side panel. box: the area the dots are placed across, in
+  // the item's own pixels measured from its centre.
+  gradSpecRef.current = () => {
+    const c = fabricRef.current;
+    if (!c) return null;
+    const list = c.getActiveObjects();
+    const o = list.length === 1 ? list[0] : null;
+    if (!o || !o.studio || o.group || o.isEditing) return null;
+    const st = o.studio;
+    if (st.kind === 'shape' && isGrad(st.grad)) return { o, key: 'fill', grad: st.grad, box: { x: -o.width / 2, y: -o.height / 2, w: o.width, h: o.height } };
+    if (st.kind === 'text' && st.box && st.box.on && isGrad(st.box.grad)) {
+      const box = textBoxRect(o);
+      return box ? { o, key: 'box', grad: st.box.grad, box } : null;
+    }
+    if (st.kind === 'photo') {
+      const behind = isGrad(st.backdropGrad);
+      const ring = st.ring > 0 && isGrad(st.ringGrad);
+      const key = gradEdit === 'ring' && ring ? 'ring' : behind ? 'backdrop' : ring ? 'ring' : '';
+      if (!key) return null;
+      return { o, key, grad: key === 'ring' ? st.ringGrad : st.backdropGrad, box: photoGradBox(st, o.width, o.height, key) };
+    }
+    return null;
+  };
+  // Put a changed gradient back on its item and redraw. Nothing goes into the
+  // history here: a dot being dragged ends with endGradDot.
+  const putGrad = (spec, grad) => {
+    const c = fabricRef.current;
+    const { o, key } = spec;
+    if (key === 'fill') o.studio.grad = grad;
+    else if (key === 'box') o.studio.box = { ...o.studio.box, grad };
+    else if (key === 'backdrop') {
+      o.studio.backdropGrad = grad;
+      repaintPhoto(o);
+    } else if (key === 'ring') {
+      const targets = ringAll ? c.getObjects().filter((g) => g.studio && g.studio.kind === 'photo') : [o];
+      targets.forEach((g) => {
+        g.studio.ringGrad = grad;
+        repaintPhoto(g);
+      });
+    }
+    o.dirty = true;
+    c.requestRenderAll();
+    if (gradSyncRef.current) gradSyncRef.current();
+  };
+  const moveGradDot = (i, x, y) => {
+    const spec = gradSpecRef.current();
+    if (spec && spec.grad.pts[i]) putGrad(spec, moveDot(spec.grad, i, x, y));
+  };
+  const endGradDot = () => {
+    commit();
+    bump();
+  };
+  // The colours a new gradient starts from: the item's present colour first,
+  // then the cover's own accents.
+  const gradColours = (first) => {
+    const pal = bgRef.current.palette;
+    const own = /^#[0-9a-fA-F]{6}$/.test(String(first || '')) ? String(first).toLowerCase() : null;
+    const rest = [pal.a1, pal.a2, '#ffffff', '#141414'].filter((col) => col && String(col).toLowerCase() !== own);
+    return own ? [own, ...rest] : rest;
   };
 
   const detachText = () => {
@@ -3663,7 +3788,7 @@ export default function CoverStudio({
       o = new FabricImage(paintPhoto(st), { ...centre, objectCaching: false, ...p });
       o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
     } else if (kind === 'shape') {
-      o = new Rect({ ...centre, strokeWidth: 0, objectCaching: false, ...p });
+      o = new StudioRect({ ...centre, strokeWidth: 0, objectCaching: false, ...p });
       if (st.attach && st.attach.role === 'bar') o.set({ selectable: false, hoverCursor: 'pointer' });
     }
     if (!o) return null;
@@ -4979,12 +5104,19 @@ export default function CoverStudio({
                         </Check>
                         {selBox && (
                           <>
-                            <SwatchRow style={{ marginTop: 8 }}>
-                              <input type="color" value={normHex(selBox.color, '#000000')} onChange={(e) => setTextBox({ color: e.target.value })} />
-                              {paletteSwatches.map((col, i) => (
-                                <Swatch key={i} style={{ background: col }} onClick={() => setTextBox({ color: col })} title={col} />
-                              ))}
-                            </SwatchRow>
+                            <div style={{ marginTop: 8 }}>
+                              <PaintMode grad={isGrad(selBox.grad)} onSolid={() => setTextBox({ grad: null })} onGradient={() => !isGrad(selBox.grad) && setTextBox({ grad: makeGrad(gradColours(selBox.color), 2) })} />
+                            </div>
+                            {isGrad(selBox.grad) ? (
+                              <GradControls grad={selBox.grad} colours={gradColours(selBox.color)} onChange={(g) => setTextBox({ grad: g })} />
+                            ) : (
+                              <SwatchRow>
+                                <input type="color" value={normHex(selBox.color, '#000000')} onChange={(e) => setTextBox({ color: e.target.value })} />
+                                {paletteSwatches.map((col, i) => (
+                                  <Swatch key={i} style={{ background: col }} onClick={() => setTextBox({ color: col })} title={col} />
+                                ))}
+                              </SwatchRow>
+                            )}
                             <Slider label="Side padding" min={0} max={160} step={1} value={selBox.padX} onChange={(v) => setTextBox({ padX: v })} fmt={(v) => `${Math.round(v)}px`} />
                             <Slider label="Top and bottom padding" min={0} max={100} step={1} value={selBox.padY} onChange={(v) => setTextBox({ padY: v })} fmt={(v) => `${Math.round(v)}px`} />
                             <Slider label="Corner rounding" min={0} max={160} step={1} value={Math.min(160, selBox.radius)} onChange={(v) => setTextBox({ radius: v >= 160 ? 999 : v })} fmt={(v) => (v >= 160 ? 'Pill' : `${Math.round(v)}px`)} />
@@ -5092,12 +5224,26 @@ export default function CoverStudio({
                       <FieldLabel>Border</FieldLabel>
                       <Slider label="Border width" min={0} max={90} step={1} value={selPhoto.ring} onChange={(v) => setRing({ ring: v })} fmt={(v) => (v < 1 ? 'None' : `${Math.round(v)}`)} />
                       {selPhoto.ring > 0 && (
-                        <SwatchRow>
-                          <input type="color" value={normHex(selPhoto.ringColor)} onChange={(e) => setRing({ ringColor: e.target.value })} />
-                          {paletteSwatches.map((col, i) => (
-                            <Swatch key={i} style={{ background: col }} onClick={() => setRing({ ringColor: col })} />
-                          ))}
-                        </SwatchRow>
+                        <>
+                          <PaintMode
+                            grad={isGrad(selPhoto.ringGrad)}
+                            onSolid={() => setRing({ ringGrad: null })}
+                            onGradient={() => {
+                              setGradEdit('ring');
+                              if (!isGrad(selPhoto.ringGrad)) setRing({ ringGrad: makeGrad(gradColours(selPhoto.ringColor), 2) });
+                            }}
+                          />
+                          {isGrad(selPhoto.ringGrad) ? (
+                            <GradControls grad={selPhoto.ringGrad} colours={gradColours(selPhoto.ringColor)} onChange={(g) => setRing({ ringGrad: g })} onTouch={() => setGradEdit('ring')} />
+                          ) : (
+                            <SwatchRow>
+                              <input type="color" value={normHex(selPhoto.ringColor)} onChange={(e) => setRing({ ringColor: e.target.value })} />
+                              {paletteSwatches.map((col, i) => (
+                                <Swatch key={i} style={{ background: col }} onClick={() => setRing({ ringColor: col })} />
+                              ))}
+                            </SwatchRow>
+                          )}
+                        </>
                       )}
                       {guestList.length > 1 && (
                         <Check>
@@ -5107,20 +5253,34 @@ export default function CoverStudio({
                             onChange={(e) => {
                               setRingAll(e.target.checked);
                               // ticking it gives every guest this guest's border straight away
-                              if (e.target.checked) setRing({ ring: selPhoto.ring, ringColor: selPhoto.ringColor }, true);
+                              if (e.target.checked) setRing({ ring: selPhoto.ring, ringColor: selPhoto.ringColor, ringGrad: selPhoto.ringGrad || null }, true);
                             }}
                           />
                           Same border on every guest photo
                         </Check>
                       )}
                       <FieldLabel style={{ marginTop: 10 }}>Colour behind a cut-out photo</FieldLabel>
-                      <SwatchRow>
-                        <Ghost onClick={() => setPhoto({ backdrop: '' })}>None</Ghost>
-                        <input type="color" value={normHex(selPhoto.backdrop, '#141414')} onChange={(e) => setPhoto({ backdrop: e.target.value })} />
-                        {paletteSwatches.map((col, i) => (
-                          <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ backdrop: col })} />
-                        ))}
-                      </SwatchRow>
+                      <PaintMode
+                        grad={isGrad(selPhoto.backdropGrad)}
+                        none={!selPhoto.backdrop && !isGrad(selPhoto.backdropGrad)}
+                        onNone={() => setPhoto({ backdrop: '', backdropGrad: null })}
+                        onSolid={() => setPhoto({ backdrop: selPhoto.backdrop || bg.palette.a1, backdropGrad: null })}
+                        onGradient={() => {
+                          setGradEdit('backdrop');
+                          if (!isGrad(selPhoto.backdropGrad)) setPhoto({ backdropGrad: makeGrad(gradColours(selPhoto.backdrop || bg.palette.a1), 2) });
+                        }}
+                      />
+                      {isGrad(selPhoto.backdropGrad) ? (
+                        <GradControls grad={selPhoto.backdropGrad} colours={gradColours(selPhoto.backdrop || bg.palette.a1)} onChange={(g) => setPhoto({ backdropGrad: g })} onTouch={() => setGradEdit('backdrop')} />
+                      ) : (
+                        <SwatchRow>
+                          <input type="color" value={normHex(selPhoto.backdrop, '#141414')} onChange={(e) => setPhoto({ backdrop: e.target.value })} />
+                          {paletteSwatches.map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setPhoto({ backdrop: col })} />
+                          ))}
+                        </SwatchRow>
+                      )}
+                      <Muted style={{ marginTop: 6 }}>Choosing a colour here also removes the photo's background, so the colour shows behind the person.</Muted>
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Name and title</FieldLabel>
@@ -5156,12 +5316,19 @@ export default function CoverStudio({
                   <>
                     <InsCell>
                       <FieldLabel>Fill colour</FieldLabel>
-                      <SwatchRow>
-                        <input type="color" value={normHex(sel.fill, '#000000')} onChange={(e) => setShape({ fill: e.target.value })} />
-                        {paletteSwatches.map((col, i) => (
-                          <Swatch key={i} style={{ background: col }} onClick={() => setShape({ fill: col })} title={col} />
-                        ))}
-                      </SwatchRow>
+                      {!sel.studio.attach && (
+                        <PaintMode grad={isGrad(sel.studio.grad)} onSolid={() => setShape({ grad: null })} onGradient={() => !isGrad(sel.studio.grad) && setShape({ grad: makeGrad(gradColours(sel.fill), 2) })} />
+                      )}
+                      {isGrad(sel.studio.grad) ? (
+                        <GradControls grad={sel.studio.grad} colours={gradColours(sel.fill)} onChange={(g) => setShape({ grad: g })} />
+                      ) : (
+                        <SwatchRow>
+                          <input type="color" value={normHex(sel.fill, '#000000')} onChange={(e) => setShape({ fill: e.target.value })} />
+                          {paletteSwatches.map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setShape({ fill: col })} title={col} />
+                          ))}
+                        </SwatchRow>
+                      )}
                     </InsCell>
                     {sel.studio.attach ? (
                       <InsCell>
@@ -5551,6 +5718,7 @@ export default function CoverStudio({
             </DropBox>
           )}
           {showGuides && <SafeBox $w={W} $h={H} />}
+          <GradDots specRef={gradSpecRef} syncRef={gradSyncRef} stageRef={stageRef} coverW={W} coverH={H} onMove={moveGradDot} onDone={endGradDot} />
           {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
           {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
           {objectCount === 0 && (
@@ -5562,7 +5730,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt and drag to pull off a copy. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Option/Alt and drag to pull off a copy. A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
@@ -5570,6 +5738,124 @@ export default function CoverStudio({
 }
 
 // ----- small labelled slider -----
+// Solid colour or gradient, for anything that can take either.
+function PaintMode({ grad, onSolid, onGradient, onNone, none }) {
+  return (
+    <Seg style={{ marginBottom: 8 }}>
+      {onNone && <SegBtn $on={!!none} onClick={onNone}>None</SegBtn>}
+      <SegBtn $on={!grad && !none} onClick={onSolid}>Solid</SegBtn>
+      <SegBtn $on={!!grad} onClick={onGradient}>Gradient</SegBtn>
+    </Seg>
+  );
+}
+
+// A gradient's settings: how many colours it has, and the colour of each dot.
+// Where the dots sit is set by dragging them on the cover itself.
+function GradControls({ grad, colours, onChange, onTouch }) {
+  const n = grad.pts.length;
+  const setCount = (v) => {
+    const want = Math.max(GRAD_MIN, Math.min(GRAD_MAX, Math.round(Number(v) || GRAD_MIN)));
+    if (want !== n) onChange(resizeGrad(grad, want, colours));
+  };
+  return (
+    <GradBox onPointerDown={onTouch}>
+      <GradCount>
+        <span>Colours</span>
+        <button type="button" onClick={() => setCount(n - 1)} disabled={n <= GRAD_MIN} aria-label="One colour fewer">-</button>
+        <input type="number" min={GRAD_MIN} max={GRAD_MAX} step={1} value={n} onChange={(e) => setCount(e.target.value)} aria-label="Number of colours in the gradient" />
+        <button type="button" onClick={() => setCount(n + 1)} disabled={n >= GRAD_MAX} aria-label="One colour more">+</button>
+      </GradCount>
+      <GradDotRow>
+        {grad.pts.map((p, i) => (
+          <label key={i} title={`Colour of dot ${i + 1}`}>
+            <b>{i + 1}</b>
+            <input type="color" value={normHex(p.c)} onChange={(e) => onChange(colourDot(grad, i, e.target.value))} />
+          </label>
+        ))}
+      </GradDotRow>
+      <GradStrip style={{ background: gradCss(grad) }} />
+      <Muted>Drag the numbered dots on the cover to shape the gradient.</Muted>
+    </GradBox>
+  );
+}
+
+// The numbered dots on the cover for the gradient being edited. Each one is a
+// colour; dragging it moves that colour inside its shape.
+// specRef.current(): -> { o, grad, box } or null (see gradSpecRef).
+// syncRef: this layer puts its "move the dots" function there, and the editor
+// calls it after every redraw so the dots stay on their item.
+function GradDots({ specRef, syncRef, stageRef, coverW, coverH, onMove, onDone }) {
+  const [dots, setDots] = useState([]);
+  const sigRef = useRef('');
+  const dragRef = useRef(null);
+  const sync = useCallback(() => {
+    const spec = specRef.current ? specRef.current() : null;
+    let next = [];
+    if (spec) {
+      const m = spec.o.calcTransformMatrix();
+      next = spec.grad.pts.map((p, i) => {
+        const at = util.transformPoint({ x: spec.box.x + p.x * spec.box.w, y: spec.box.y + p.y * spec.box.h }, m);
+        return { i, left: (at.x / coverW) * 100, top: (at.y / coverH) * 100, c: p.c };
+      });
+    }
+    const sig = next.map((d) => `${d.left.toFixed(3)},${d.top.toFixed(3)},${d.c}`).join(';');
+    if (sig !== sigRef.current) {
+      sigRef.current = sig;
+      setDots(next);
+    }
+  }, [specRef, coverW, coverH]);
+  useEffect(() => {
+    syncRef.current = sync;
+    sync();
+    return () => {
+      if (syncRef.current === sync) syncRef.current = null;
+    };
+  });
+  const moveTo = (e) => {
+    const spec = specRef.current ? specRef.current() : null;
+    const stage = stageRef.current;
+    if (dragRef.current == null || !spec || !stage) return;
+    const r = stage.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const onCover = { x: ((e.clientX - r.left) / r.width) * coverW, y: ((e.clientY - r.top) / r.height) * coverH };
+    const own = util.transformPoint(onCover, util.invertTransform(spec.o.calcTransformMatrix()));
+    onMove(dragRef.current, (own.x - spec.box.x) / spec.box.w, (own.y - spec.box.y) / spec.box.h);
+  };
+  const stop = (e) => {
+    if (dragRef.current == null) return;
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {
+      // the pointer was already let go
+    }
+    onDone();
+  };
+  return dots.map((d) => (
+    <GradDot
+      key={d.i}
+      data-grad-dot={d.i + 1}
+      style={{ left: `${d.left}%`, top: `${d.top}%`, background: d.c, color: isLight(d.c) ? '#111111' : '#ffffff' }}
+      title={`Colour ${d.i + 1}: drag to move it`}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragRef.current = d.i;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch (err) {
+          // capture is a nicety: the drag still works while the pointer stays on the dot
+        }
+      }}
+      onPointerMove={moveTo}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+    >
+      {d.i + 1}
+    </GradDot>
+  ));
+}
+
 function Slider({ label, min, max, step, value, onChange, fmt }) {
   const v = Number.isFinite(Number(value)) ? Number(value) : min;
   return (
@@ -6854,6 +7140,99 @@ const Danger = styled.button`
 
   &:hover {
     background: #2a1211;
+  }
+`;
+
+const GradBox = styled.div`
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+`;
+const GradCount = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #b8b8b8;
+  span {
+    margin-right: auto;
+  }
+  button {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid #333333;
+    background: #161616;
+    color: #ffffff;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  input {
+    width: 44px;
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid #333333;
+    background: #0d0d0d;
+    color: #ffffff;
+    text-align: center;
+    font-size: 13px;
+  }
+`;
+const GradDotRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  label {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: #b8b8b8;
+    cursor: pointer;
+  }
+  input[type='color'] {
+    width: 34px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+  }
+`;
+const GradStrip = styled.div`
+  height: 10px;
+  border-radius: 5px;
+  border: 1px solid #262626;
+`;
+const GradDot = styled.div`
+  position: absolute;
+  z-index: 7;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  &:active {
+    cursor: grabbing;
   }
 `;
 
