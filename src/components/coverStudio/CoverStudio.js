@@ -40,7 +40,7 @@ import {
 import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, reachDot, reachOf, resizeGrad } from './gradients';
 import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand, cleanMap, colourMap, makeTilt, mapCss, resizeMap, setAdjust, setAdjustQuick, setBand, setTilt } from './imageAdjust';
 import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } from './patterns';
-import { RING_DEFAULT, hasRing, paintRing } from './ringText';
+import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -450,6 +450,9 @@ function LayoutThumb({ layout, palette }) {
 
 // A shape that can be filled with a gradient (studio.grad, see gradients.js)
 // in place of its plain colour. Everything else is fabric's own rectangle.
+// Is a shape stretched by the same amount both ways (a corner drag)?
+const evenStretch = (sx, sy) => Math.abs(sx - sy) <= 0.002 * Math.max(sx, sy);
+
 class StudioRect extends Rect {
   // Text along the outline (ringText.js) is drawn with the shape, in cover
   // pixels whatever the shape's stretch is, so it never looks squashed while
@@ -461,11 +464,19 @@ class StudioRect extends Rect {
     if (!on) return;
     const sx = Math.abs(this.scaleX) || 1;
     const sy = Math.abs(this.scaleY) || 1;
+    const round = (this.studio && this.studio.round) || 0;
+    // A corner drag (the same stretch both ways) scales the text with the
+    // shape, as it will be once the drag is let go (see evenStretch). A side
+    // drag only makes the shape wider or taller: the letters keep their size.
+    if (evenStretch(sx, sy)) {
+      paintRing(ctx, ring, this.width, this.height, (round * Math.min(this.width, this.height)) / 2);
+      return;
+    }
     const w = this.width * sx;
     const h = this.height * sy;
     ctx.save();
     ctx.scale(1 / sx, 1 / sy);
-    paintRing(ctx, ring, w, h, (((this.studio && this.studio.round) || 0) * Math.min(w, h)) / 2);
+    paintRing(ctx, ring, w, h, (round * Math.min(w, h)) / 2);
     ctx.restore();
   }
 
@@ -676,6 +687,8 @@ export default function CoverStudio({
   const commitDueRef = useRef(false); // a change is waiting for its history step (commitSoon)
   const groupRef = useRef({}); // { group, ungroup } for the keyboard
   const ringPreviewRef = useRef(null); // { o, orig }: a font being tried on a shape's outline text
+  const ringSelRef = useRef(null); // { o, start, end }: letters highlighted in the outline text box
+  const [ringSel, setRingSel] = useState(null);
   const bgDueRef = useRef(null); // the background that is waiting for its step
   const bgRef = useRef(DEFAULT_BG);
   const fileInputRef = useRef(null);
@@ -1109,6 +1122,9 @@ export default function CoverStudio({
         const w = Math.max(4, o.width * o.scaleX);
         const h = Math.max(4, o.height * o.scaleY);
         const r = ((o.studio.round || 0) * Math.min(w, h)) / 2;
+        // text along the outline is scaled with its shape (owner 2026-11-19),
+        // when the shape was scaled evenly by a corner
+        if (o.studio.ring && evenStretch(Math.abs(o.scaleX), Math.abs(o.scaleY))) o.studio.ring = scaleRing(o.studio.ring, Math.abs(o.scaleX));
         o.set({ width: w, height: h, rx: r, ry: r, scaleX: 1, scaleY: 1 });
         o.setCoords();
       }
@@ -2751,6 +2767,7 @@ export default function CoverStudio({
         o.set({ left: mx + (o.left - mx) * f, top: my + (o.top - my) * f });
         const k = o.studio.kind;
         if (k === 'text') {
+          scaleLetterSizes(o, Math.max(6, o.fontSize * f) / o.fontSize);
           o.set({ fontSize: Math.max(6, o.fontSize * f), width: o.width * f });
           const box = o.studio.box;
           if (box) {
@@ -2764,6 +2781,7 @@ export default function CoverStudio({
           const w = Math.max(4, o.width * f);
           const h = Math.max(4, o.height * f);
           const r = ((o.studio.round || 0) * Math.min(w, h)) / 2;
+          if (o.studio.ring) o.studio.ring = scaleRing(o.studio.ring, f);
           o.set({ width: w, height: h, rx: r, ry: r });
         } else {
           o.set({ scaleX: o.scaleX * f, scaleY: o.scaleY * f });
@@ -3912,21 +3930,64 @@ export default function CoverStudio({
   };
 
   // ---------- text along a shape's outline (ringText.js) ----------
+  // The letters highlighted in the outline text box, for the selected shape:
+  // [from, to), or null. While some are highlighted, a change of size, font or
+  // colour goes to those letters only.
+  const ringRange = (o, ring) => {
+    const r = ringSelRef.current;
+    if (!r || r.o !== o) return null;
+    const end = Math.min(r.end, String(ring.text || '').length);
+    return r.start < end ? [r.start, end] : null;
+  };
+  const RING_LOOK = ['size', 'family', 'weight', 'italic', 'color'];
+  // The ring after a change (fonts looked up, a highlighted part respected).
+  const ringAfter = (o, cur, patch) => {
+    if ('text' in patch) return retextRing(cur, patch.text);
+    const range = Object.keys(patch).every((k) => RING_LOOK.includes(k)) ? ringRange(o, cur) : null;
+    let p = patch;
+    if ('family' in patch || 'weight' in patch || 'italic' in patch) {
+      const base = range ? lookAt(cur, range[0]) : cur;
+      const f = resolveFont(patch.family ?? base.family, patch.weight ?? base.weight, patch.italic ?? base.italic);
+      p = { ...patch, family: f.fontFamily, weight: f.fontWeight, italic: f.fontStyle === 'italic' };
+    }
+    return styleRing(cur, p, range);
+  };
   const setShapeText = async (patch) => {
     const c = fabricRef.current;
     const o = active1();
     if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
-    const next = { ...RING_DEFAULT, ...(o.studio.ring || {}), ...patch };
+    const cur = { ...RING_DEFAULT, ...(o.studio.ring || {}) };
+    const next = ringAfter(o, cur, patch);
     if ('family' in patch || 'weight' in patch || 'italic' in patch) {
-      const f = resolveFont(next.family, next.weight, next.italic);
-      Object.assign(next, { family: f.fontFamily, weight: f.fontWeight, italic: f.fontStyle === 'italic' });
-      await ensureFont(next.family, next.weight, next.italic);
+      await Promise.all(ringFaces(next).map(([family, weight, italic]) => ensureFont(family, weight, italic)));
     }
     o.studio.ring = next; // a new one every time: history keeps the old
     o.dirty = true;
     c.requestRenderAll();
     commitSoon();
     bump();
+  };
+  const clearRingMarks = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || !o.studio.ring) return;
+    const next = { ...o.studio.ring };
+    delete next.marks;
+    o.studio.ring = next;
+    o.dirty = true;
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+  const noteRingSel = (el) => {
+    const o = active1();
+    const start = el ? el.selectionStart : 0;
+    const end = el ? el.selectionEnd : 0;
+    const next = o && el && end > start ? { o, start, end } : null;
+    const was = ringSelRef.current;
+    if ((was && next && was.o === next.o && was.start === next.start && was.end === next.end) || (!was && !next)) return;
+    ringSelRef.current = next;
+    setRingSel(next);
   };
   // pointing at a font in the list shows it on the shape without choosing it
   const previewShapeFont = async (family) => {
@@ -3947,10 +4008,10 @@ export default function CoverStudio({
       p = { o, orig: o.studio.ring };
       ringPreviewRef.current = p;
     }
-    const f = resolveFont(family, p.orig.weight, p.orig.italic);
-    await ensureFont(f.fontFamily, f.fontWeight, f.fontStyle === 'italic');
+    const next = ringAfter(o, { ...RING_DEFAULT, ...p.orig }, { family });
+    await Promise.all(ringFaces(next).map(([fam, weight, italic]) => ensureFont(fam, weight, italic)));
     if (ringPreviewRef.current !== p) return;
-    o.studio.ring = { ...p.orig, family: f.fontFamily, weight: f.fontWeight, italic: f.fontStyle === 'italic' };
+    o.studio.ring = next;
     o.dirty = true;
     if (c) c.requestRenderAll();
   };
@@ -4442,7 +4503,11 @@ export default function CoverStudio({
       if (it.kind === 'text' && it.props && it.props.fontFamily) faces.set(`${it.props.fontFamily}|${it.props.fontWeight}|${it.props.fontStyle}`, it.props);
       // text along a shape's outline has its own font
       const ring = it.kind === 'shape' && it.studio ? it.studio.ring : null;
-      if (hasRing(ring)) faces.set(`${ring.family}|${ring.weight}|${ring.italic ? 'italic' : 'normal'}`, { fontFamily: ring.family, fontWeight: ring.weight, fontStyle: ring.italic ? 'italic' : 'normal' });
+      if (hasRing(ring)) {
+        ringFaces({ ...RING_DEFAULT, ...ring }).forEach(([family, weight, italic]) => {
+          faces.set(`${family}|${weight}|${italic ? 'italic' : 'normal'}`, { fontFamily: family, fontWeight: weight, fontStyle: italic ? 'italic' : 'normal' });
+        });
+      }
     });
     await Promise.all([...faces.values()].map((f) => ensureFont(f.fontFamily, f.fontWeight || 400, f.fontStyle === 'italic')));
     const cv = fabricRef.current;
@@ -4992,7 +5057,10 @@ export default function CoverStudio({
   const selLetter = selRange ? sel.getSelectionStyles(Math.min(sel.selectionStart, sel.selectionEnd), Math.min(sel.selectionStart, sel.selectionEnd) + 1)[0] || {} : {};
   // the selected shape's outline text (its settings, or the starting ones)
   const selRing = selKind === 'shape' ? { ...RING_DEFAULT, ...(sel.studio.ring || {}) } : RING_DEFAULT;
-  const selRingFont = findFont(selRing.family, userFonts);
+  // the letters highlighted in its text box, and the look the controls show
+  const selRingRange = selKind === 'shape' && ringSel && ringSel.o === sel && ringSel.start < Math.min(ringSel.end, String(selRing.text || '').length) ? [ringSel.start, Math.min(ringSel.end, String(selRing.text || '').length)] : null;
+  const selRingLook = selRingRange ? lookAt(selRing, selRingRange[0]) : selRing;
+  const selRingFont = findFont(selRingLook.family, userFonts);
   const kindLabel = (o) => {
     const k = o.studio && o.studio.kind;
     if (k === 'text') return 'Text';
@@ -6168,8 +6236,21 @@ export default function CoverStudio({
                           placeholder="Type here and the words follow the shape. Press Enter for another line."
                           value={selRing.text}
                           onChange={(e) => setShapeText({ text: e.target.value })}
+                          onSelect={(e) => noteRingSel(e.target)}
+                          onKeyUp={(e) => noteRingSel(e.target)}
+                          onMouseUp={(e) => noteRingSel(e.target)}
                           aria-label="Text along the outline of this shape"
                         />
+                        {selRingRange ? (
+                          <RingPicked>
+                            <span>
+                              Highlighted: <b>{String(selRing.text).slice(selRingRange[0], selRingRange[1]).replace(/\n/g, ' ').slice(0, 40)}</b>. Letter size, font and colour now change only these letters.
+                            </span>
+                            <button type="button" onClick={() => noteRingSel(null)}>Whole text</button>
+                          </RingPicked>
+                        ) : (
+                          hasRing(selRing) && <Muted style={{ marginTop: 6 }}>To change only some letters, highlight them in the box above, then set their size, font or colour below.</Muted>
+                        )}
                         {hasRing(selRing) ? (
                           <>
                             <Seg style={{ marginTop: 8 }}>
@@ -6181,7 +6262,7 @@ export default function CoverStudio({
                               <SegBtn $on={!!selRing.flip} onClick={() => setShapeText({ flip: true })}>Reads along the bottom</SegBtn>
                             </Seg>
                             <div style={{ marginTop: 8 }}>
-                              <Slider label="Letter size" min={8} max={300} step={1} value={selRing.size} onChange={(v) => setShapeText({ size: v })} fmt={(v) => `${Math.round(v)}px`} />
+                              <Slider label={selRingRange ? 'Size of the highlighted letters' : 'Letter size'} min={8} max={300} step={1} value={selRingLook.size} onChange={(v) => setShapeText({ size: v })} fmt={(v) => `${Math.round(v)}px`} />
                               <Slider label="Letter spacing" min={-100} max={1500} step={10} value={selRing.spacing} onChange={(v) => setShapeText({ spacing: v })} fmt={(v) => `${Math.round(v)}`} />
                               {String(selRing.text || '').includes('\n') && (
                                 <Slider label="Line spacing" min={0.6} max={3} step={0.01} value={selRing.leading} onChange={(v) => setShapeText({ leading: v })} fmt={(v) => `${v.toFixed(2)}`} />
@@ -6189,37 +6270,42 @@ export default function CoverStudio({
                               <Slider label="Distance from the outline" min={0} max={200} step={1} value={selRing.gap} onChange={(v) => setShapeText({ gap: v })} fmt={(v) => `${Math.round(v)}px`} />
                               <Slider label="Move the text round the shape" min={0} max={1} step={0.005} value={selRing.start} onChange={(v) => setShapeText({ start: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
                             </div>
-                            <FieldLabel style={{ marginTop: 8 }}>Font</FieldLabel>
+                            <FieldLabel style={{ marginTop: 8 }}>{selRingRange ? 'Font of the highlighted letters' : 'Font'}</FieldLabel>
                             <FontPicker
-                              value={(ringPreviewRef.current && ringPreviewRef.current.o === sel ? ringPreviewRef.current.orig : selRing).family}
+                              value={ringPreviewRef.current && ringPreviewRef.current.o === sel ? (selRingRange ? lookAt({ ...RING_DEFAULT, ...ringPreviewRef.current.orig }, selRingRange[0]) : ringPreviewRef.current.orig).family : selRingLook.family}
                               groups={fontGroups}
                               onPreview={previewShapeFont}
                               onPick={pickShapeFont}
                             />
-                            <Select value={selRing.weight} onChange={(e) => setShapeText({ weight: Number(e.target.value) })} style={{ marginTop: 6 }}>
+                            <Select value={selRingLook.weight} onChange={(e) => setShapeText({ weight: Number(e.target.value) })} style={{ marginTop: 6 }}>
                               {selRingFont.weights.map((w) => (
                                 <option key={w} value={w}>{weightLabel(selRingFont, w)}</option>
                               ))}
                             </Select>
-                            {hasItalic(selRingFont, selRing.weight) && !(selRingFont.italicOnly || []).includes(Number(selRing.weight)) && (
+                            {hasItalic(selRingFont, selRingLook.weight) && !(selRingFont.italicOnly || []).includes(Number(selRingLook.weight)) && (
                               <Check style={{ marginTop: 6 }}>
-                                <input type="checkbox" checked={!!selRing.italic} onChange={(e) => setShapeText({ italic: e.target.checked })} />
+                                <input type="checkbox" checked={!!selRingLook.italic} onChange={(e) => setShapeText({ italic: e.target.checked })} />
                                 Italic
                               </Check>
                             )}
-                            <FieldLabel style={{ marginTop: 8 }}>Text colour</FieldLabel>
+                            <FieldLabel style={{ marginTop: 8 }}>{selRingRange ? 'Colour of the highlighted letters' : 'Text colour'}</FieldLabel>
                             <SwatchRow>
-                              <input type="color" value={normHex(selRing.color, '#ffffff')} onChange={(e) => setShapeText({ color: e.target.value })} />
+                              <input type="color" value={normHex(selRingLook.color, '#ffffff')} onChange={(e) => setShapeText({ color: e.target.value })} />
                               {['#ffffff', '#000000', bg.palette.a1, bg.palette.a2].map((col, i) => (
                                 <Swatch key={i} style={{ background: col }} onClick={() => setShapeText({ color: col })} title={col} />
                               ))}
                             </SwatchRow>
+                            {hasMarks(selRing) && (
+                              <Row style={{ marginTop: 8 }}>
+                                <Ghost onClick={clearRingMarks}>Make every letter the same again</Ghost>
+                              </Row>
+                            )}
                             <Check style={{ marginTop: 8 }}>
                               <input type="checkbox" checked={!!selRing.only} onChange={(e) => setShapeText({ only: e.target.checked })} />
                               Show only the text (hide the shape itself)
                             </Check>
                             <Muted>
-                              The text belongs to this shape: it follows when the shape is moved, resized, rounded or turned. Press Enter in the box for another line; each line follows the outline. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
+                              The text belongs to this shape: it follows when the shape is moved, rounded or turned, and dragging a corner of the shape (or the toolbar's Size) scales the shape and its text together. Press Enter in the box for another line; each line follows the outline. For a ring of words, use a circle. For one text along the top and another along the bottom, duplicate the shape and hide the copy's shape.
                             </Muted>
                           </>
                         ) : (
@@ -8097,6 +8183,38 @@ const PatternAdd = styled.button`
   }
   &:hover {
     border-color: #00d4ff;
+  }
+`;
+
+// the note under the outline text box while some of its letters are highlighted
+const RingPicked = styled.div`
+  margin-top: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid #00d4ff;
+  border-radius: 8px;
+  background: #12222b;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: #c9d1d9;
+  span {
+    flex: 1;
+    min-width: 0;
+  }
+  b {
+    color: #ffffff;
+  }
+  button {
+    flex-shrink: 0;
+    background: #161616;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.45rem;
+    cursor: pointer;
   }
 `;
 
