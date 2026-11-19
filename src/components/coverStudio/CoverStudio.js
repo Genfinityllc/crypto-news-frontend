@@ -36,7 +36,7 @@ import {
   drawLayoutThumb,
   photoGradBox,
 } from './interviewKit';
-import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, resizeGrad } from './gradients';
+import { GRAD_MIN, GRAD_MAX, colourDot, gradCss, gradKey, isGrad, makeGrad, moveDot, paintGrad, reachDot, reachOf, resizeGrad } from './gradients';
 import { cutOutPerson } from './photoCutout';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -2778,6 +2778,10 @@ export default function CoverStudio({
   const moveGradDot = (i, x, y) => {
     const spec = gradSpecRef.current();
     if (spec && spec.grad.pts[i]) putGrad(spec, moveDot(spec.grad, i, x, y));
+  };
+  const reachGradDot = (i, r) => {
+    const spec = gradSpecRef.current();
+    if (spec && spec.grad.pts[i]) putGrad(spec, reachDot(spec.grad, i, r));
   };
   const endGradDot = () => {
     commit();
@@ -5718,7 +5722,7 @@ export default function CoverStudio({
             </DropBox>
           )}
           {showGuides && <SafeBox $w={W} $h={H} />}
-          <GradDots specRef={gradSpecRef} syncRef={gradSyncRef} stageRef={stageRef} coverW={W} coverH={H} onMove={moveGradDot} onDone={endGradDot} />
+          <GradDots specRef={gradSpecRef} syncRef={gradSyncRef} stageRef={stageRef} coverW={W} coverH={H} onMove={moveGradDot} onReach={reachGradDot} onDone={endGradDot} />
           {guides.v !== null && <GuideV style={{ left: `${(guides.v / W) * 100}%` }} />}
           {guides.h !== null && <GuideH style={{ top: `${(guides.h / H) * 100}%` }} />}
           {objectCount === 0 && (
@@ -5774,7 +5778,7 @@ function GradControls({ grad, colours, onChange, onTouch }) {
         ))}
       </GradDotRow>
       <GradStrip style={{ background: gradCss(grad) }} />
-      <Muted>Drag the numbered dots on the cover to shape the gradient.</Muted>
+      <Muted>Drag the numbered dots on the cover to shape the gradient. Each dot has a circle around it: drag the small handle on the circle to set how far that colour reaches.</Muted>
     </GradBox>
   );
 }
@@ -5784,21 +5788,34 @@ function GradControls({ grad, colours, onChange, onTouch }) {
 // specRef.current(): -> { o, grad, box } or null (see gradSpecRef).
 // syncRef: this layer puts its "move the dots" function there, and the editor
 // calls it after every redraw so the dots stay on their item.
-function GradDots({ specRef, syncRef, stageRef, coverW, coverH, onMove, onDone }) {
+function GradDots({ specRef, syncRef, stageRef, coverW, coverH, onMove, onReach, onDone }) {
   const [dots, setDots] = useState([]);
   const sigRef = useRef('');
-  const dragRef = useRef(null);
+  const dragRef = useRef(null); // { i, what: 'dot' | 'reach' }
   const sync = useCallback(() => {
     const spec = specRef.current ? specRef.current() : null;
     let next = [];
     if (spec) {
       const m = spec.o.calcTransformMatrix();
+      const short = Math.min(spec.box.w, spec.box.h);
       next = spec.grad.pts.map((p, i) => {
-        const at = util.transformPoint({ x: spec.box.x + p.x * spec.box.w, y: spec.box.y + p.y * spec.box.h }, m);
-        return { i, left: (at.x / coverW) * 100, top: (at.y / coverH) * 100, c: p.c };
+        const x = spec.box.x + p.x * spec.box.w;
+        const y = spec.box.y + p.y * spec.box.h;
+        const at = util.transformPoint({ x, y }, m);
+        // the handle sits on the circle, to the right of the dot in the item's own direction
+        const hd = util.transformPoint({ x: x + reachOf(p) * short, y }, m);
+        return {
+          i,
+          c: p.c,
+          left: (at.x / coverW) * 100,
+          top: (at.y / coverH) * 100,
+          hLeft: (hd.x / coverW) * 100,
+          hTop: (hd.y / coverH) * 100,
+          size: ((Math.hypot(hd.x - at.x, hd.y - at.y) * 2) / coverW) * 100, // the circle's width, as a share of the cover's
+        };
       });
     }
-    const sig = next.map((d) => `${d.left.toFixed(3)},${d.top.toFixed(3)},${d.c}`).join(';');
+    const sig = next.map((d) => `${d.left.toFixed(3)},${d.top.toFixed(3)},${d.hLeft.toFixed(3)},${d.hTop.toFixed(3)},${d.c}`).join(';');
     if (sig !== sigRef.current) {
       sigRef.current = sig;
       setDots(next);
@@ -5812,17 +5829,35 @@ function GradDots({ specRef, syncRef, stageRef, coverW, coverH, onMove, onDone }
     };
   });
   const moveTo = (e) => {
+    const drag = dragRef.current;
     const spec = specRef.current ? specRef.current() : null;
     const stage = stageRef.current;
-    if (dragRef.current == null || !spec || !stage) return;
+    if (!drag || !spec || !stage) return;
     const r = stage.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const onCover = { x: ((e.clientX - r.left) / r.width) * coverW, y: ((e.clientY - r.top) / r.height) * coverH };
     const own = util.transformPoint(onCover, util.invertTransform(spec.o.calcTransformMatrix()));
-    onMove(dragRef.current, (own.x - spec.box.x) / spec.box.w, (own.y - spec.box.y) / spec.box.h);
+    if (drag.what === 'reach') {
+      const p = spec.grad.pts[drag.i];
+      if (!p) return;
+      const short = Math.min(spec.box.w, spec.box.h) || 1;
+      onReach(drag.i, Math.hypot(own.x - (spec.box.x + p.x * spec.box.w), own.y - (spec.box.y + p.y * spec.box.h)) / short);
+    } else {
+      onMove(drag.i, (own.x - spec.box.x) / spec.box.w, (own.y - spec.box.y) / spec.box.h);
+    }
+  };
+  const start = (e, i, what) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { i, what };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // capture is a nicety: the drag still works while the pointer stays on the handle
+    }
   };
   const stop = (e) => {
-    if (dragRef.current == null) return;
+    if (!dragRef.current) return;
     dragRef.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -5832,27 +5867,29 @@ function GradDots({ specRef, syncRef, stageRef, coverW, coverH, onMove, onDone }
     onDone();
   };
   return dots.map((d) => (
-    <GradDot
-      key={d.i}
-      data-grad-dot={d.i + 1}
-      style={{ left: `${d.left}%`, top: `${d.top}%`, background: d.c, color: isLight(d.c) ? '#111111' : '#ffffff' }}
-      title={`Colour ${d.i + 1}: drag to move it`}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragRef.current = d.i;
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch (err) {
-          // capture is a nicety: the drag still works while the pointer stays on the dot
-        }
-      }}
-      onPointerMove={moveTo}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-    >
-      {d.i + 1}
-    </GradDot>
+    <React.Fragment key={d.i}>
+      <GradReach data-grad-reach={d.i + 1} style={{ left: `${d.left}%`, top: `${d.top}%`, width: `${d.size}%` }} />
+      <GradReachHandle
+        data-grad-handle={d.i + 1}
+        style={{ left: `${d.hLeft}%`, top: `${d.hTop}%`, background: d.c }}
+        title={`How far colour ${d.i + 1} reaches: drag towards or away from its dot`}
+        onPointerDown={(e) => start(e, d.i, 'reach')}
+        onPointerMove={moveTo}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+      />
+      <GradDot
+        data-grad-dot={d.i + 1}
+        style={{ left: `${d.left}%`, top: `${d.top}%`, background: d.c, color: isLight(d.c) ? '#111111' : '#ffffff' }}
+        title={`Colour ${d.i + 1}: drag to move it`}
+        onPointerDown={(e) => start(e, d.i, 'dot')}
+        onPointerMove={moveTo}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+      >
+        {d.i + 1}
+      </GradDot>
+    </React.Fragment>
   ));
 }
 
@@ -7213,9 +7250,35 @@ const GradStrip = styled.div`
   border-radius: 5px;
   border: 1px solid #262626;
 `;
-const GradDot = styled.div`
+// the circle around a dot: how far its colour reaches (it lets clicks through)
+const GradReach = styled.div`
+  position: absolute;
+  z-index: 6;
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+`;
+// the small handle on that circle
+const GradReachHandle = styled.div`
   position: absolute;
   z-index: 7;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.7), 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: ew-resize;
+  touch-action: none;
+`;
+const GradDot = styled.div`
+  position: absolute;
+  z-index: 8;
   width: 24px;
   height: 24px;
   margin: -12px 0 0 -12px;

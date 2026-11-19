@@ -1,7 +1,10 @@
 // Free-form gradients for the Design Studio.
 //
 // A gradient is a handful of coloured dots placed anywhere inside a shape:
-//   { pts: [{ x, y, c }] }   x, y: 0..1 across the shape's own box, c: '#rrggbb'
+//   { pts: [{ x, y, c, r }] }   x, y: 0..1 across the shape's own box, c: '#rrggbb'
+// r (optional) is the dot's reach: how far its colour travels, as a share of
+// the shape's shorter side. A dot with a longer reach pushes its colour
+// farther before the others take over.
 // Every point of the shape takes a blend of the dots' colours, weighted by how
 // near each dot is, so moving a dot reshapes the whole fill. It is not a
 // straight line from A to B unless the dots are put that way.
@@ -11,6 +14,9 @@
 
 export const GRAD_MIN = 2;
 export const GRAD_MAX = 6;
+export const REACH = 0.5; // a dot's reach until it is changed
+export const REACH_MIN = 0.08;
+export const REACH_MAX = 1.6;
 
 // Where the dots start, by how many there are.
 const SPOTS = {
@@ -90,12 +96,20 @@ export function moveDot(grad, i, x, y) {
   return { pts: grad.pts.map((p, k) => (k === i ? { ...p, x: clamp01(x), y: clamp01(y) } : p)) };
 }
 
+// A dot's reach (see the top of this file).
+export const reachOf = (p) => (p && p.r > 0 ? Math.max(REACH_MIN, Math.min(REACH_MAX, p.r)) : REACH);
+
+export function reachDot(grad, i, r) {
+  const v = Math.max(REACH_MIN, Math.min(REACH_MAX, Number(r) || REACH));
+  return { pts: grad.pts.map((p, k) => (k === i ? { ...p, r: Math.round(v * 1000) / 1000 } : p)) };
+}
+
 export function colourDot(grad, i, c) {
   return { pts: grad.pts.map((p, k) => (k === i ? { ...p, c: hex(c, p.c) } : p)) };
 }
 
 // A short text that changes whenever the gradient does (for change checks).
-export const gradKey = (g) => (isGrad(g) ? g.pts.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)},${p.c}`).join(';') : '');
+export const gradKey = (g) => (isGrad(g) ? g.pts.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)},${p.c},${reachOf(p)}`).join(';') : '');
 
 // A plain CSS stand-in for small previews in the side panel.
 export const gradCss = (g) => (isGrad(g) ? `linear-gradient(90deg, ${g.pts.map((p) => p.c).join(', ')})` : 'none');
@@ -133,7 +147,7 @@ function sheetFor(grad, w, h) {
   const sy = aspect >= 1 ? 1 : 1 / aspect;
   const pts = grad.pts.map((p) => {
     const [r, gg, b] = rgbOf(p.c);
-    return { x: clamp01(p.x) * sx, y: clamp01(p.y) * sy, r: toLinear[r], g: toLinear[gg], b: toLinear[b] };
+    return { x: clamp01(p.x) * sx, y: clamp01(p.y) * sy, reach: reachOf(p), r: toLinear[r], g: toLinear[gg], b: toLinear[b] };
   });
   for (let j = 0; j < gh; j += 1) {
     const y = ((j + 0.5) / gh) * sy;
@@ -145,10 +159,12 @@ function sheetFor(grad, w, h) {
       let sum = 0;
       for (let k = 0; k < pts.length; k += 1) {
         const p = pts[k];
-        const dist2 = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
+        // the distance is counted in the dot's own reach, so a long reach
+        // makes everything look nearer to that dot
+        const far = Math.sqrt((x - p.x) * (x - p.x) + (y - p.y) * (y - p.y)) / p.reach;
         // falls off with the cube of the distance: soft between dots, yet each
         // dot keeps its own colour around itself
-        const wgt = 1 / (dist2 * Math.sqrt(dist2) + 1e-5);
+        const wgt = 1 / (far * far * far + 1e-5);
         r += p.r * wgt;
         gg += p.g * wgt;
         b += p.b * wgt;
