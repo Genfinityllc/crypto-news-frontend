@@ -202,7 +202,7 @@ export function paintPhoto(st) {
   } else if (st.mask) {
     // an empty image mask (a shape turned into one): the shape's own colour
     // with a small picture sign, so it reads as "an image goes here"
-    g.fillStyle = st.maskFill || '#262b33';
+    g.fillStyle = st.backdrop || st.maskFill || '#262b33'; // its background colour, when one is set
     g.fillRect(0, 0, c.width, c.height);
     const m = Math.min(bw, bh);
     const iw = m * 0.3;
@@ -302,6 +302,51 @@ export function placeholderLogo(label) {
 // Remove a plain, single-colour background from a logo (white card, black
 // card, flat colour). Works inwards from the edges, so the same colour inside
 // the mark is kept. Returns null when the edges are not one plain colour.
+// What surrounds a picture, judged from its outer edge:
+//   'clear'  the edge is see-through already (a logo with no background)
+//   'plain'  the edge is one flat colour all the way round (a logo on a
+//            colour): asks for more of the edge than removePlainBackground
+//            does, because a portrait against a plain wall has a plain edge
+//            too, except where the shoulders leave the picture
+//   'photo'  anything else
+export function edgeKind(source, tolerance = 34) {
+  const sw = source.naturalWidth || source.width;
+  const sh = source.naturalHeight || source.height;
+  if (!sw || !sh) return 'photo';
+  const k = Math.min(1, 240 / Math.max(sw, sh));
+  const w = Math.max(2, Math.round(sw * k));
+  const h = Math.max(2, Math.round(sh * k));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(source, 0, 0, w, h);
+  let d;
+  try {
+    d = g.getImageData(0, 0, w, h).data;
+  } catch (e) {
+    return 'photo';
+  }
+  const border = [];
+  for (let x = 0; x < w; x += 1) border.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y += 1) border.push(y * w, y * w + w - 1);
+  const solid = border.filter((p) => d[p * 4 + 3] > 200);
+  if (solid.length < border.length * 0.6) return 'clear';
+  let r = 0;
+  let gg = 0;
+  let b = 0;
+  solid.forEach((p) => {
+    r += d[p * 4];
+    gg += d[p * 4 + 1];
+    b += d[p * 4 + 2];
+  });
+  r /= solid.length;
+  gg /= solid.length;
+  b /= solid.length;
+  const near = solid.filter((p) => Math.hypot(d[p * 4] - r, d[p * 4 + 1] - gg, d[p * 4 + 2] - b) <= tolerance).length;
+  return near >= border.length * 0.94 ? 'plain' : 'photo';
+}
+
 export function removePlainBackground(source, tolerance = 34) {
   const w = source.width;
   const h = source.height;

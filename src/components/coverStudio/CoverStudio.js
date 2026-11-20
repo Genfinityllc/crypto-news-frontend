@@ -34,6 +34,7 @@ import {
   drawElementThumb,
   removePlainBackground,
   drawLayoutThumb,
+  edgeKind,
   photoGradBox,
   photoMap,
 } from './interviewKit';
@@ -2522,9 +2523,44 @@ export default function CoverStudio({
     if (who) fillPersonWords(target, who);
     layoutAttached(target);
     finishAdd(target);
-    // a colour behind the photo only shows once the photo is cut out, so a
-    // frame that already has one gets its new photo cut out straight away
-    if (target.studio.backdrop || isGrad(target.studio.backdropGrad)) cutOutPhoto(target);
+    // a colour behind the picture only shows once its own background is gone,
+    // so a frame that already has one clears its new picture straight away
+    if (target.studio.backdrop || isGrad(target.studio.backdropGrad)) clearBehind(target);
+  };
+
+  // A flat single-colour background (a logo on a colour) taken out of the
+  // picture in a frame. The people cut-out below erases most of a logo
+  // (owner 2026-11-19), so frames have both. quiet: no messages (the automatic
+  // path). Returns whether anything was removed.
+  const cutOutPhotoPlain = (item, quiet = false) => {
+    const c = fabricRef.current;
+    const o = item && item.studio && item.studio.kind === 'photo' ? item : active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'photo' || !o.studio.src) return false;
+    const original = o.studio.srcOrig || o.studio.src;
+    const cut = removePlainBackground(original);
+    if (!cut) {
+      if (!quiet) toast.info('This picture does not have a plain single-colour background to remove. For a photo of a person, use "Remove the background".');
+      return false;
+    }
+    o.studio.srcOrig = original;
+    o.studio.src = cut;
+    repaintPhoto(o);
+    layoutAttached(o);
+    c.requestRenderAll();
+    commit();
+    bump();
+    if (!quiet) toast.success('Plain background removed. "Bring the background back" or Undo restores it.');
+    return true;
+  };
+  // Make room for a colour behind the picture, the right way for what the
+  // picture is: nothing for one that is see-through already, the flat
+  // background for a logo on a colour, the people cut-out for a photo.
+  const clearBehind = (o) => {
+    if (!o || !o.studio || !o.studio.src || o.studio.srcOrig) return;
+    const kind = edgeKind(o.studio.src);
+    if (kind === 'clear') return;
+    if (kind === 'plain' && cutOutPhotoPlain(o, true)) return;
+    cutOutPhoto(o);
   };
 
   // ---------- erase the background of a guest photo ----------
@@ -2670,7 +2706,7 @@ export default function CoverStudio({
     // request to remove its background: without that the colour cannot show.
     // Owner 2026-11-19: one step, not two.
     const wantsBehind = (patch.backdrop && patch.backdrop !== '') || isGrad(patch.backdropGrad);
-    if (wantsBehind && o.studio.src && !o.studio.srcOrig) cutOutPhoto(o);
+    if (wantsBehind && o.studio.src && !o.studio.srcOrig) clearBehind(o);
   };
 
   // The border, for the selected guest or (with the tick box) every guest.
@@ -5999,11 +6035,14 @@ export default function CoverStudio({
                             {selPhoto.srcOrig ? (
                               <Ghost onClick={() => setPhoto({ src: selPhoto.srcOrig, srcOrig: null })}>Bring the background back</Ghost>
                             ) : (
-                              <Ghost onClick={cutOutPhoto} disabled={cutting}>{cutting ? 'Removing the background...' : 'Remove the background'}</Ghost>
+                              <>
+                                <Ghost onClick={cutOutPhoto} disabled={cutting}>{cutting ? 'Removing the background...' : 'Remove the background'}</Ghost>
+                                <Ghost onClick={() => cutOutPhotoPlain()} disabled={cutting}>Remove plain background</Ghost>
+                              </>
                             )}
                           </Row>
                           <Muted style={{ marginTop: 6 }}>
-                            For photos of people. It runs on your computer and the photo is not uploaded. You can also drag a picture from your computer straight onto a guest.
+                            "Remove the background" is for photos of people. "Remove plain background" is for a logo or drawing on one flat colour (the people tool would erase most of a logo). Both run on your computer; nothing is uploaded. You can also drag a picture from your computer straight onto a guest.
                           </Muted>
                         </>
                       )}
@@ -6108,7 +6147,7 @@ export default function CoverStudio({
                           Same border on every guest photo
                         </Check>
                       )}
-                      <FieldLabel style={{ marginTop: 10 }}>Colour behind a cut-out photo</FieldLabel>
+                      <FieldLabel style={{ marginTop: 10 }}>Background colour of the frame</FieldLabel>
                       <PaintMode
                         grad={isGrad(selPhoto.backdropGrad)}
                         none={!selPhoto.backdrop && !isGrad(selPhoto.backdropGrad)}
@@ -6129,7 +6168,9 @@ export default function CoverStudio({
                           ))}
                         </SwatchRow>
                       )}
-                      <Muted style={{ marginTop: 6 }}>Choosing a colour here also removes the photo's background, so the colour shows behind the person.</Muted>
+                      <Muted style={{ marginTop: 6 }}>
+                        The colour sits behind the picture. So that it can show, choosing one also clears the picture's own background: the flat colour around a logo, or everything around the person in a photo. A picture that is already see-through is left as it is.
+                      </Muted>
                     </InsCell>
                     <InsCell>
                       <FieldLabel>Name and title</FieldLabel>
