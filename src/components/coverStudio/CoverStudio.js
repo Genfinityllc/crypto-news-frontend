@@ -577,7 +577,7 @@ function applyTextBox(o) {
 // The interview studio's "Most used" logos, in the owner's order: Hedera,
 // HashPack, Solana, XDC, Canton. Where the library has both a full wordmark
 // and a mark, the wordmark comes first. Symbols are the logo library's own.
-const MOST_USED_LOGOS = ['HEDERA_FULL', 'HBAR', 'HASHPACK', 'HASHPACKMARK', 'SOLANA_FULL', 'SOL', 'XDC', 'CANTON', 'CANTONSIMPLE'];
+const MOST_USED_LOGOS = ['HEDERA_FULL', 'HBAR', 'HASHPACK', 'HASHPACK_COLOR', 'HASHPACKMARK', 'SOLANA_FULL', 'SOL', 'XDC', 'CANTON', 'CANTONSIMPLE'];
 
 // Size of a guest's name, title and a logo's caption as a share of the photo's
 // (or logo's) width. These are the sizes the starting layouts show.
@@ -2045,7 +2045,8 @@ export default function CoverStudio({
     if (studio.textStyle === 'bar') makeBar(o, studio.barFill);
     if (studio.textStyle !== 'none') {
       makeAttachedText(o, 'name', opt.upper ? 'GUEST NAME' : 'Guest Name');
-      makeAttachedText(o, 'title', opt.upper ? 'TITLE AT COMPANY' : 'Title at Company');
+      // noTitle: a frame that shows a name only (a project, not a person)
+      if (!opt.noTitle) makeAttachedText(o, 'title', opt.upper ? 'TITLE AT COMPANY' : 'Title at Company');
     }
     layoutAttached(o);
     return o;
@@ -2336,12 +2337,19 @@ export default function CoverStudio({
     c.remove(...all.filter((o) => !mine.includes(o)));
     const had = new Set(c.getObjects());
     let g = 0;
+    const waiting = []; // [person, frame]: photos to load once the layout stands
     layout.items.forEach((it) => {
       if (it.t === 'shape') {
         const sh = makeShape(it);
         if (carry.grain > 0) sh.studio.grain = carry.grain;
       } else if (it.t === 'guest') {
-        fillGuest(makePhoto(it), carry.guests[g], !!it.upper);
+        const frame = makePhoto(it);
+        const from = carry.guests[g];
+        fillGuest(frame, from, !!it.upper);
+        // a place that starts with one of our own people, unless a guest was
+        // carried into it from the layout before
+        const person = it.who ? HOSTS.find((h) => h.id === it.who) : null;
+        if (person && !(from && (from.src || from.name != null || from.title != null))) waiting.push([person, frame]);
         g += 1;
       } else if (it.t === 'logo') fillLogo(makeLogoSlot(it), carry.logos[it.slot], it.caption ? carry.texts.caption : null);
       else if (it.t === 'pill') makePill({ ...it, text: carry.texts.pill });
@@ -2353,6 +2361,21 @@ export default function CoverStudio({
     });
     mine.forEach((o) => c.bringObjectToFront(o));
     lastLayoutRef.current = layout;
+    // our own people the layout starts with: their photo, name and title
+    // (before the history step, so the layout is one Undo)
+    for (const [person, frame] of waiting) {
+      try {
+        const img = await loadImage(person.src, false);
+        if (c.getObjects().includes(frame)) {
+          Object.assign(frame.studio, { src: preparePhoto(img), srcOrig: null, ...personFraming(person) });
+          repaintPhoto(frame);
+          fillPersonWords(frame, person);
+        }
+      } catch (e) {
+        // the placeholder stays
+      }
+    }
+    c.discardActiveObject();
     c.requestRenderAll();
     commit();
     bump();

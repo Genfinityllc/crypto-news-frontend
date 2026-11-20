@@ -586,6 +586,25 @@ export const INTERVIEW_LAYOUTS = [
     ],
   },
   {
+    id: 'spotlight',
+    name: 'Builder Spotlight',
+    note: 'Company logo and a big centred title over a row of three six-sided frames and a round host.',
+    // From the owner's "Builder Spotlight" cover (2026-11-19). The three
+    // six-sided frames show a name only (noTitle); the round one starts with
+    // our first host (who) unless a fourth guest is carried in from the
+    // layout before.
+    items: [
+      { t: 'logo', slot: 'ecosystem', x: 60, y: 62, w: 240, h: 80, caption: true },
+      { t: 'logo', slot: 'partner', cx: 960, cy: 152, w: 540, h: 112 },
+      { t: 'text', role: 'headline', text: 'Builder Spotlight', x: 100, y: 252, w: 1720, size: 168, weight: 800, align: 'center', lineHeight: 1.0 },
+      { t: 'guest', cx: 469, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 790, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 1113, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 1453, cy: 627, size: 228, shape: 'circle', ring: 18, ringColor: 'a1', style: 'below', align: 'center', upper: true, who: 'tate' },
+      { t: 'brought', anchor: 'center', x: 960, cy: 935 },
+    ],
+  },
+  {
     id: 'grid4',
     name: 'Four guests, grid',
     note: 'Two by two grid of guests on a colour block, title on the left.',
