@@ -2026,6 +2026,7 @@ export default function CoverStudio({
       aspect: opt.aspect || 1,
       ring: opt.ring || 0,
       ringColor: paletteColor(opt.ringColor, '#ffffff'),
+      backdrop: opt.backdrop ? paletteColor(opt.backdrop, '') : '', // the frame's background colour
       tintColor: bgRef.current.palette.a1,
       src: opt.src || null,
       zoom: opt.zoom || DEFAULT_PHOTO.zoom,
@@ -2286,7 +2287,7 @@ export default function CoverStudio({
   const fillGuest = (o, g, upper) => {
     if (!g) return;
     const st = o.studio;
-    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, mapColors: g.mapColors, adjust: g.adjust, backdrop: g.backdrop, backdropGrad: g.backdropGrad });
+    if (g.src) Object.assign(st, { src: g.src, srcOrig: g.srcOrig || null, zoom: g.zoom, panX: g.panX, panY: g.panY, treatment: g.treatment, mapColors: g.mapColors, adjust: g.adjust, backdrop: g.backdrop || st.backdrop, backdropGrad: g.backdropGrad }); // a frame colour the layout gives stays unless the guest brings one
     if (g.src && g.treatment === 'tint') st.tintColor = g.tintColor;
     repaintPhoto(o);
     [['name', g.name], ['title', g.title]].forEach(([r, v]) => {

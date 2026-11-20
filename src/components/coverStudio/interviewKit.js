@@ -589,19 +589,20 @@ export const INTERVIEW_LAYOUTS = [
     id: 'spotlight',
     name: 'Builder Spotlight',
     note: 'Company logo and a big centred title over a row of three six-sided frames and a round host.',
-    // From the owner's "Builder Spotlight" cover (2026-11-19). The three
-    // six-sided frames show a name only (noTitle); the round one starts with
-    // our first host (who) unless a fourth guest is carried in from the
-    // layout before.
+    // From the owner's "Builder Spotlight" cover, positions as in the finished
+    // cover sent on 2026-11-19. The three six-sided frames show a name only
+    // (noTitle) on a dark frame background, as in that cover; the round one
+    // starts with our first host (who) unless a fourth guest is carried in
+    // from the layout before.
     items: [
-      { t: 'logo', slot: 'ecosystem', x: 60, y: 62, w: 240, h: 80, caption: true },
-      { t: 'logo', slot: 'partner', cx: 960, cy: 152, w: 540, h: 112 },
-      { t: 'text', role: 'headline', text: 'Builder Spotlight', x: 100, y: 252, w: 1720, size: 168, weight: 800, align: 'center', lineHeight: 1.0 },
-      { t: 'guest', cx: 469, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
-      { t: 'guest', cx: 790, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
-      { t: 'guest', cx: 1113, cy: 627, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', style: 'below', align: 'center', noTitle: true },
-      { t: 'guest', cx: 1453, cy: 627, size: 228, shape: 'circle', ring: 18, ringColor: 'a1', style: 'below', align: 'center', upper: true, who: 'tate' },
-      { t: 'brought', anchor: 'center', x: 960, cy: 935 },
+      { t: 'logo', slot: 'ecosystem', x: 58, y: 66, w: 230, h: 76, caption: true },
+      { t: 'logo', slot: 'partner', cx: 948, cy: 192, w: 520, h: 104 },
+      { t: 'text', role: 'headline', text: 'Builder Spotlight', x: 87, y: 292, w: 1720, size: 168, weight: 800, align: 'center', lineHeight: 1.0 },
+      { t: 'guest', cx: 468, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 790, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 1113, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
+      { t: 'guest', cx: 1453, cy: 666, size: 222, shape: 'circle', ring: 18, ringColor: 'a1', style: 'below', align: 'center', upper: true, who: 'tate' },
+      { t: 'brought', anchor: 'center', x: 960, cy: 936 },
     ],
   },
   {
