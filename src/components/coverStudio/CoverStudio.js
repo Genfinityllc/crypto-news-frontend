@@ -1706,7 +1706,36 @@ export default function CoverStudio({
       o.setControlsVisibility({ mt: false, mb: false });
       styleObject(o);
       c.add(o);
-      if (autoLayoutRef.current.on && applyLayoutRef.current) applyLayoutRef.current(autoLayoutRef.current.id, true);
+      // A text added after a logo goes centred under it, and the logo is left
+      // exactly as it is (owner 2026-11-19: the centred layout used to shrink
+      // the logo to make room; only adding another logo should resize logos).
+      // Under the logo means under whatever is already stacked there.
+      const logos = c.getObjects().filter((x) => x.studio && x.studio.kind === 'logo' && !x.studio.seal && x.visible !== false);
+      if (logos.length && (!autoLayoutRef.current.on || autoLayoutRef.current.id === 'center')) {
+        const boxes = logos.map((x) => x.getBoundingRect());
+        const left = Math.min(...boxes.map((b) => b.left));
+        const right = Math.max(...boxes.map((b) => b.left + b.width));
+        let bottom = Math.max(...boxes.map((b) => b.top + b.height));
+        let gap = 44;
+        // earlier texts that sit under the logos, in the same column
+        c.getObjects().forEach((x) => {
+          if (x === o || !x.studio || x.studio.kind !== 'text' || x.studio.attach || x.visible === false) return;
+          const b = x.getBoundingRect();
+          const mid = b.left + b.width / 2;
+          if (b.top + b.height > bottom && b.top >= Math.min(...boxes.map((q) => q.top)) && mid > left - 60 && mid < right + 60) {
+            bottom = b.top + b.height;
+            gap = 26;
+          }
+        });
+        // centred under the logo, and never off the cover: next to an edge the
+        // text box is made narrower (the words wrap) instead
+        const cx = Math.min(W - SAFE - 150, Math.max(SAFE + 150, (left + right) / 2));
+        o.set({ width: Math.max(300, Math.min(o.width, 2 * Math.min(cx - SAFE, W - SAFE - cx))) });
+        o.initDimensions();
+        const floor = (watermarkRef.current ? 735 : H - SAFE) - o.height / 2;
+        o.set({ left: cx, top: Math.min(Math.max(floor, o.height / 2 + 10), bottom + gap + o.height / 2) });
+        o.setCoords();
+      } else if (autoLayoutRef.current.on && applyLayoutRef.current) applyLayoutRef.current(autoLayoutRef.current.id, true);
       c.setActiveObject(o);
       c.requestRenderAll();
       commit();
