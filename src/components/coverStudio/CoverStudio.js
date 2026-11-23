@@ -61,7 +61,7 @@ const FONTS = [
   { family: 'Manrope', weights: [400, 600, 800], kind: 'Sans' },
   { family: 'Libre Franklin', weights: [400, 600, 800], kind: 'Sans' },
   { family: 'IBM Plex Sans', weights: [400, 500, 600, 700], kind: 'Sans' },
-  { family: 'Space Grotesk', weights: [400, 500, 700], kind: 'Sans' },
+  { family: 'Space Grotesk', weights: [300, 400, 500, 600, 700], kind: 'Sans' },
   { family: 'Archivo', weights: [400, 600, 800], kind: 'Sans' },
   { family: 'Geist Sans', label: 'Geist', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans' },
   { family: 'Plus Jakarta Sans', weights: [200, 300, 400, 500, 600, 700, 800], kind: 'Sans', italic: true },
