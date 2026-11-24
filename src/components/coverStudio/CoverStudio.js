@@ -5269,6 +5269,7 @@ export default function CoverStudio({
             <Hint>
               Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel.
             </Hint>
+            <FieldLabel>Image frames</FieldLabel>
             <TemplateGrid>
               {INTERVIEW_ELEMENTS.map((el) => (
                 <TemplateTile key={el.id} title={el.note} onClick={() => addElement(el.id)}>
