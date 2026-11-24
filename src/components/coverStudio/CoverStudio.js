@@ -4336,7 +4336,10 @@ export default function CoverStudio({
 
   // ---------- AI backdrop ----------
   const visibleStyles = useMemo(() => (styles || []).filter((s) => !s.internal), [styles]);
-  const pickedStyle = visibleStyles.find((s) => s.id === aiStyle) || null;
+  // styles written for backdrops only (always a black base); the server keeps
+  // them out of the Cover Generator's own picker, and `pending` ones out of here
+  const backdropStyles = useMemo(() => (styles || []).filter((s) => s.backdropOnly && !s.pending), [styles]);
+  const pickedStyle = backdropStyles.find((s) => s.id === aiStyle) || visibleStyles.find((s) => s.id === aiStyle) || null;
 
   const rememberBackdrop = (url) => {
     setRecentBackdrops((prev) => {
@@ -5458,8 +5461,41 @@ export default function CoverStudio({
                     </Thumb>
                     <b>{pickedStyle.name}</b>
                     {pickedStyle.description && <small>{pickedStyle.description}</small>}
-                    <small>The sample shows this style with a logo. Your backdrop is generated without one.</small>
+                    <small>
+                      {pickedStyle.backdropOnly
+                        ? 'Always on a black base. With "Use my colours" ticked, only the two accent colours follow your palette.'
+                        : 'The sample shows this style with a logo. Your backdrop is generated without one.'}
+                    </small>
                   </StylePreview>
+                )}
+                {backdropStyles.length > 0 && (
+                  <>
+                    <FieldLabel>Black backdrops</FieldLabel>
+                    <StyleGrid>
+                      {backdropStyles.map((s) => (
+                        <StyleTile
+                          key={s.id}
+                          role="button"
+                          tabIndex={0}
+                          $on={aiStyle === s.id}
+                          onClick={() => setAiStyle(s.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setAiStyle(s.id);
+                            }
+                          }}
+                          title={s.description}
+                        >
+                          <Thumb $ratio={56.25}>
+                            <img src={s.sampleImageUrl} alt="" loading="lazy" />
+                          </Thumb>
+                          <span>{s.name}</span>
+                        </StyleTile>
+                      ))}
+                    </StyleGrid>
+                    <FieldLabel>Cover generator styles</FieldLabel>
+                  </>
                 )}
                 <StyleGrid>
                   {visibleStyles.map((s) => (
