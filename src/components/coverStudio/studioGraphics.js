@@ -10,6 +10,8 @@
 // width it starts with on the cover, and a function returning { w, h, svg }
 // for a box of w by h). Nothing else needs touching.
 
+import { GENFINITY_MARK } from './genfinityMark';
+
 const f = (n) => Number(n.toFixed(2));
 
 // a small repeatable random number maker
@@ -89,6 +91,7 @@ export const GRAPHIC_GROUPS = [
 // size: the width the piece starts with on the cover, in cover pixels.
 export const GRAPHICS = [
   // ----- marks -----
+  { group: 'marks', id: 'genfinity', name: 'Genfinity mark', kind: 'fill', size: 300, make: () => ({ w: GENFINITY_MARK.w, h: GENFINITY_MARK.h, svg: `<path d="${GENFINITY_MARK.d}"/>` }) },
   { group: 'marks', id: 'x-bold', name: 'Bold X', kind: 'fill', size: 220, make: () => ({ w: 200, h: 200, svg: xMark(100, 100, 200, 68) }) },
   { group: 'marks', id: 'x-pair', name: 'Bold X pair', kind: 'fill', size: 420, make: () => ({ w: 440, h: 200, svg: xMark(100, 100, 200, 68) + xMark(340, 100, 200, 68) }) },
   { group: 'marks', id: 'star', name: 'Four-point star', kind: 'fill', size: 200, make: () => ({ w: 200, h: 200, svg: `<path d="${star4(100, 100, 100, 0.2)}"/>` }) },

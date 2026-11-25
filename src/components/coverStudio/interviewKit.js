@@ -3,7 +3,8 @@ import ryanUrl from './hosts/ryan.jpg';
 import { isGrad, paintGrad } from './gradients';
 import { adjustedPicture, cleanMap, mapPixels } from './imageAdjust';
 import { findGraphic, graphicImage, graphicSvg } from './studioGraphics';
-import { paintPaperTile } from './paper';
+import { PAPER_COLOR, paintPaperTile } from './paper';
+import { GENFINITY_MARK } from './genfinityMark';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -491,6 +492,10 @@ export function hostMicBadge(size = 512) {
 // The headline starts aligned to the side the guests are on (owner's rule):
 // guests in a right column, headline right-aligned against it; guests in a
 // left column, headline left-aligned. Centred layouts stay centred.
+// A headline carries no lineHeight: the studio sets every main title at its
+// tightest line height (owner 2026-11-25), which the person can loosen in the
+// Edit panel. The two-line ones sit a little lower than before, so the
+// shorter block stays in the middle of its room.
 const HEAD = 'Your Headline\nGoes Here';
 
 export const INTERVIEW_LAYOUTS = [
@@ -503,7 +508,7 @@ export const INTERVIEW_LAYOUTS = [
       // The guest is on the right, so the words line up on their right edge
       // (1190), beside the photo.
       { t: 'pill', cx: 1045, cy: 318, size: 46 },
-      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 395, w: 1100, size: 128, weight: 800, align: 'right', lineHeight: 1.02 },
+      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 411, w: 1100, size: 128, weight: 800, align: 'right' },
       { t: 'text', role: 'subhead', text: 'A supporting line that adds context', x: 90, y: 700, w: 1100, size: 48, weight: 400, align: 'right' },
       { t: 'guest', cx: 1500, cy: 470, size: 540, shape: 'circle', ring: 18, ringColor: 'a1', style: 'below', align: 'center' },
       { t: 'brought', anchor: 'right', x: 1190, cy: 960 },
@@ -520,7 +525,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 70, w: 300, h: 100, caption: true },
       { t: 'logo', slot: 'partner', cx: 700, cy: 228, w: 440, h: 110 },
       { t: 'pill', cx: 1190, cy: 228, size: 56 },
-      { t: 'text', role: 'headline', text: HEAD, x: 160, y: 370, w: 1230, size: 158, weight: 800, align: 'right', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: HEAD, x: 160, y: 388, w: 1230, size: 158, weight: 800, align: 'right' },
       { t: 'brought', anchor: 'right', x: 1390, cy: 905 },
     ],
   },
@@ -534,7 +539,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'guest', cx: 232, cy: 716, size: 336, shape: 'rect', aspect: 0.92, style: 'below', align: 'center' },
       { t: 'logo', slot: 'partner', x: 560, y: 125, w: 520, h: 105 },
       { t: 'logo', slot: 'ecosystem', x: 1640, y: 100, w: 170, h: 150 },
-      { t: 'text', role: 'headline', text: 'The Future\nof the Topic', x: 560, y: 300, w: 1270, size: 178, weight: 800, align: 'left', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'The Future\nof the Topic', x: 560, y: 320, w: 1270, size: 178, weight: 800, align: 'left' },
       { t: 'text', role: 'subhead', text: 'Point one  •  Point two  •  Point three', x: 560, y: 725, w: 1270, size: 54, weight: 700, align: 'left' },
       { t: 'brought', anchor: 'left', x: 560, cy: 880, stacked: true },
     ],
@@ -551,7 +556,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 80, w: 330, h: 80, caption: true },
       { t: 'logo', slot: 'partner', cx: 790, cy: 265, w: 440, h: 95 },
       { t: 'pill', cx: 1260, cy: 265, size: 56 },
-      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1320, size: 138, weight: 500, align: 'right', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'Headline Here', x: 150, y: 395, w: 1320, size: 138, weight: 500, align: 'right' },
       { t: 'text', role: 'subhead', text: 'Highlighted Words', x: 150, y: 565, w: 1320, size: 132, weight: 400, font: 'serif', italic: true, align: 'right', box: { color: 'a1', padX: 32, padY: 4, radius: 0 } },
       { t: 'brought', anchor: 'right', x: 1460, cy: 865 },
     ],
@@ -568,7 +573,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'logo', slot: 'ecosystem', x: 80, y: 80, w: 380, h: 110, caption: true },
       { t: 'logo', slot: 'partner', cx: 750, cy: 225, w: 300, h: 170 },
       { t: 'pill', cx: 1160, cy: 232, size: 54 },
-      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 365, w: 1290, size: 172, weight: 800, align: 'right', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: HEAD, x: 90, y: 384, w: 1290, size: 172, weight: 800, align: 'right' },
       { t: 'text', role: 'subhead', text: 'Supporting line goes here', x: 360, y: 760, w: 990, size: 52, weight: 500, align: 'right', box: { color: 'a1', padX: 30, padY: 12, radius: 0 } },
       { t: 'brought', anchor: 'center', x: 1045, cy: 915 },
     ],
@@ -579,7 +584,7 @@ export const INTERVIEW_LAYOUTS = [
     note: 'Centred title with three six-sided guest photos underneath.',
     items: [
       { t: 'logo', slot: 'partner', x: 60, y: 55, w: 150, h: 130 },
-      { t: 'text', role: 'headline', text: 'Title', x: 260, y: 95, w: 1400, size: 300, weight: 600, align: 'center', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'Title', x: 260, y: 95, w: 1400, size: 300, weight: 600, align: 'center' },
       { t: 'text', role: 'subhead', text: 'Interview subtitle', x: 260, y: 420, w: 1400, size: 104, weight: 400, align: 'center' },
       { t: 'guest', cx: 567, cy: 728, size: 264, shape: 'polygon', sides: 6, rounding: 0.3, ring: 34, ringColor: 'a1', style: 'below', align: 'center', upper: true },
       { t: 'guest', cx: 960, cy: 728, size: 264, shape: 'polygon', sides: 6, rounding: 0.3, ring: 34, ringColor: 'a1', style: 'below', align: 'center', upper: true },
@@ -599,7 +604,7 @@ export const INTERVIEW_LAYOUTS = [
     items: [
       { t: 'logo', slot: 'ecosystem', x: 58, y: 66, w: 230, h: 76, caption: true },
       { t: 'logo', slot: 'partner', cx: 948, cy: 192, w: 520, h: 104 },
-      { t: 'text', role: 'headline', text: 'Builder Spotlight', x: 87, y: 292, w: 1720, size: 168, weight: 800, align: 'center', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'Builder Spotlight', x: 87, y: 292, w: 1720, size: 168, weight: 800, align: 'center' },
       { t: 'guest', cx: 468, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
       { t: 'guest', cx: 790, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
       { t: 'guest', cx: 1113, cy: 666, size: 256, shape: 'polygon', sides: 6, rounding: 0.3, ring: 18, ringColor: 'a1', backdrop: '#141414', style: 'below', align: 'center', noTitle: true },
@@ -618,7 +623,7 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'guest', cx: 1714, cy: 222, size: 352, shape: 'rect', aspect: 0.9, style: 'bar', align: 'right', barFill: '#141414' },
       { t: 'guest', cx: 1345, cy: 748, size: 352, shape: 'rect', aspect: 0.9, style: 'bar', align: 'right', barFill: '#141414' },
       { t: 'guest', cx: 1714, cy: 748, size: 352, shape: 'rect', aspect: 0.9, style: 'bar', align: 'right', barFill: '#141414' },
-      { t: 'text', role: 'headline', text: 'Title', x: 110, y: 200, w: 1017, size: 290, weight: 600, align: 'center', lineHeight: 1.0 },
+      { t: 'text', role: 'headline', text: 'Title', x: 110, y: 200, w: 1017, size: 290, weight: 600, align: 'center' },
       { t: 'text', role: 'subhead', text: 'The subtitle for\nthis interview', x: 110, y: 520, w: 1017, size: 70, weight: 400, align: 'center', lineHeight: 1.15 },
       { t: 'pill', cx: 618, cy: 760, size: 58 },
       { t: 'brought', anchor: 'center', x: 618, cy: 925 },
@@ -672,7 +677,7 @@ export const INTERVIEW_ELEMENTS = [
 // Pieces with words (same tab, their own group): built from the studio's own
 // shape, text and drawing items, so the words and numbers can be typed over.
 export const INTERVIEW_PIECES = [
-  { id: 'badge-ring', name: 'Round badge', note: 'Words round a ring with a star in the middle. The words are typed in the ring\'s Edit panel.' },
+  { id: 'badge-ring', name: 'Round badge', note: 'Words round a ring with the Genfinity mark in the middle. The words are typed in the ring\'s Edit panel.' },
   { id: 'badge-number', name: 'Number badge', note: 'A colour disc with a number on it.' },
   { id: 'numbers', name: 'Outline numbers', note: 'One filled number over three outlined ones.' },
 ];
@@ -687,14 +692,12 @@ export const INTERVIEW_TYPE = [
   { id: 'rule-v', name: 'Upright line', note: 'A thin upright line.' },
 ];
 
-// Real paper: photographs of crumpled paper laid over a colour (paper.js).
+// Real paper (paper.js): a shape that shows the page of crumpled paper lying
+// over the cover. The owner asked for a paper shape of any size, a rectangle
+// or a circle, in place of the ready-made blocks, steps and discs (2026-11-25).
 export const INTERVIEW_PAPER = [
-  { id: 'paper-block', name: 'Paper block', note: 'A block of real crumpled paper in the accent colour.', paper: 'folds' },
-  { id: 'paper-step', name: 'Paper block, stepped', note: 'Two sheets cut from one piece of paper, as a stepped block.', paper: 'folds' },
-  { id: 'paper-headline', name: 'Headline on paper', note: 'A dark headline on a stepped block of paper.', paper: 'folds' },
-  { id: 'paper-strip', name: 'Paper strip', note: 'A long strip of paper.', paper: 'folds' },
-  { id: 'paper-disc', name: 'Paper disc', note: 'A round piece of paper.', paper: 'folds' },
-  { id: 'paper-block-2', name: 'Paper block, dense crumple', note: 'A block of the second, more heavily crumpled paper.', paper: 'crumple' },
+  { id: 'paper-rect', name: 'Paper rectangle', note: 'A piece of real crumpled paper, dark grey to start with. Make it any size and any colour.' },
+  { id: 'paper-circle', name: 'Paper circle', note: 'A round piece of real crumpled paper, dark grey to start with. Any size, any colour.' },
 ];
 
 // A small schematic of a ready-made piece for its tile.
@@ -823,32 +826,16 @@ export function drawElementThumb(canvas, id, pal) {
   } else if (id === 'rule-v') {
     bar(cx, h / 2, 2, 110);
   } else if (id.startsWith('paper-')) {
-    // the shape in the accent colour, then the real paper over it
-    const kind = (INTERVIEW_PAPER.find((el) => el.id === id) || {}).paper || 'folds';
-    const again = () => drawElementThumb(canvas, id, pal);
-    const sheet = (x, y, bw, bh, disc) => {
-      g.save();
-      g.beginPath();
-      if (disc) g.arc(x + bw / 2, y + bh / 2, bw / 2, 0, Math.PI * 2);
-      else g.rect(x, y, bw, bh);
-      g.clip();
-      g.fillStyle = pal.a1;
-      g.fillRect(x, y, bw, bh);
-      paintPaperTile(g, kind, x, y, bw, bh, again);
-      g.restore();
-    };
-    if (id === 'paper-strip') sheet(cx - 96, h / 2 - 14, 192, 28);
-    else if (id === 'paper-disc') sheet(cx - 48, h / 2 - 48, 96, 96, true);
-    else if (id === 'paper-step' || id === 'paper-headline') {
-      sheet(cx - 84, 26, 168, 64);
-      sheet(cx - 84, 90, 100, 34);
-      if (id === 'paper-headline') {
-        g.fillStyle = pal.base || '#000000';
-        g.font = '700 19px "Outfit", "Montserrat", sans-serif';
-        g.textBaseline = 'middle';
-        ['Your Headline', 'Goes Right', 'Here'].forEach((ln, i) => g.fillText(ln, cx - 74, 44 + i * 23));
-      }
-    } else sheet(cx - 84, h / 2 - 44, 168, 88);
+    // the shape in the paper's starting colour, then the page of paper over it
+    g.save();
+    g.beginPath();
+    if (id === 'paper-circle') g.arc(cx, h / 2, 50, 0, Math.PI * 2);
+    else g.rect(cx - 80, h / 2 - 46, 160, 92);
+    g.fillStyle = PAPER_COLOR;
+    g.fill();
+    g.clip();
+    paintPaperTile(g, w, h, () => drawElementThumb(canvas, id, pal));
+    g.restore();
   } else if (id === 'badge-ring') {
     g.save();
     g.translate(cx, h / 2);
@@ -859,15 +846,11 @@ export function drawElementThumb(canvas, id, pal) {
       if (i % 13 !== 12) g.fillRect(-3, -56, 6, 10);
       g.restore();
     }
-    g.beginPath();
-    const r = 24;
-    const q = r * 0.2;
-    g.moveTo(0, -r);
-    g.quadraticCurveTo(q, -q, r, 0);
-    g.quadraticCurveTo(q, q, 0, r);
-    g.quadraticCurveTo(-q, q, -r, 0);
-    g.quadraticCurveTo(-q, -q, 0, -r);
-    g.fill();
+    // the Genfinity mark in the middle
+    const k = 58 / GENFINITY_MARK.w;
+    g.scale(k, k);
+    g.translate(-GENFINITY_MARK.w / 2, -GENFINITY_MARK.h / 2);
+    g.fill(new Path2D(GENFINITY_MARK.d));
     g.restore();
   } else if (id === 'badge-number') {
     g.fillStyle = pal.a1;
@@ -928,7 +911,7 @@ export function drawLayoutThumb(canvas, layout, pal) {
       g.fillRect(it.cx - w * 0.36, it.cy + h / 2 + w * 0.09, w * 0.72, w * 0.07);
     } else if (it.t === 'text') {
       const lines = String(it.text).split('\n');
-      const lh = it.size * 1.02;
+      const lh = it.size * (it.role === 'headline' ? 0.9 : 1.02);
       g.fillStyle = it.box ? col(it.box.color, pal.a1) : col(it.fill, 'rgba(255,255,255,0.92)');
       lines.forEach((ln, i) => {
         const lw = Math.min(it.w, ln.length * it.size * 0.56);
