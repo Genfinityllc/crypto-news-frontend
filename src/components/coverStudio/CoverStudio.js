@@ -828,6 +828,7 @@ export default function CoverStudio({
   const commitTimer = useRef(null);
   const commitDueRef = useRef(false); // a change is waiting for its history step (commitSoon)
   const groupRef = useRef({}); // { group, ungroup } for the keyboard
+  const stepLayerRef = useRef(null); // one layer step up or down, for the keyboard
   const ringPreviewRef = useRef(null); // { o, orig }: a font being tried on a shape's outline text
   const ringSelRef = useRef(null); // { o, start, end }: letters highlighted in the outline text box
   const [ringSel, setRingSel] = useState(null);
@@ -4108,6 +4109,36 @@ export default function CoverStudio({
     bump();
   };
 
+  // Whatever is selected, one step forward or back among the layers (Cmd/Ctrl+]
+  // and Cmd/Ctrl+[, owner 2026-11-25). Several selected items keep their own
+  // order: the one nearest the way they are going moves first, and an item
+  // stops behind another selected one that could not move any further.
+  const stepSelected = (how) => {
+    const c = fabricRef.current;
+    const act = c ? c.getActiveObject() : null;
+    if (!act) return;
+    const all = c.getObjects();
+    const picked = (act.studio ? [act] : typeof act.getObjects === 'function' ? act.getObjects() : []).filter((k) => all.includes(k));
+    if (!picked.length) return;
+    const set = new Set(picked);
+    const dir = how === 'up' ? 1 : -1;
+    const order = picked.slice().sort((a, b) => (all.indexOf(b) - all.indexOf(a)) * dir);
+    let moved = false;
+    order.forEach((k) => {
+      const list = c.getObjects();
+      const i = list.indexOf(k);
+      const next = list[i + dir];
+      if (!next || set.has(next)) return;
+      c.moveObjectTo(k, i + dir);
+      moved = true;
+    });
+    if (!moved) return;
+    c.requestRenderAll();
+    commit();
+    bump();
+  };
+  stepLayerRef.current = stepSelected;
+
   // Put a layer at a place in the Layers list (0 = in front of everything).
   // slot is the gap it was dropped in, counted with the layer still in the
   // list: 0 = above the first row, 1 = between the first and second, ...
@@ -4606,6 +4637,20 @@ export default function CoverStudio({
         return;
       }
       const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+      // Cmd/Ctrl+[ sends the selected layer one step back, Cmd/Ctrl+] one step
+      // forward. In a browser these keys are Back and Forward, which would
+      // leave the studio, so they are always taken here; while typing they do
+      // nothing.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        const way = e.key === ']' ? 'up' : e.key === '[' ? 'down' : e.code === 'BracketRight' ? 'up' : e.code === 'BracketLeft' ? 'down' : '';
+        if (way) {
+          e.preventDefault();
+          const field = (tag === 'input' && !/^(range|color|checkbox|radio|button|file)$/.test(String(e.target.type || ''))) || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable);
+          const act = fabricRef.current ? fabricRef.current.getActiveObject() : null;
+          if (!field && !(act && act.isEditing) && stepLayerRef.current) stepLayerRef.current(way);
+          return;
+        }
+      }
       // A slider, colour box or tick box keeps the keyboard after it is used,
       // but nothing is typed into it: Undo and Redo must still work there
       // (the arrow keys and Delete stay with the control).
@@ -7282,7 +7327,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Shift while dragging to keep an item on the line it started on, across or up and down. Hold Option/Alt and drag to pull off a copy (with Shift, the copy stays in line with the original). Items snap to the cover's centre lines and margins (pink line) and to the edges and centres of other items (blue line). A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+G groups the selected items (a click on one then selects them all; double-click one to work on it alone), Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Shift while dragging to keep an item on the line it started on, across or up and down. Hold Option/Alt and drag to pull off a copy (with Shift, the copy stays in line with the original). Items snap to the cover's centre lines and margins (pink line) and to the edges and centres of other items (blue line). A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+G groups the selected items (a click on one then selects them all; double-click one to work on it alone), Cmd/Ctrl+[ sends the selected layer one step back and Cmd/Ctrl+] one step forward, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
@@ -7575,8 +7620,8 @@ function LayerList({ rows, onPick, onMove, onStep }) {
           </LayerGrip>
           <em>{r.kind}</em>
           <span>{r.name}</span>
-          <button type="button" title="Bring forward" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'up'); }}>Up</button>
-          <button type="button" title="Send backward" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'down'); }}>Down</button>
+          <button type="button" title="Bring forward (Cmd/Ctrl+])" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'up'); }}>Up</button>
+          <button type="button" title="Send backward (Cmd/Ctrl+[)" onClick={(e) => { e.stopPropagation(); onStep(r.o, 'down'); }}>Down</button>
         </LayerRow>
       ))}
       {drag && <LayerLine data-layer-line="" style={{ top: drag.lineY }} />}
