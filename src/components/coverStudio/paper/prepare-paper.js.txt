@@ -1,0 +1,34 @@
+// Turn a photographed sheet of paper into its light and shadow alone: grey,
+// uneven lighting taken out (each pixel divided by the broad brightness
+// around it), so flat paper sits at one level (173 of 255) with folds darker
+// and catches of light brighter.
+const sharp = require('sharp');
+const LEVEL = 173;
+// gain: the photograph's own contrast raised about flat paper, so both papers
+// read alike; soft: a slight blur first, so camera noise is not raised with it.
+async function prep(src, out, width, gain, soft) {
+  let base = sharp(src, { failOn: 'none' }).rotate().greyscale().resize({ width });
+  if (soft) base = base.blur(soft);
+  const { data, info } = await base.clone().raw().toBuffer({ resolveWithObject: true });
+  const w = info.width, h = info.height;
+  const ch = info.channels;
+  // the broad brightness: the picture made small, blurred and brought back to size
+  const tiny = await sharp(data, { raw: { width: w, height: h, channels: ch } }).resize({ width: Math.round(w / 12) }).blur(10).png().toBuffer();
+  const lowOut = await sharp(tiny).resize({ width: w, height: h, fit: 'fill', kernel: 'cubic' }).raw().toBuffer({ resolveWithObject: true });
+  const low = lowOut.data;
+  const lc = lowOut.info.channels;
+  if (lowOut.info.width !== w || lowOut.info.height !== h) throw new Error('size mismatch');
+  const o = Buffer.alloc(w * h);
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < w * h; i += 1) { const v = Math.max(0, Math.min(255, Math.round(LEVEL + ((data[i * ch] / Math.max(1, low[i * lc])) * LEVEL - LEVEL) * gain))); o[i] = v; hist[v] += 1; }
+  const pct = (p) => { let a = 0; for (let v = 0; v < 256; v += 1) { a += hist[v]; if (a >= w * h * p) return v; } return 255; };
+  await sharp(o, { raw: { width: w, height: h, channels: 1 } }).jpeg({ quality: 88, mozjpeg: true }).toFile(out);
+  console.log(out.split('/').pop(), w + 'x' + h, 'p1', pct(0.01), 'p10', pct(0.1), 'median', pct(0.5), 'p90', pct(0.9), 'p99', pct(0.99), require('fs').statSync(out).size + ' bytes');
+}
+(async () => {
+  const [,, inDir, outDir] = process.argv;
+  for (const [id, f, gain, soft] of [['paper-folds', 'p8/p8.jpg', 3.6, 2.0], ['paper-crumple', 'p10/p10.jpg', 1.15, 0]]) {
+    await prep(`${inDir}/${f}`, `${outDir}/${id}.jpg`, 2048, gain, soft);
+    await prep(`${inDir}/${f}`, `${outDir}/${id}-small.jpg`, 480, gain, 0);
+  }
+})();

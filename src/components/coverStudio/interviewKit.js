@@ -3,6 +3,7 @@ import ryanUrl from './hosts/ryan.jpg';
 import { isGrad, paintGrad } from './gradients';
 import { adjustedPicture, cleanMap, mapPixels } from './imageAdjust';
 import { findGraphic, graphicImage, graphicSvg } from './studioGraphics';
+import { paintPaperTile } from './paper';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -623,63 +624,15 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'brought', anchor: 'center', x: 618, cy: 925 },
     ],
   },
-  // ----- from the owner's four reference designs (2026-11-24) -----
-  // Built with the drawings in studioGraphics.js (t: 'graphic'; g is the
-  // drawing's id, w its width on the cover), rules (thin shapes), ring words
-  // (a shape's `ring`) and outlined text (`outline`). Items sharing a `gid`
-  // start as one group. `plain` keeps carried grain off a small shape.
-  // pending: not in the Layouts tab until the owner has approved it.
-  {
-    id: 'episode',
-    name: 'Episode, one guest',
-    note: 'Wide black headline type, a guest photo on a colour block, outlined numbers and line drawings.',
-    pending: true,
-    items: [
-      { t: 'graphic', g: 'star-column', cx: 126, cy: 318, w: 82, color: 'a1' },
-      { t: 'text', role: 'text', text: 'Interview series', x: 204, y: 146, w: 600, size: 40, weight: 500, family: 'Mona Sans', spacing: 0 },
-      { t: 'text', role: 'text', text: '10.08.25', x: 204, y: 206, w: 640, size: 62, weight: 900, family: 'Mona Sans Expanded', fill: 'a1', spacing: 0 },
-      { t: 'shape', name: 'Rule', x: 204, y: 310, w: 520, h: 3, fill: '#ffffff', plain: true },
-      { t: 'text', role: 'subhead', text: 'Every Tuesday\n7:00 PM EST', x: 204, y: 340, w: 600, size: 40, weight: 500, family: 'Mona Sans', spacing: 0, lineHeight: 1.2 },
-      { t: 'graphic', g: 'mesh', cx: 368, cy: 902, w: 330, color: '#ffffff' },
-      { t: 'shape', name: 'Colour block', x: 962, y: 104, w: 500, h: 664, fill: 'a1' },
-      { t: 'guest', cx: 1212, cy: 436, size: 500, shape: 'rect', aspect: 0.753, rounding: 0.5, style: 'below', align: 'center' },
-      { t: 'shape', name: 'Badge', x: 68, y: 664, w: 118, h: 118, round: 1, fill: 'a1', plain: true, gid: 'badge' },
-      { t: 'text', role: 'text', text: '01', x: 68, y: 698, w: 118, size: 46, weight: 900, family: 'Mona Sans Expanded', fill: 'base', align: 'center', spacing: 0, lineHeight: 1, gid: 'badge' },
-      { t: 'text', role: 'headline', text: 'NEW\nINTERVIEW', x: 204, y: 560, w: 900, size: 92, weight: 900, family: 'Hubot Sans Expanded', fill: 'a1', spacing: 0, lineHeight: 1.0 },
-      { t: 'text', role: 'text', text: '01.', x: 1500, y: 108, w: 220, size: 92, weight: 900, family: 'Mona Sans Expanded', spacing: 0, lineHeight: 1, gid: 'numbers' },
-      { t: 'text', role: 'text', text: '01.\n01.\n01.\n01.', x: 1500, y: 212, w: 220, size: 92, weight: 900, family: 'Mona Sans Expanded', spacing: 0, lineHeight: 1, outline: 0.02, gid: 'numbers' },
-      { t: 'shape', name: 'Rule', x: 1722, y: 120, w: 3, h: 500, fill: '#ffffff', plain: true },
-      { t: 'graphic', g: 'star-tile', cx: 1794, cy: 182, w: 112, color: 'a1' },
-      { t: 'graphic', g: 'globe-wide', cx: 1794, cy: 356, w: 124, color: '#ffffff' },
-      { t: 'graphic', g: 'orbit', cx: 1794, cy: 520, w: 124, color: '#ffffff' },
-      { t: 'shape', name: 'Rule', x: 1500, y: 668, w: 352, h: 3, fill: '#ffffff', plain: true },
-      { t: 'text', role: 'text', text: 'EPISODE', x: 1500, y: 690, w: 380, size: 56, weight: 900, family: 'Hubot Sans Expanded', spacing: 0, lineHeight: 1 },
-      { t: 'logo', slot: 'ecosystem', x: 1500, y: 806, w: 300, h: 84 },
-      { t: 'brought', anchor: 'left', x: 1500, cy: 958, stacked: true, size: 28 },
-    ],
-  },
-  {
-    id: 'feature',
-    name: 'Feature, two guests',
-    note: 'Headline on a colour block, a large guest with a smaller one over its corner, a ring of words, bold marks and squares of lines.',
-    pending: true,
-    items: [
-      { t: 'logo', slot: 'ecosystem', x: 150, y: 84, w: 300, h: 90, caption: true },
-      { t: 'graphic', g: 'arrows', cx: 660, cy: 128, w: 230, color: '#ffffff' },
-      { t: 'graphic', g: 'hatch-square', cx: 70, cy: 330, w: 70, color: '#ffffff' },
-      { t: 'text', role: 'headline', text: 'Your Headline\nGoes Right\nHere', x: 184, y: 320, w: 760, size: 104, weight: 700, family: 'Outfit', fill: 'base', align: 'left', spacing: -10, lineHeight: 1.12, box: { color: 'a1', padX: 34, padY: 20, radius: 0 } },
-      { t: 'text', role: 'subhead', text: 'A supporting line that adds\ncontext to the story', x: 150, y: 786, w: 820, size: 44, weight: 700, family: 'Outfit', fill: 'a1', spacing: 0, lineHeight: 1.2 },
-      { t: 'brought', anchor: 'left', x: 150, cy: 985 },
-      { t: 'graphic', g: 'hatch-square', cx: 1100, cy: 846, w: 96, color: '#ffffff' },
-      { t: 'guest', cx: 1340, cy: 384, size: 540, shape: 'rect', aspect: 0.95, style: 'bar', align: 'left', barFill: '#141414' },
-      { t: 'graphic', g: 'hatch-square', cx: 1726, cy: 468, w: 96, color: '#ffffff' },
-      { t: 'guest', cx: 1660, cy: 716, size: 320, shape: 'rect', aspect: 1, ring: 44, ringColor: 'base', style: 'bar', align: 'left', barFill: '#141414' },
-      { t: 'graphic', g: 'x-bold', cx: 1000, cy: 906, w: 78, color: '#ffffff' },
-      { t: 'graphic', g: 'x-bold', cx: 1000, cy: 1000, w: 78, color: '#ffffff' },
-      { t: 'shape', name: 'Ring of words', x: 966, y: 44, w: 200, h: 200, round: 1, fill: 'base', plain: true, gid: 'ring', ring: { text: 'GENFINITY • INTERVIEW • GENFINITY • INTERVIEW •', side: 'in', gap: 10, size: 19, spacing: 60, family: 'Mona Sans', weight: 700, color: '#ffffff' } },
-      { t: 'graphic', g: 'star', cx: 1066, cy: 144, w: 78, color: '#ffffff', gid: 'ring' },
-    ],
-  },
+  // Two full templates in the look of the owner's reference designs were
+  // built and shown on 2026-11-24 and turned down ("I dont want these to be
+  // full templates ... I just want their elements to be selectable and the
+  // guest frames"), so their parts are pieces in the Elements tab instead.
+  // What they needed is still understood by applyInterviewLayout and the
+  // thumbnail below: t: 'graphic' (a drawing from studioGraphics.js: g, cx,
+  // cy, w, color), `ring` on a shape, `family` / `fill` / `outline` on a text,
+  // `gid` (items that start as one group), `plain` on a shape (no carried
+  // grain), and `pending: true` (kept out of the Layouts tab).
 ];
 
 // ------------------------------ our hosts ------------------------------
@@ -712,6 +665,8 @@ export const INTERVIEW_ELEMENTS = [
   // from the owner's reference designs (2026-11-24); empty frames, not guests
   { id: 'frame-block', name: 'Photo on a colour block', note: 'A photo with rounded corners on a square colour block. Drop a picture on the frame.' },
   { id: 'frame-pair', name: 'Photo pair, offset', note: 'A large photo with a smaller one over its corner. Drop a picture on each frame.' },
+  { id: 'guest-block', name: 'Guest on a colour block', note: 'A guest photo with rounded corners on a colour block, with the name and title under it.' },
+  { id: 'guest-pair', name: 'Guest pair, offset', note: 'A large guest with a smaller one over its corner, each with a name and title on a bar.' },
 ];
 
 // Pieces with words (same tab, their own group): built from the studio's own
@@ -722,12 +677,33 @@ export const INTERVIEW_PIECES = [
   { id: 'numbers', name: 'Outline numbers', note: 'One filled number over three outlined ones.' },
 ];
 
+// Headlines, lines and labels in the look of the owner's reference designs.
+export const INTERVIEW_TYPE = [
+  { id: 'head-wide', name: 'Wide headline', note: 'Two lines of wide black type in the accent colour (Hubot Sans Expanded).' },
+  { id: 'head-block', name: 'Headline on a colour block', note: 'Dark headline on a block of the accent colour (Outfit Bold).' },
+  { id: 'info-lines', name: 'Info lines', note: 'Two small lines, a date in the accent colour and a rule between them.' },
+  { id: 'label-wide', name: 'Line and label', note: 'A thin line with a wide label under it.' },
+  { id: 'rule-h', name: 'Line', note: 'A thin line across. Its length and thickness are the shape\'s Width and Height.' },
+  { id: 'rule-v', name: 'Upright line', note: 'A thin upright line.' },
+];
+
+// Real paper: photographs of crumpled paper laid over a colour (paper.js).
+export const INTERVIEW_PAPER = [
+  { id: 'paper-block', name: 'Paper block', note: 'A block of real crumpled paper in the accent colour.', paper: 'folds' },
+  { id: 'paper-step', name: 'Paper block, stepped', note: 'Two sheets cut from one piece of paper, as a stepped block.', paper: 'folds' },
+  { id: 'paper-headline', name: 'Headline on paper', note: 'A dark headline on a stepped block of paper.', paper: 'folds' },
+  { id: 'paper-strip', name: 'Paper strip', note: 'A long strip of paper.', paper: 'folds' },
+  { id: 'paper-disc', name: 'Paper disc', note: 'A round piece of paper.', paper: 'folds' },
+  { id: 'paper-block-2', name: 'Paper block, dense crumple', note: 'A block of the second, more heavily crumpled paper.', paper: 'crumple' },
+];
+
 // A small schematic of a ready-made piece for its tile.
 export function drawElementThumb(canvas, id, pal) {
   const g = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
   g.setTransform(1, 0, 0, 1, 0, 0);
+  g.textAlign = 'left';
   g.fillStyle = '#0d0d10';
   g.fillRect(0, 0, w, h);
   const cx = w / 2;
@@ -805,6 +781,74 @@ export function drawElementThumb(canvas, id, pal) {
     bar(cx + 34, h / 2 + 30, 62, 62, '#0d0d10');
     bar(cx + 34, h / 2 + 30, 50, 50, '#aab1bd');
     bar(cx - 70, h / 2 - 40, 5, 16);
+  } else if (id === 'guest-block') {
+    bar(cx, 58, 74, 92, pal.a1);
+    round(cx, 58, 74, 92, 22, grey);
+    bar(cx, 120, 74, 8);
+    bar(cx, 134, 50, 4);
+  } else if (id === 'guest-pair') {
+    bar(cx - 20, 50, 92, 78, grey);
+    bar(cx - 20, 100, 92, 22, '#1c1c1c');
+    bar(cx - 30, 100, 58, 6);
+    bar(cx + 40, 92, 58, 58, '#0d0d10');
+    bar(cx + 40, 92, 46, 46, '#aab1bd');
+    bar(cx + 40, 128, 58, 16, '#1c1c1c');
+    bar(cx + 34, 128, 36, 4);
+  } else if (id === 'head-wide') {
+    g.fillStyle = pal.a1;
+    g.font = '900 27px "Hubot Sans Expanded", "Montserrat", sans-serif';
+    g.textBaseline = 'middle';
+    g.fillText('NEW', 22, 58);
+    g.fillText('INTERVIEW', 22, 92);
+  } else if (id === 'head-block') {
+    bar(cx, h / 2, 176, 100, pal.a1);
+    g.fillStyle = pal.base || '#000000';
+    g.font = '700 22px "Outfit", "Montserrat", sans-serif';
+    g.textBaseline = 'middle';
+    ['Your Headline', 'Goes Right', 'Here'].forEach((ln, i) => g.fillText(ln, cx - 76, 48 + i * 27));
+  } else if (id === 'info-lines') {
+    bar(cx - 26, 36, 110, 8);
+    bar(cx - 18, 62, 126, 14, pal.a1);
+    bar(cx, 88, 162, 2);
+    bar(cx - 28, 108, 106, 8);
+    bar(cx - 36, 124, 90, 8);
+  } else if (id === 'label-wide') {
+    bar(cx, 58, 170, 2);
+    g.fillStyle = white;
+    g.font = '900 24px "Hubot Sans Expanded", "Montserrat", sans-serif';
+    g.textBaseline = 'middle';
+    g.fillText('EPISODE', cx - 85, 86);
+  } else if (id === 'rule-h') {
+    bar(cx, h / 2, 170, 2);
+  } else if (id === 'rule-v') {
+    bar(cx, h / 2, 2, 110);
+  } else if (id.startsWith('paper-')) {
+    // the shape in the accent colour, then the real paper over it
+    const kind = (INTERVIEW_PAPER.find((el) => el.id === id) || {}).paper || 'folds';
+    const again = () => drawElementThumb(canvas, id, pal);
+    const sheet = (x, y, bw, bh, disc) => {
+      g.save();
+      g.beginPath();
+      if (disc) g.arc(x + bw / 2, y + bh / 2, bw / 2, 0, Math.PI * 2);
+      else g.rect(x, y, bw, bh);
+      g.clip();
+      g.fillStyle = pal.a1;
+      g.fillRect(x, y, bw, bh);
+      paintPaperTile(g, kind, x, y, bw, bh, again);
+      g.restore();
+    };
+    if (id === 'paper-strip') sheet(cx - 96, h / 2 - 14, 192, 28);
+    else if (id === 'paper-disc') sheet(cx - 48, h / 2 - 48, 96, 96, true);
+    else if (id === 'paper-step' || id === 'paper-headline') {
+      sheet(cx - 84, 26, 168, 64);
+      sheet(cx - 84, 90, 100, 34);
+      if (id === 'paper-headline') {
+        g.fillStyle = pal.base || '#000000';
+        g.font = '700 19px "Outfit", "Montserrat", sans-serif';
+        g.textBaseline = 'middle';
+        ['Your Headline', 'Goes Right', 'Here'].forEach((ln, i) => g.fillText(ln, cx - 74, 44 + i * 23));
+      }
+    } else sheet(cx - 84, h / 2 - 44, 168, 88);
   } else if (id === 'badge-ring') {
     g.save();
     g.translate(cx, h / 2);

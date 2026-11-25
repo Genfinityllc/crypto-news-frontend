@@ -32,6 +32,8 @@ import {
   HOSTS,
   INTERVIEW_ELEMENTS,
   INTERVIEW_PIECES,
+  INTERVIEW_TYPE,
+  INTERVIEW_PAPER,
   drawElementThumb,
   removePlainBackground,
   drawLayoutThumb,
@@ -44,6 +46,7 @@ import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand,
 import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } from './patterns';
 import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
+import { PAPERS, PAPER_SCALE, PAPER_STRENGTH, newPaper, paintPaper } from './paper';
 import { GRAPHICS, GRAPHIC_GROUPS, drawGraphicThumb, findGraphic, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -515,17 +518,34 @@ class StudioRect extends Rect {
       return;
     }
     const g = this.studio && this.studio.grad;
-    if (!isGrad(g)) {
-      super._renderFill(ctx);
-      return;
+    if (!isGrad(g)) super._renderFill(ctx);
+    else {
+      // a soft shadow is cast by a plain fill; the gradient is laid over it
+      if (this.shadow) super._renderFill(ctx);
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0)';
+      ctx.clip();
+      paintGrad(ctx, g, -this.width / 2, -this.height / 2, this.width, this.height);
+      ctx.restore();
     }
-    // a soft shadow is cast by a plain fill; the gradient is laid over it
-    if (this.shadow) super._renderFill(ctx);
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0)';
-    ctx.clip();
-    paintGrad(ctx, g, -this.width / 2, -this.height / 2, this.width, this.height);
-    ctx.restore();
+    // Real paper (paper.js): a photograph's shadows and light laid over the
+    // colour just drawn, inside the shape's outline, in cover pixels whatever
+    // the shape's stretch (resizing shows more of the sheet, never stretches it).
+    const paper = this.studio && this.studio.paper;
+    if (paper) {
+      const sx = Math.abs(this.scaleX) || 1;
+      const sy = Math.abs(this.scaleY) || 1;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0)';
+      ctx.clip();
+      ctx.scale(1 / sx, 1 / sy);
+      paintPaper(ctx, paper, this.width * sx, this.height * sy, () => {
+        // the photograph has arrived: draw the cover again
+        this.dirty = true;
+        if (this.canvas) this.canvas.requestRenderAll();
+      });
+      ctx.restore();
+    }
   }
 }
 
@@ -2179,6 +2199,8 @@ export default function CoverStudio({
     r.studio = { kind: 'shape', name: opt.name || 'Shape', round };
     // words along its outline (a layout's round badge); see ringText.js
     if (opt.ring) r.studio.ring = { ...RING_DEFAULT, ...opt.ring, color: paletteColor(opt.ring.color, '#ffffff') };
+    // real paper over its colour (paper.js): an id, or a whole setting
+    if (opt.paper) r.studio.paper = typeof opt.paper === 'string' ? newPaper(opt.paper, w, h) : opt.paper;
     styleObject(r);
     c.add(r);
     return r;
@@ -2692,6 +2714,62 @@ export default function CoverStudio({
       const tab = makeShape({ x: cx - 60 - 230 - 22, y: cy - 60 - 150, w: 22, h: 64, fill: '#ffffff', name: 'Tab' });
       return [big, small, tab];
     }
+    if (id === 'guest-block') {
+      // a guest with rounded corners on a colour block, name and title under it
+      const w = 380;
+      const h = 500;
+      const back = makeShape({ x: cx - w / 2, y: cy - h / 2 - 60, w, h, fill: 'a1', name: 'Colour block' });
+      return [back, makePhoto({ cx, cy: cy - 60, shape: 'rect', aspect: w / h, rounding: 0.5, size: w, style: 'below', align: 'center' })];
+    }
+    if (id === 'guest-pair') {
+      // a large guest with a smaller one over its corner, each on a label bar
+      const big = makePhoto({ cx: cx - 100, cy: cy - 120, size: 440, shape: 'rect', aspect: 0.95, style: 'bar', align: 'left', barFill: '#141414' });
+      const small = makePhoto({ cx: cx + 170, cy: cy + 120, size: 270, shape: 'rect', aspect: 1, ring: 44, ringColor: 'base', style: 'bar', align: 'left', barFill: '#141414' });
+      return [big, small];
+    }
+    if (id === 'head-wide') {
+      await ensureFont('Hubot Sans Expanded', 900);
+      return [makeText({ text: 'NEW\nINTERVIEW', cx, cy, w: 900, size: 92, family: 'Hubot Sans Expanded', weight: 900, fill: 'a1', align: 'left', spacing: 0, lineHeight: 1 })];
+    }
+    if (id === 'head-block') {
+      await ensureFont('Outfit', 700);
+      return [makeText({ text: 'Your Headline\nGoes Right\nHere', cx, cy, w: 760, size: 104, family: 'Outfit', weight: 700, fill: 'base', align: 'left', spacing: -10, lineHeight: 1.12, box: { color: 'a1', padX: 34, padY: 20, radius: 0 } })];
+    }
+    if (id === 'info-lines') {
+      // small lines, a date in the accent colour and a rule
+      await Promise.all([ensureFont('Mona Sans', 500), ensureFont('Mona Sans Expanded', 900)]);
+      const x = cx - 260;
+      const y = cy - 150;
+      const small = { w: 600, size: 40, family: 'Mona Sans', weight: 500, spacing: 0 };
+      return [
+        makeText({ ...small, text: 'Interview series', x, y }),
+        makeText({ text: '10.08.25', x, y: y + 60, w: 640, size: 62, family: 'Mona Sans Expanded', weight: 900, fill: 'a1', spacing: 0 }),
+        makeShape({ x, y: y + 164, w: 520, h: 4, fill: '#ffffff', name: 'Line' }),
+        makeText({ ...small, text: 'Every Tuesday\n7:00 PM EST', x, y: y + 194, lineHeight: 1.2 }),
+      ];
+    }
+    if (id === 'label-wide') {
+      await ensureFont('Hubot Sans Expanded', 900);
+      return [makeShape({ x: cx - 176, y: cy - 46, w: 352, h: 4, fill: '#ffffff', name: 'Line' }), makeText({ text: 'EPISODE', x: cx - 176, y: cy - 22, w: 380, size: 56, family: 'Hubot Sans Expanded', weight: 900, spacing: 0, lineHeight: 1 })];
+    }
+    if (id === 'rule-h') return [makeShape({ x: cx - 260, y: cy - 2, w: 520, h: 4, fill: '#ffffff', name: 'Line' })];
+    if (id === 'rule-v') return [makeShape({ x: cx - 2, y: cy - 230, w: 4, h: 460, fill: '#ffffff', name: 'Line' })];
+    // ----- real paper (paper.js) -----
+    if (id === 'paper-block') return [makeShape({ x: cx - 310, y: cy - 160, w: 620, h: 320, fill: 'a1', name: 'Paper block', paper: 'folds' })];
+    if (id === 'paper-block-2') return [makeShape({ x: cx - 310, y: cy - 160, w: 620, h: 320, fill: 'a1', name: 'Paper block', paper: 'crumple' })];
+    if (id === 'paper-strip') return [makeShape({ x: cx - 450, y: cy - 60, w: 900, h: 120, fill: 'a1', name: 'Paper strip', paper: 'folds' })];
+    if (id === 'paper-disc') return [makeShape({ x: cx - 150, y: cy - 150, w: 300, h: 300, round: 1, fill: 'a1', name: 'Paper disc', paper: 'folds' })];
+    if (id === 'paper-step' || id === 'paper-headline') {
+      // two sheets cut from one piece of paper: the wrinkles run on from the
+      // upper into the lower
+      const sheet = newPaper('folds', 640, 380);
+      const top = makeShape({ x: cx - 320, y: cy - 190, w: 640, h: 250, fill: 'a1', name: 'Paper block', paper: sheet });
+      // (the lower one starts a pixel under the upper one's edge, so no seam shows)
+      const foot = makeShape({ x: cx - 320, y: cy + 59, w: 384, h: 131, fill: 'a1', name: 'Paper block', paper: { ...sheet, oy: sheet.oy + 249 } });
+      if (id === 'paper-step') return [top, foot];
+      await ensureFont('Outfit', 700);
+      return [top, foot, makeText({ text: 'Your Headline\nGoes Right\nHere', x: cx - 286, y: cy - 164, w: 606, size: 76, family: 'Outfit', weight: 700, fill: 'base', align: 'left', spacing: -10, lineHeight: 1.12 })];
+    }
     if (id === 'badge-ring') {
       // words round a ring (they belong to a hidden circle) with a star in the middle
       await ensureFont('Mona Sans', 700);
@@ -2725,12 +2803,15 @@ export default function CoverStudio({
     c.discardActiveObject();
     const parts = await makePiece(id, { cx: W / 2, cy: H / 2 });
     if (!parts.length) return;
-    const gid = newGid();
-    parts.forEach((p) => {
-      p.studio.gid = gid;
-    });
-    if (parts.length > 1) c.setActiveObject(new ActiveSelection(parts, { canvas: c }));
-    else c.setActiveObject(parts[0]);
+    if (parts.length > 1) {
+      const gid = newGid();
+      parts.forEach((p) => {
+        p.studio.gid = gid;
+      });
+      // a guest brings its name, title and bar into the selection
+      const all = c.getObjects().filter((o) => parts.includes(o) || (o.studio && o.studio.attach && parts.includes(o.studio.attach.to) && o.selectable !== false));
+      c.setActiveObject(new ActiveSelection(all, { canvas: c }));
+    } else c.setActiveObject(parts[0]);
     finishAdd(null, 'elements');
   };
 
@@ -2739,7 +2820,7 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
-    if (['frame-block', 'frame-pair', 'badge-ring', 'badge-number', 'numbers'].includes(id)) {
+    if ([...INTERVIEW_PIECES, ...INTERVIEW_TYPE, ...INTERVIEW_PAPER].some((el) => el.id === id) || ['frame-block', 'frame-pair', 'guest-block', 'guest-pair'].includes(id)) {
       await addPiece(id);
       return;
     }
@@ -3324,6 +3405,18 @@ export default function CoverStudio({
     if (!c || !o || !o.studio || o.studio.kind !== 'shape') return;
     if (patch.round != null) o.studio.round = patch.round;
     if (patch.grain != null) o.studio.grain = patch.grain;
+    if ('paper' in patch) {
+      // null takes the paper off; an id puts that paper on (keeping strength,
+      // size and place); anything else changes the paper that is on. Always a
+      // new object: history keeps the old one.
+      const sw = o.width * Math.abs(o.scaleX || 1);
+      const sh = o.height * Math.abs(o.scaleY || 1);
+      if (patch.paper === null) delete o.studio.paper;
+      else if (typeof patch.paper === 'string') o.studio.paper = { ...newPaper(patch.paper, sw, sh), ...(o.studio.paper || {}), id: patch.paper };
+      else if (patch.paper.shuffle) o.studio.paper = { ...(o.studio.paper || {}), ...(({ ox, oy }) => ({ ox, oy }))(newPaper((o.studio.paper || {}).id, sw, sh)) };
+      else o.studio.paper = { ...(o.studio.paper || newPaper(undefined, sw, sh)), ...patch.paper };
+      o.dirty = true;
+    }
     if ('grad' in patch) {
       if (isGrad(patch.grad)) o.studio.grad = patch.grad;
       else delete o.studio.grad;
@@ -5524,7 +5617,7 @@ export default function CoverStudio({
         {leftTab === 'elements' && (
           <PanelBody>
             <Hint>
-              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel. The marks, spheres and line work further down are drawings, not pictures: they stay sharp at any size and take any colour.
+              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel. The marks, spheres and line work further down are drawings, not pictures: they stay sharp at any size and take any colour. The paper pieces are photographs of real paper laid over a colour; any shape can be made paper in its Edit panel.
             </Hint>
             <FieldLabel>Image frames</FieldLabel>
             <TemplateGrid>
@@ -5544,6 +5637,22 @@ export default function CoverStudio({
                 </TemplateTile>
               ))}
             </TemplateGrid>
+            {[
+              ['Headlines, lines and labels', INTERVIEW_TYPE],
+              ['Paper', INTERVIEW_PAPER],
+            ].map(([title, list]) => (
+              <div key={title}>
+                <FieldLabel style={{ marginTop: 16 }}>{title}</FieldLabel>
+                <TemplateGrid>
+                  {list.map((el) => (
+                    <TemplateTile key={el.id} title={el.note} onClick={() => addElement(el.id)}>
+                      <ElementThumb id={el.id} palette={bg.palette} />
+                      <span>{el.name}</span>
+                    </TemplateTile>
+                  ))}
+                </TemplateGrid>
+              </div>
+            ))}
             {GRAPHIC_GROUPS.map((grp) => (
               <div key={grp.id}>
                 <FieldLabel style={{ marginTop: 16 }}>{grp.name}</FieldLabel>
@@ -6626,11 +6735,34 @@ export default function CoverStudio({
                       </InsCell>
                     ) : (
                       <InsCell>
-                        <Slider label="Width" min={10} max={W} step={2} value={sel.width} onChange={(v) => setShape({ width: v })} fmt={(v) => `${Math.round(v)}px`} />
-                        <Slider label="Height" min={10} max={H} step={2} value={sel.height} onChange={(v) => setShape({ height: v })} fmt={(v) => `${Math.round(v)}px`} />
+                        <Slider label="Width" min={2} max={W} step={2} value={sel.width} onChange={(v) => setShape({ width: v })} fmt={(v) => `${Math.round(v)}px`} />
+                        <Slider label="Height" min={2} max={H} step={2} value={sel.height} onChange={(v) => setShape({ height: v })} fmt={(v) => `${Math.round(v)}px`} />
                         <Slider label="Rounded corners" min={0} max={1} step={0.01} value={sel.studio.round || 0} onChange={(v) => setShape({ round: v })} />
                         <Slider label="Grain on this shape" min={0} max={1} step={0.02} value={sel.studio.grain || 0} onChange={(v) => setShape({ grain: v })} />
                         <Muted>Only this shape gets the grain. Guests, bars and text on top of it stay clean.</Muted>
+                      </InsCell>
+                    )}
+                    {!sel.studio.attach && !sel.studio.pattern && (
+                      <InsCell>
+                        <FieldLabel>Paper</FieldLabel>
+                        <Seg>
+                          <SegBtn $on={!sel.studio.paper} onClick={() => setShape({ paper: null })}>None</SegBtn>
+                          {PAPERS.map((pp) => (
+                            <SegBtn key={pp.id} $on={!!sel.studio.paper && sel.studio.paper.id === pp.id} onClick={() => setShape({ paper: pp.id })}>{pp.name}</SegBtn>
+                          ))}
+                        </Seg>
+                        {sel.studio.paper ? (
+                          <>
+                            <Slider label="How strong the wrinkles are" min={PAPER_STRENGTH.min} max={PAPER_STRENGTH.max} step={0.05} value={sel.studio.paper.strength == null ? 1 : sel.studio.paper.strength} onChange={(v) => setShape({ paper: { strength: v } })} fmt={(v) => `${Math.round(v * 100)}%`} />
+                            <Slider label="Size of the wrinkles" min={PAPER_SCALE.min} max={PAPER_SCALE.max} step={0.05} value={sel.studio.paper.scale || 1} onChange={(v) => setShape({ paper: { scale: v } })} fmt={(v) => `${Math.round(v * 100)}%`} />
+                            <Row>
+                              <Ghost onClick={() => setShape({ paper: { shuffle: true } })}>Another part of the sheet</Ghost>
+                            </Row>
+                            <Muted style={{ marginTop: 6 }}>A photograph of real crumpled paper laid over this shape's colour, so the paper takes any colour. Resizing the shape shows more of the sheet and never stretches it.</Muted>
+                          </>
+                        ) : (
+                          <Muted style={{ marginTop: 6 }}>Turns this shape into a piece of real crumpled paper in its own colour.</Muted>
+                        )}
                       </InsCell>
                     )}
                     {!sel.studio.attach && (
