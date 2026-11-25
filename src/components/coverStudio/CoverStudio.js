@@ -31,6 +31,7 @@ import {
   hostMicBadge,
   HOSTS,
   INTERVIEW_ELEMENTS,
+  INTERVIEW_PIECES,
   drawElementThumb,
   removePlainBackground,
   drawLayoutThumb,
@@ -43,6 +44,7 @@ import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand,
 import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } from './patterns';
 import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
+import { GRAPHICS, GRAPHIC_GROUPS, drawGraphicThumb, findGraphic, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
 
@@ -68,6 +70,10 @@ const FONTS = [
   { family: 'DM Sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
   { family: 'Montserrat', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans', italic: true },
   { family: 'CMG Sans', weights: [100, 400, 700], kind: 'Sans', italic: true },
+  // Outfit, Mona Sans and Hubot Sans: owner 2026-11-24, from the reference designs
+  { family: 'Outfit', weights: [300, 400, 500, 600, 700, 800, 900], kind: 'Sans' },
+  { family: 'Mona Sans', weights: [200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans' },
+  { family: 'Hubot Sans', weights: [200, 300, 400, 500, 600, 700, 800, 900], kind: 'Sans' },
   { family: 'Barlow Condensed', weights: [500, 600, 700], kind: 'Condensed' },
   { family: 'Bebas Neue', weights: [400], kind: 'Condensed' },
   // italicFirst: choosing this font from the list starts it in italic (owner 2026-11-18)
@@ -76,6 +82,8 @@ const FONTS = [
   { family: 'CMG Sans Wide Outline', weights: [800], kind: 'Display' },
   { family: 'CMG Sans Outline', weights: [700], kind: 'Display' },
   { family: 'Orbitron', weights: [800], kind: 'Display' },
+  { family: 'Hubot Sans Expanded', weights: [200, 300, 400, 500, 600, 700, 800, 900], kind: 'Display' },
+  { family: 'Mona Sans Expanded', weights: [200, 300, 400, 500, 600, 700, 800, 900], kind: 'Display' },
   { family: 'IBM Plex Mono', weights: [400, 500, 600], kind: 'Mono' },
   { family: 'Geist Mono', weights: [400, 500, 700], kind: 'Mono' },
 ];
@@ -440,6 +448,15 @@ function ElementThumb({ id, palette }) {
   return <canvas ref={ref} width={240} height={150} />;
 }
 
+// ----- one of the drawings (studioGraphics.js) on its tile -----
+function GraphicThumb({ id, color }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) drawGraphicThumb(ref.current, id, color);
+  }, [id, color]);
+  return <canvas ref={ref} width={240} height={150} />;
+}
+
 // ----- schematic of an interview layout for its picker tile -----
 function LayoutThumb({ layout, palette }) {
   const ref = useRef(null);
@@ -536,13 +553,101 @@ function textBoxRect(o) {
 // draws a tight background, so the box is painted here with its own padding
 // and corner radius. The override lives on the one object; caching is off for
 // it because the box extends past the text's own bounds.
+// A text drawn as outlined letters (owner 2026-11-24: the outlined numbers in
+// the reference designs). studio.outline is the line's thickness as a share
+// of the letter size, so it grows and shrinks with the text. The text's own
+// colour (and any letter's own colour) is the colour of the line, so every
+// colour control keeps working.
+// Not a plain strokeText: letters in a variable font are built from
+// overlapping pieces, and a stroke shows every piece (a 0 gets its inner
+// joins drawn). So the text is drawn on a sheet of its own in two passes:
+// each letter stroked at twice the thickness, then each letter's own shape
+// taken out again, which leaves a clean line round the outside. The sheet is
+// then laid on the cover (so opacity and shadow apply to the finished line).
+let outlineSheet = null; // one scratch sheet for every outlined text
+function outlineText(ctx) {
+  const share = this.studio && this.studio.outline;
+  if (!share || typeof ctx.getTransform !== 'function') {
+    Textbox.prototype._renderText.call(this, ctx);
+    return;
+  }
+  const main = ctx.canvas;
+  if (!outlineSheet) outlineSheet = document.createElement('canvas');
+  const sheet = outlineSheet;
+  if (sheet.width !== main.width || sheet.height !== main.height) {
+    sheet.width = main.width;
+    sheet.height = main.height;
+  }
+  const g = sheet.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, sheet.width, sheet.height);
+  g.setTransform(ctx.getTransform());
+  this._setTextStyles(g);
+  try {
+    this.__pass = 'line';
+    this._renderTextCommon(g, 'fillText');
+    this.__pass = 'cut';
+    this._renderTextCommon(g, 'fillText');
+  } finally {
+    this.__pass = null;
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(sheet, 0, 0);
+  ctx.restore();
+}
+function outlineChar(method, ctx, lineIndex, charIndex, _char, left, top) {
+  const share = this.studio && this.studio.outline;
+  if (!share || !this.__pass) {
+    Textbox.prototype._renderChar.call(this, method, ctx, lineIndex, charIndex, _char, left, top);
+    return;
+  }
+  const full = this.getCompleteStyleDeclaration(lineIndex, charIndex);
+  const own = this._getStyleDeclaration(lineIndex, charIndex);
+  const y = top + (own.deltaY || 0);
+  ctx.save();
+  ctx.font = this._getFontDeclaration(full);
+  if (this.__pass === 'line') {
+    ctx.strokeStyle = typeof full.fill === 'string' && full.fill ? full.fill : '#ffffff';
+    ctx.lineWidth = Math.max(1, full.fontSize * share) * 2;
+    ctx.lineJoin = 'miter';
+    ctx.miterLimit = 4;
+    ctx.strokeText(_char, left, y);
+  } else {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000000';
+    ctx.fillText(_char, left, y);
+  }
+  ctx.restore();
+}
+function applyTextOutline(o) {
+  const on = !!(o.studio && o.studio.outline > 0);
+  if (on === !!o.__outlined) return;
+  if (on) {
+    o._renderText = outlineText;
+    o._renderChar = outlineChar;
+  } else {
+    delete o._renderText;
+    delete o._renderChar;
+  }
+  o.__outlined = on;
+  // the line reaches a little past the letters, so no cached picture of the text
+  if (on) o.objectCaching = false;
+  else if (!o.__boxed) o.objectCaching = true;
+  o.dirty = true;
+}
+
+// Called wherever a text is made or its settings are swapped (new text, Undo,
+// a copy, a draft): puts its box and its outlined letters in place.
 function applyTextBox(o) {
+  applyTextOutline(o);
   const box = o.studio && o.studio.box;
   if (!box || !box.on) {
     if (o.__boxed) {
       delete o._renderBackground;
       o.__boxed = false;
-      o.objectCaching = true;
+      o.objectCaching = !o.__outlined;
       o.dirty = true;
     }
     return;
@@ -1566,7 +1671,7 @@ export default function CoverStudio({
       // an SVG arrives already drawn and trimmed, with its vector to keep it sharp
       const source = meta.vector ? img : prepareLogo(img);
       const isSeal = !!meta.seal;
-      const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal).length;
+      const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal && !o.studio.graphic).length;
       const studio = {
         kind: 'logo',
         seal: isSeal,
@@ -1711,7 +1816,7 @@ export default function CoverStudio({
       // exactly as it is (owner 2026-11-19: the centred layout used to shrink
       // the logo to make room; only adding another logo should resize logos).
       // Under the logo means under whatever is already stacked there.
-      const logos = c.getObjects().filter((x) => x.studio && x.studio.kind === 'logo' && !x.studio.seal && x.visible !== false);
+      const logos = c.getObjects().filter((x) => x.studio && x.studio.kind === 'logo' && !x.studio.seal && !x.studio.graphic && x.visible !== false);
       if (logos.length && (!autoLayoutRef.current.on || autoLayoutRef.current.id === 'center')) {
         const boxes = logos.map((x) => x.getBoundingRect());
         const left = Math.min(...boxes.map((b) => b.left));
@@ -2072,6 +2177,8 @@ export default function CoverStudio({
       objectCaching: false,
     });
     r.studio = { kind: 'shape', name: opt.name || 'Shape', round };
+    // words along its outline (a layout's round badge); see ringText.js
+    if (opt.ring) r.studio.ring = { ...RING_DEFAULT, ...opt.ring, color: paletteColor(opt.ring.color, '#ffffff') };
     styleObject(r);
     c.add(r);
     return r;
@@ -2092,17 +2199,16 @@ export default function CoverStudio({
       fontWeight: opt.weight || 700,
       fontStyle: opt.italic ? 'italic' : 'normal',
       fontSize: opt.size || 60,
-      fill: opt.fill || '#ffffff',
+      fill: paletteColor(opt.fill, '#ffffff'),
       charSpacing: opt.spacing != null ? opt.spacing : opt.role === 'headline' ? HEADLINE_SPACING : 0,
       lineHeight: opt.lineHeight || 1.1,
       textAlign: opt.align || 'left',
       editable: true,
     });
     t.studio = { kind: 'text', role: opt.role || 'text', seed: opt.seed == null ? opt.text : opt.seed };
-    if (opt.box) {
-      t.studio.box = { on: true, color: paletteColor(opt.box.color, bgRef.current.palette.a1), padX: opt.box.padX || 0, padY: opt.box.padY || 0, radius: opt.box.radius || 0 };
-      applyTextBox(t);
-    }
+    if (opt.box) t.studio.box = { on: true, color: paletteColor(opt.box.color, bgRef.current.palette.a1), padX: opt.box.padX || 0, padY: opt.box.padY || 0, radius: opt.box.radius || 0 };
+    if (opt.outline) t.studio.outline = opt.outline; // outlined letters
+    if (opt.box || opt.outline) applyTextBox(t);
     t.initDimensions();
     // Text carried over from another layout goes into the room this layout's
     // own placeholder takes: the largest size, up to the layout's, at which it
@@ -2323,6 +2429,13 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
+    // fonts a layout names for itself (a text's own family, a ring of words)
+    await Promise.all(
+      layout.items
+        .map((it) => (it.t === 'text' && it.family ? [it.family, it.weight || 700] : it.ring && it.ring.family ? [it.ring.family, it.ring.weight || 700] : null))
+        .filter(Boolean)
+        .map(([family, weight]) => ensureFont(family, weight))
+    );
     c.discardActiveObject();
     if (fresh) carryRef.current = { texts: {}, logos: {}, guests: [], grain: 0 };
     else harvest();
@@ -2339,10 +2452,24 @@ export default function CoverStudio({
     const had = new Set(c.getObjects());
     let g = 0;
     const waiting = []; // [person, frame]: photos to load once the layout stands
-    layout.items.forEach((it) => {
-      if (it.t === 'shape') {
+    // items that share a `gid` in the layout start as one group
+    const stamp = newGid();
+    const grouped = (o, it) => {
+      if (o && o.studio && it.gid) o.studio.gid = `${stamp}-${it.gid}`;
+    };
+    for (const it of layout.items) {
+      if (it.t === 'graphic') {
+        // a drawing (studioGraphics.js); it has to be drawn before it can be placed
+        try {
+          grouped(await makeGraphic(it.g, it), it);
+        } catch (e) {
+          // the layout stands without it
+        }
+      } else if (it.t === 'shape') {
         const sh = makeShape(it);
-        if (carry.grain > 0) sh.studio.grain = carry.grain;
+        // grain carried from the layout before belongs on colour panels, not on rules and badges
+        if (carry.grain > 0 && !it.plain) sh.studio.grain = carry.grain;
+        grouped(sh, it);
       } else if (it.t === 'guest') {
         const frame = makePhoto(it);
         const from = carry.guests[g];
@@ -2354,9 +2481,9 @@ export default function CoverStudio({
         g += 1;
       } else if (it.t === 'logo') fillLogo(makeLogoSlot(it), carry.logos[it.slot], it.caption ? carry.texts.caption : null);
       else if (it.t === 'pill') makePill({ ...it, text: carry.texts.pill });
-      else if (it.t === 'text') makeText({ ...it, text: carry.texts[it.role] == null ? it.text : carry.texts[it.role], seed: it.text, fitTo: it.text });
+      else if (it.t === 'text') grouped(makeText({ ...it, text: carry.texts[it.role] == null ? it.text : carry.texts[it.role], seed: it.text, fitTo: it.text }), it);
       else if (it.t === 'brought') makeBrought({ ...it, text: carry.texts.brought });
-    });
+    }
     c.getObjects().forEach((o) => {
       if (!had.has(o) && o.studio) o.studio.tpl = true;
     });
@@ -2497,11 +2624,125 @@ export default function CoverStudio({
     }
   };
 
+  // ---------- graphic elements: drawings that stay vectors ----------
+  // A drawing from studioGraphics.js as an item on the cover. It is a picture
+  // item (kind 'logo') that keeps the drawing itself in studio.vector, like an
+  // SVG file dropped on the cover, so sharpenVectors draws it again whenever
+  // it is made larger and it never shows pixels. studio.graphic marks it as
+  // one of ours: its Edit panel shows a colour and a size, none of the logo
+  // tools, and the automatic layouts do not count it as a logo.
+  // opt: cx, cy, w (width on the cover), color ('a1', 'a2', 'base' or a hex), angle, opacity
+  const makeGraphic = async (id, opt = {}) => {
+    const c = fabricRef.current;
+    const def = findGraphic(id);
+    const made = graphicSvg(id, '#ffffff');
+    if (!c || !def || !made) return null;
+    const vec = readSvg(made.svg);
+    if (!vec) return null;
+    const whole = { x: 0, y: 0, w: 1, h: 1 };
+    const width = opt.w || def.size;
+    const shown = Math.max(width, (width * made.h) / made.w);
+    // drawn at twice the size it is shown; sharpenVectors takes it from there
+    const source = await rasterVector(vec, whole, Math.min(VECTOR_MAX, Math.max(320, Math.ceil(shown * 2))));
+    const o = logoObject({ kind: 'logo', graphic: id, seal: false, symbol: '', name: def.name, tint: 'custom', tintColor: paletteColor(opt.color, bgRef.current.palette.a1), source, vector: { ...vec, crop: whole }, colors: [] });
+    const sc = width / source.width;
+    o.set({ scaleX: sc, scaleY: sc, left: opt.cx == null ? W / 2 : opt.cx, top: opt.cy == null ? H / 2 : opt.cy, angle: opt.angle || 0, opacity: opt.opacity == null ? 1 : opt.opacity });
+    o.setCoords();
+    c.add(o);
+    return o;
+  };
+  const addGraphic = async (id) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    try {
+      const o = await makeGraphic(id);
+      if (o) finishAdd(o, 'elements');
+    } catch (e) {
+      toast.error('That drawing could not be added in this browser.');
+    }
+  };
+
+  // An empty picture frame that is not a guest (the kind "Make it a mask"
+  // gives): no name or title, and layout changes leave it where it is.
+  const makeFrame = (opt) => {
+    const frame = makePhoto({ ...opt, style: 'none' });
+    Object.assign(frame.studio, { mask: true, maskFill: opt.maskFill || '#8b93a1', name: 'Image frame' });
+    repaintPhoto(frame);
+    return frame;
+  };
+  const newGid = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+  // The pieces made of several items (from the 2026-11-24 references). Each
+  // part is an ordinary item; they start as one group, so the piece moves and
+  // sizes as one until it is ungrouped (double-click picks one part).
+  // Returns the parts, back to front.
+  const makePiece = async (id, at) => {
+    const { cx, cy } = at;
+    if (id === 'frame-block') {
+      // a photo with rounded corners on a square-cornered colour block
+      const w = 380;
+      const h = 480;
+      const back = makeShape({ x: cx - w / 2, y: cy - h / 2, w, h, fill: 'a1', name: 'Colour block' });
+      return [back, makeFrame({ shape: 'rect', aspect: w / h, rounding: 0.5, size: w, cx, cy })];
+    }
+    if (id === 'frame-pair') {
+      // a large photo with a smaller one over its corner, edged in the cover's own colour
+      const big = makeFrame({ shape: 'rect', aspect: 1.1, size: 460, cx: cx - 60, cy: cy - 60 });
+      const small = makeFrame({ shape: 'rect', aspect: 1, size: 270, cx: cx + 150, cy: cy + 130, ring: 44, ringColor: 'base', maskFill: '#aab1bd' });
+      const tab = makeShape({ x: cx - 60 - 230 - 22, y: cy - 60 - 150, w: 22, h: 64, fill: '#ffffff', name: 'Tab' });
+      return [big, small, tab];
+    }
+    if (id === 'badge-ring') {
+      // words round a ring (they belong to a hidden circle) with a star in the middle
+      await ensureFont('Mona Sans', 700);
+      const ringShape = makeShape({ x: cx - 150, y: cy - 150, w: 300, h: 300, round: 1, fill: 'a1', name: 'Ring of words' });
+      ringShape.studio.ring = { ...RING_DEFAULT, text: 'GENFINITY • INTERVIEW • GENFINITY • INTERVIEW •', side: 'in', gap: 10, size: 27, spacing: 60, family: 'Mona Sans', weight: 700, color: '#ffffff', only: true };
+      ringShape.dirty = true;
+      const star = await makeGraphic('star', { cx, cy, w: 124, color: '#ffffff' });
+      return [ringShape, star].filter(Boolean);
+    }
+    if (id === 'badge-number') {
+      // numbers are set in Mona Sans Expanded: its zero is plain, Hubot's is slashed
+      await ensureFont('Mona Sans Expanded', 900);
+      const disc = makeShape({ x: cx - 115, y: cy - 115, w: 230, h: 230, round: 1, fill: 'a1', name: 'Badge' });
+      const num = makeText({ text: '01', cx, cy, w: 220, size: 92, family: 'Mona Sans Expanded', weight: 900, align: 'center', fill: 'base', spacing: 0, lineHeight: 1 });
+      return [disc, num];
+    }
+    if (id === 'numbers') {
+      // one filled number over three outlined ones
+      await ensureFont('Mona Sans Expanded', 900);
+      const size = 120;
+      const face = { w: 340, size, family: 'Mona Sans Expanded', weight: 900, align: 'left', spacing: 0, lineHeight: 1 };
+      const top = makeText({ ...face, text: '01.', x: cx - 170, y: cy - size * 2.26 });
+      const rest = makeText({ ...face, text: '01.\n01.\n01.', x: cx - 170, y: cy - size * 2.26 + top.height, outline: 0.02 });
+      return [top, rest];
+    }
+    return [];
+  };
+  const addPiece = async (id) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    c.discardActiveObject();
+    const parts = await makePiece(id, { cx: W / 2, cy: H / 2 });
+    if (!parts.length) return;
+    const gid = newGid();
+    parts.forEach((p) => {
+      p.studio.gid = gid;
+    });
+    if (parts.length > 1) c.setActiveObject(new ActiveSelection(parts, { canvas: c }));
+    else c.setActiveObject(parts[0]);
+    finishAdd(null, 'elements');
+  };
+
   // ---------- the Elements tab: ready-made pieces ----------
   const addElement = async (id) => {
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
+    if (['frame-block', 'frame-pair', 'badge-ring', 'badge-number', 'numbers'].includes(id)) {
+      await addPiece(id);
+      return;
+    }
     const at = { cx: W / 2, cy: H / 2 };
     let o = null;
     if (id === 'host') {
@@ -3232,6 +3473,21 @@ export default function CoverStudio({
     if (kind === 'highlight') o = makeText({ text: 'Highlighted words', cx: W / 2, cy: H / 2 + 160, w: 1100, size: 70, weight: 700, align: 'center', role: 'highlight', box: { color: 'a1', padX: 30, padY: 10, radius: 0 } });
     if (kind === 'brought') [o] = makeBrought({ anchor: 'center', x: W / 2, cy: H - 110 });
     finishAdd(o, 'text');
+  };
+
+  // Outlined letters for the selected text: share is the line's thickness as
+  // a share of the letter size, 0 for filled letters again.
+  const setTextOutline = (share) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'text') return;
+    if (share > 0) o.studio.outline = share;
+    else delete o.studio.outline;
+    applyTextBox(o);
+    o.dirty = true;
+    c.requestRenderAll();
+    commitSoon();
+    bump();
   };
 
   const setTextBox = (patch) => {
@@ -4199,7 +4455,7 @@ export default function CoverStudio({
     if (!c) return;
     if (!auto) autoLayoutRef.current = { on: true, id };
     const objs = c.getObjects();
-    const logos = objs.filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal);
+    const logos = objs.filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal && !o.studio.graphic);
     const byRole = (r) => objs.find((o) => o.studio && o.studio.role === r);
     const texts = [byRole('label'), byRole('headline'), byRole('subhead')].filter(Boolean);
     if (!logos.length && !texts.length) {
@@ -5158,6 +5414,7 @@ export default function CoverStudio({
     if (k === 'text') return 'Text';
     if (k === 'photo') return o.studio.mask ? 'Mask' : 'Guest';
     if (k === 'shape') return o.studio.pattern ? 'Pattern' : 'Shape';
+    if (o.studio && o.studio.graphic) return 'Graphic';
     return o.studio && o.studio.seal ? 'Seal' : 'Logo';
   };
   const layerName = (o) => {
@@ -5248,7 +5505,7 @@ export default function CoverStudio({
               Pick a starting layout. It fills the cover with placeholder guests, logos and text; then click any part to change it, move it or delete it. Colours come from the Background tab.
             </Hint>
             <TemplateGrid>
-              {INTERVIEW_LAYOUTS.map((l) => (
+              {INTERVIEW_LAYOUTS.filter((l) => !l.pending).map((l) => (
                 <TemplateTile key={l.id} title={l.note} onClick={() => applyInterviewLayout(l)}>
                   <LayoutThumb layout={l} palette={bg.palette} />
                   <span>{l.name}</span>
@@ -5267,7 +5524,7 @@ export default function CoverStudio({
         {leftTab === 'elements' && (
           <PanelBody>
             <Hint>
-              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel.
+              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel. The marks, spheres and line work further down are drawings, not pictures: they stay sharp at any size and take any colour.
             </Hint>
             <FieldLabel>Image frames</FieldLabel>
             <TemplateGrid>
@@ -5278,6 +5535,28 @@ export default function CoverStudio({
                 </TemplateTile>
               ))}
             </TemplateGrid>
+            <FieldLabel style={{ marginTop: 16 }}>Badges and numbers</FieldLabel>
+            <TemplateGrid>
+              {INTERVIEW_PIECES.map((el) => (
+                <TemplateTile key={el.id} title={el.note} onClick={() => addElement(el.id)}>
+                  <ElementThumb id={el.id} palette={bg.palette} />
+                  <span>{el.name}</span>
+                </TemplateTile>
+              ))}
+            </TemplateGrid>
+            {GRAPHIC_GROUPS.map((grp) => (
+              <div key={grp.id}>
+                <FieldLabel style={{ marginTop: 16 }}>{grp.name}</FieldLabel>
+                <TemplateGrid>
+                  {GRAPHICS.filter((g) => g.group === grp.id).map((g) => (
+                    <TemplateTile key={g.id} title={`${g.name}. A drawing: sharp at any size, any colour.`} onClick={() => addGraphic(g.id)}>
+                      <GraphicThumb id={g.id} color={bg.palette.a1} />
+                      <span>{g.name}</span>
+                    </TemplateTile>
+                  ))}
+                </TemplateGrid>
+              </div>
+            ))}
           </PanelBody>
         )}
 
@@ -6008,6 +6287,14 @@ export default function CoverStudio({
                           <Ghost onClick={clearLetterStyles}>Make every letter the same again</Ghost>
                         </Row>
                       )}
+                      <FieldLabel style={{ marginTop: 10 }}>Letters</FieldLabel>
+                      <Seg>
+                        <SegBtn $on={!sel.studio.outline} onClick={() => setTextOutline(0)}>Filled</SegBtn>
+                        <SegBtn $on={!!sel.studio.outline} onClick={() => setTextOutline(sel.studio.outline || 0.02)}>Outline</SegBtn>
+                      </Seg>
+                      {!!sel.studio.outline && (
+                        <Slider label="Outline thickness" min={0.006} max={0.08} step={0.002} value={sel.studio.outline} onChange={setTextOutline} fmt={(v) => `${(v * 100).toFixed(1)}% of the letter size`} />
+                      )}
                       <FieldLabel style={{ marginTop: 10 }}>Align text</FieldLabel>
                       <Seg>
                         {[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']].map(([id, label]) => (
@@ -6456,7 +6743,33 @@ export default function CoverStudio({
                   </>
                 )}
 
-                {selKind === 'logo' && (
+                {selKind === 'logo' && sel.studio.graphic && (
+                  <>
+                    <InsCell>
+                      <FieldLabel>Colour</FieldLabel>
+                      <SwatchRow>
+                        <input type="color" value={normHex(sel.studio.tintColor)} onChange={(e) => setTint('custom', e.target.value)} />
+                        {['#ffffff', '#000000', bg.palette.a1, bg.palette.a2].map((col, i) => (
+                          <Swatch key={i} style={{ background: col }} onClick={() => setTint('custom', col)} title={col} />
+                        ))}
+                      </SwatchRow>
+                      <Muted style={{ marginTop: 6 }}>This is a drawing, not a picture: it stays sharp at any size.</Muted>
+                    </InsCell>
+                    <InsCell>
+                      <Slider
+                        label="Size"
+                        min={20}
+                        max={1920}
+                        step={2}
+                        value={sel.getScaledWidth()}
+                        onChange={(v) => change({ scaleX: v / sel.width, scaleY: v / sel.width })}
+                        fmt={(v) => `${Math.round(v)}px wide`}
+                      />
+                      <Slider label="Turn" min={-180} max={180} step={1} value={sel.angle > 180 ? sel.angle - 360 : sel.angle} onChange={(v) => change({ angle: v })} fmt={(v) => `${Math.round(v)} deg`} />
+                    </InsCell>
+                  </>
+                )}
+                {selKind === 'logo' && !sel.studio.graphic && (
                   <>
                     {!sel.studio.placeholder && !sel.studio.seal && sel.studio.source && (
                       <InsCell>

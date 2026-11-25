@@ -1,0 +1,43 @@
+/* Mona Sans and Hubot Sans (GitHub; SIL Open Font License 1.1, see the
+   LICENSE files in node_modules/@fontsource-variable/mona-sans and
+   /hubot-sans). Added 2026-11-24 for the owner's podcast banner reference:
+   its big words are Hubot Sans Expanded Black, its numbers Mona Sans Expanded
+   Black (a plain zero; Hubot's is slashed), its small words Mona Sans.
+
+   Each family is one variable file that holds every weight (200 to 900) and
+   every width (75% to 125%). The cover is drawn on a canvas, and a canvas
+   font has no width setting, so each width the studio offers is its own
+   family name here: a face whose font-stretch is one fixed value is always
+   drawn at that width. The files are used exactly as published. */
+@font-face {
+  font-family: 'Mona Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  font-stretch: 100%;
+  src: url(../../../../../node_modules/@fontsource-variable/mona-sans/files/mona-sans-latin-wdth-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Mona Sans Expanded';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  font-stretch: 125%;
+  src: url(../../../../../node_modules/@fontsource-variable/mona-sans/files/mona-sans-latin-wdth-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Hubot Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  font-stretch: 100%;
+  src: url(../../../../../node_modules/@fontsource-variable/hubot-sans/files/hubot-sans-latin-wdth-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Hubot Sans Expanded';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  font-stretch: 125%;
+  src: url(../../../../../node_modules/@fontsource-variable/hubot-sans/files/hubot-sans-latin-wdth-normal.woff2) format('woff2');
+}

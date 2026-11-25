@@ -2,6 +2,7 @@ import tateUrl from './hosts/tate.jpg';
 import ryanUrl from './hosts/ryan.jpg';
 import { isGrad, paintGrad } from './gradients';
 import { adjustedPicture, cleanMap, mapPixels } from './imageAdjust';
+import { findGraphic, graphicImage, graphicSvg } from './studioGraphics';
 
 // Building blocks for the Interview Cover Studio (1920x1080): masked guest
 // photos, placeholder art, plain-background removal for logos, and the
@@ -622,6 +623,63 @@ export const INTERVIEW_LAYOUTS = [
       { t: 'brought', anchor: 'center', x: 618, cy: 925 },
     ],
   },
+  // ----- from the owner's four reference designs (2026-11-24) -----
+  // Built with the drawings in studioGraphics.js (t: 'graphic'; g is the
+  // drawing's id, w its width on the cover), rules (thin shapes), ring words
+  // (a shape's `ring`) and outlined text (`outline`). Items sharing a `gid`
+  // start as one group. `plain` keeps carried grain off a small shape.
+  // pending: not in the Layouts tab until the owner has approved it.
+  {
+    id: 'episode',
+    name: 'Episode, one guest',
+    note: 'Wide black headline type, a guest photo on a colour block, outlined numbers and line drawings.',
+    pending: true,
+    items: [
+      { t: 'graphic', g: 'star-column', cx: 126, cy: 318, w: 82, color: 'a1' },
+      { t: 'text', role: 'text', text: 'Interview series', x: 204, y: 146, w: 600, size: 40, weight: 500, family: 'Mona Sans', spacing: 0 },
+      { t: 'text', role: 'text', text: '10.08.25', x: 204, y: 206, w: 640, size: 62, weight: 900, family: 'Mona Sans Expanded', fill: 'a1', spacing: 0 },
+      { t: 'shape', name: 'Rule', x: 204, y: 310, w: 520, h: 3, fill: '#ffffff', plain: true },
+      { t: 'text', role: 'subhead', text: 'Every Tuesday\n7:00 PM EST', x: 204, y: 340, w: 600, size: 40, weight: 500, family: 'Mona Sans', spacing: 0, lineHeight: 1.2 },
+      { t: 'graphic', g: 'mesh', cx: 368, cy: 902, w: 330, color: '#ffffff' },
+      { t: 'shape', name: 'Colour block', x: 962, y: 104, w: 500, h: 664, fill: 'a1' },
+      { t: 'guest', cx: 1212, cy: 436, size: 500, shape: 'rect', aspect: 0.753, rounding: 0.5, style: 'below', align: 'center' },
+      { t: 'shape', name: 'Badge', x: 68, y: 664, w: 118, h: 118, round: 1, fill: 'a1', plain: true, gid: 'badge' },
+      { t: 'text', role: 'text', text: '01', x: 68, y: 698, w: 118, size: 46, weight: 900, family: 'Mona Sans Expanded', fill: 'base', align: 'center', spacing: 0, lineHeight: 1, gid: 'badge' },
+      { t: 'text', role: 'headline', text: 'NEW\nINTERVIEW', x: 204, y: 560, w: 900, size: 92, weight: 900, family: 'Hubot Sans Expanded', fill: 'a1', spacing: 0, lineHeight: 1.0 },
+      { t: 'text', role: 'text', text: '01.', x: 1500, y: 108, w: 220, size: 92, weight: 900, family: 'Mona Sans Expanded', spacing: 0, lineHeight: 1, gid: 'numbers' },
+      { t: 'text', role: 'text', text: '01.\n01.\n01.\n01.', x: 1500, y: 212, w: 220, size: 92, weight: 900, family: 'Mona Sans Expanded', spacing: 0, lineHeight: 1, outline: 0.02, gid: 'numbers' },
+      { t: 'shape', name: 'Rule', x: 1722, y: 120, w: 3, h: 500, fill: '#ffffff', plain: true },
+      { t: 'graphic', g: 'star-tile', cx: 1794, cy: 182, w: 112, color: 'a1' },
+      { t: 'graphic', g: 'globe-wide', cx: 1794, cy: 356, w: 124, color: '#ffffff' },
+      { t: 'graphic', g: 'orbit', cx: 1794, cy: 520, w: 124, color: '#ffffff' },
+      { t: 'shape', name: 'Rule', x: 1500, y: 668, w: 352, h: 3, fill: '#ffffff', plain: true },
+      { t: 'text', role: 'text', text: 'EPISODE', x: 1500, y: 690, w: 380, size: 56, weight: 900, family: 'Hubot Sans Expanded', spacing: 0, lineHeight: 1 },
+      { t: 'logo', slot: 'ecosystem', x: 1500, y: 806, w: 300, h: 84 },
+      { t: 'brought', anchor: 'left', x: 1500, cy: 958, stacked: true, size: 28 },
+    ],
+  },
+  {
+    id: 'feature',
+    name: 'Feature, two guests',
+    note: 'Headline on a colour block, a large guest with a smaller one over its corner, a ring of words, bold marks and squares of lines.',
+    pending: true,
+    items: [
+      { t: 'logo', slot: 'ecosystem', x: 150, y: 84, w: 300, h: 90, caption: true },
+      { t: 'graphic', g: 'arrows', cx: 660, cy: 128, w: 230, color: '#ffffff' },
+      { t: 'graphic', g: 'hatch-square', cx: 70, cy: 330, w: 70, color: '#ffffff' },
+      { t: 'text', role: 'headline', text: 'Your Headline\nGoes Right\nHere', x: 184, y: 320, w: 760, size: 104, weight: 700, family: 'Outfit', fill: 'base', align: 'left', spacing: -10, lineHeight: 1.12, box: { color: 'a1', padX: 34, padY: 20, radius: 0 } },
+      { t: 'text', role: 'subhead', text: 'A supporting line that adds\ncontext to the story', x: 150, y: 786, w: 820, size: 44, weight: 700, family: 'Outfit', fill: 'a1', spacing: 0, lineHeight: 1.2 },
+      { t: 'brought', anchor: 'left', x: 150, cy: 985 },
+      { t: 'graphic', g: 'hatch-square', cx: 1100, cy: 846, w: 96, color: '#ffffff' },
+      { t: 'guest', cx: 1340, cy: 384, size: 540, shape: 'rect', aspect: 0.95, style: 'bar', align: 'left', barFill: '#141414' },
+      { t: 'graphic', g: 'hatch-square', cx: 1726, cy: 468, w: 96, color: '#ffffff' },
+      { t: 'guest', cx: 1660, cy: 716, size: 320, shape: 'rect', aspect: 1, ring: 44, ringColor: 'base', style: 'bar', align: 'left', barFill: '#141414' },
+      { t: 'graphic', g: 'x-bold', cx: 1000, cy: 906, w: 78, color: '#ffffff' },
+      { t: 'graphic', g: 'x-bold', cx: 1000, cy: 1000, w: 78, color: '#ffffff' },
+      { t: 'shape', name: 'Ring of words', x: 966, y: 44, w: 200, h: 200, round: 1, fill: 'base', plain: true, gid: 'ring', ring: { text: 'GENFINITY • INTERVIEW • GENFINITY • INTERVIEW •', side: 'in', gap: 10, size: 19, spacing: 60, family: 'Mona Sans', weight: 700, color: '#ffffff' } },
+      { t: 'graphic', g: 'star', cx: 1066, cy: 144, w: 78, color: '#ffffff', gid: 'ring' },
+    ],
+  },
 ];
 
 // ------------------------------ our hosts ------------------------------
@@ -651,6 +709,17 @@ export const INTERVIEW_ELEMENTS = [
   { id: 'highlight', name: 'Highlighted words', note: 'A line of text on a colour block.' },
   { id: 'brought', name: 'Brought to you by', note: 'The line with the Genfinity logo.' },
   { id: 'ecosystem', name: 'Ecosystem logo', note: 'A logo spot with the spaced ECOSYSTEM label under it.' },
+  // from the owner's reference designs (2026-11-24); empty frames, not guests
+  { id: 'frame-block', name: 'Photo on a colour block', note: 'A photo with rounded corners on a square colour block. Drop a picture on the frame.' },
+  { id: 'frame-pair', name: 'Photo pair, offset', note: 'A large photo with a smaller one over its corner. Drop a picture on each frame.' },
+];
+
+// Pieces with words (same tab, their own group): built from the studio's own
+// shape, text and drawing items, so the words and numbers can be typed over.
+export const INTERVIEW_PIECES = [
+  { id: 'badge-ring', name: 'Round badge', note: 'Words round a ring with a star in the middle. The words are typed in the ring\'s Edit panel.' },
+  { id: 'badge-number', name: 'Number badge', note: 'A colour disc with a number on it.' },
+  { id: 'numbers', name: 'Outline numbers', note: 'One filled number over three outlined ones.' },
 ];
 
 // A small schematic of a ready-made piece for its tile.
@@ -728,6 +797,55 @@ export function drawElementThumb(canvas, id, pal) {
     g.strokeRect(cx - 62, 44, 124, 46);
     g.setLineDash([]);
     for (let i = 0; i < 9; i += 1) bar(cx - 60 + i * 15, 110, 5, 6);
+  } else if (id === 'frame-block') {
+    bar(cx, h / 2, 84, 108, pal.a1);
+    round(cx, h / 2, 84, 108, 24, grey);
+  } else if (id === 'frame-pair') {
+    bar(cx - 14, h / 2 - 12, 104, 92, grey);
+    bar(cx + 34, h / 2 + 30, 62, 62, '#0d0d10');
+    bar(cx + 34, h / 2 + 30, 50, 50, '#aab1bd');
+    bar(cx - 70, h / 2 - 40, 5, 16);
+  } else if (id === 'badge-ring') {
+    g.save();
+    g.translate(cx, h / 2);
+    g.fillStyle = white;
+    for (let i = 0; i < 26; i += 1) {
+      g.save();
+      g.rotate((Math.PI * 2 * i) / 26);
+      if (i % 13 !== 12) g.fillRect(-3, -56, 6, 10);
+      g.restore();
+    }
+    g.beginPath();
+    const r = 24;
+    const q = r * 0.2;
+    g.moveTo(0, -r);
+    g.quadraticCurveTo(q, -q, r, 0);
+    g.quadraticCurveTo(q, q, 0, r);
+    g.quadraticCurveTo(-q, q, -r, 0);
+    g.quadraticCurveTo(-q, -q, 0, -r);
+    g.fill();
+    g.restore();
+  } else if (id === 'badge-number') {
+    g.fillStyle = pal.a1;
+    g.beginPath();
+    g.arc(cx, h / 2, 50, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = pal.base || '#000000';
+    g.font = '900 40px "Mona Sans Expanded", "Montserrat", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('01', cx, h / 2 + 2);
+  } else if (id === 'numbers') {
+    g.font = '900 30px "Mona Sans Expanded", "Montserrat", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 1.2;
+    g.strokeStyle = white;
+    g.fillStyle = white;
+    for (let i = 0; i < 4; i += 1) {
+      if (i === 0) g.fillText('01.', cx, 27 + i * 32);
+      else g.strokeText('01.', cx, 27 + i * 32);
+    }
   }
 }
 
@@ -743,7 +861,11 @@ export function drawLayoutThumb(canvas, layout, pal) {
   layout.items.forEach((it) => {
     if (it.t === 'shape') {
       g.fillStyle = col(it.fill, pal.a1);
-      g.fillRect(it.x, it.y, it.w, it.h);
+      if (it.round) {
+        g.beginPath();
+        g.roundRect(it.x, it.y, it.w, it.h, (it.round * Math.min(it.w, it.h)) / 2);
+        g.fill();
+      } else g.fillRect(it.x, it.y, Math.max(it.w, 8), Math.max(it.h, 8)); // a thin rule still shows on the small tile
     } else if (it.t === 'guest') {
       const w = it.size;
       const h = it.shape === 'rect' ? it.size / (it.aspect || 1) : it.size;
@@ -763,7 +885,7 @@ export function drawLayoutThumb(canvas, layout, pal) {
     } else if (it.t === 'text') {
       const lines = String(it.text).split('\n');
       const lh = it.size * 1.02;
-      g.fillStyle = it.box ? col(it.box.color, pal.a1) : 'rgba(255,255,255,0.92)';
+      g.fillStyle = it.box ? col(it.box.color, pal.a1) : col(it.fill, 'rgba(255,255,255,0.92)');
       lines.forEach((ln, i) => {
         const lw = Math.min(it.w, ln.length * it.size * 0.56);
         const x = it.align === 'center' ? it.x + (it.w - lw) / 2 : it.align === 'right' ? it.x + it.w - lw : it.x;
@@ -780,6 +902,22 @@ export function drawLayoutThumb(canvas, layout, pal) {
       g.strokeStyle = 'rgba(255,255,255,0.75)';
       g.lineWidth = 8;
       g.strokeRect(x, y, it.w, it.h);
+    } else if (it.t === 'graphic') {
+      // one of the drawings: shown once its picture is ready (the tile is then drawn again)
+      const def = findGraphic(it.g);
+      const colour = col(it.color, pal.a1);
+      const box = def && graphicSvg(it.g, colour);
+      const img = box && graphicImage(it.g, colour, () => drawLayoutThumb(canvas, layout, pal));
+      if (img) {
+        const w = it.w || def.size;
+        const h = (w * box.h) / box.w;
+        g.save();
+        g.translate(it.cx, it.cy);
+        g.rotate(((it.angle || 0) * Math.PI) / 180);
+        g.globalAlpha = it.opacity == null ? 1 : it.opacity;
+        g.drawImage(img, -w / 2, -h / 2, w, h);
+        g.restore();
+      }
     } else if (it.t === 'brought') {
       const w = 560;
       const x = it.anchor === 'center' ? it.x - w / 2 : it.anchor === 'right' ? it.x - w : it.x;

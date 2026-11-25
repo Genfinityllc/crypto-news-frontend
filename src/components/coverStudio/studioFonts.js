@@ -97,5 +97,16 @@ import '@fontsource/instrument-serif/latin-400.css';
 import '@fontsource/instrument-serif/latin-400-italic.css';
 // Orbitron: Extra bold only (owner 2026-11-19, the closest free match to HK Modular Bold). SIL Open Font License.
 import '@fontsource/orbitron/latin-800.css';
+// Outfit (the owner's black and yellow reference designs, 2026-11-24). SIL Open Font License.
+import '@fontsource/outfit/latin-300.css';
+import '@fontsource/outfit/latin-400.css';
+import '@fontsource/outfit/latin-500.css';
+import '@fontsource/outfit/latin-600.css';
+import '@fontsource/outfit/latin-700.css';
+import '@fontsource/outfit/latin-800.css';
+import '@fontsource/outfit/latin-900.css';
+// Mona Sans, Hubot Sans and Hubot Sans Expanded: one variable file each,
+// see the notes in the stylesheet. SIL Open Font License.
+import './fonts/github-sans/github-sans.css';
 // CMG Sans is not on npm; its files live in ./fonts/cmg-sans (open licence).
 import './fonts/cmg-sans/cmg-sans.css';
