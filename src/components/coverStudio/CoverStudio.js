@@ -48,7 +48,7 @@ import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFac
 import { cutOutPerson } from './photoCutout';
 import { PAPER_COLOR, PAPER_COLORS, PAPER_STRENGTH, newPaper, paintPaper } from './paper';
 import { solidCanvas } from './solidLogo';
-import { GRAPHICS, GRAPHIC_DENSITY, GRAPHIC_GROUPS, GRAPHIC_WEIGHT, drawGraphicThumb, findGraphic, graphicOptions, graphicSvg } from './studioGraphics';
+import { GRAPHICS, GRAPHIC_DENSITY, GRAPHIC_GROUPS, GRAPHIC_STRETCH, GRAPHIC_WEIGHT, drawGraphicThumb, findGraphic, graphicOptions, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
 
@@ -415,7 +415,50 @@ function repaintPhoto(o) {
   o.setCoords();
 }
 
-const softShadow = () => new Shadow({ color: 'rgba(0,0,0,0.5)', blur: 34, offsetX: 0, offsetY: 14 });
+// The handles of a picture item. A logo, image or drawing is only ever sized
+// in proportion (corner handles). A drawing that can be made wider or taller
+// by adding more of itself (studioGraphics.js `stretch`) also gets the side
+// handles for that.
+function pictureHandles(o) {
+  const way = o.studio && o.studio.graphic ? graphicOptions(o.studio.graphic).stretch : '';
+  o.setControlsVisibility({ ml: !!way, mr: !!way, mt: way === 'both', mb: way === 'both' });
+}
+
+// ---------- shadows ----------
+// A shadow's settings (owner 2026-11-25: "drop shadow controls ... beyond just
+// soft shadow"): colour, how solid it is (alpha), blur and distance in cover
+// pixels, and the way it falls (angle: degrees clockwise from the right, so 90
+// is straight down). The settings ride on the shadow itself (shadow.studio).
+// The shadow keeps these sizes whatever the item's own size (nonScaling).
+const SHADOW_SOFT = { color: '#000000', alpha: 0.5, blur: 34, dist: 14, angle: 90 };
+const SHADOW_LOOKS = [
+  ['Soft', SHADOW_SOFT],
+  ['Hard', { color: '#000000', alpha: 0.9, blur: 0, dist: 10, angle: 45 }],
+  ['Long', { color: '#000000', alpha: 0.55, blur: 18, dist: 44, angle: 60 }],
+  ['Glow', { alpha: 0.9, blur: 46, dist: 0, angle: 90 }],
+];
+function makeShadow(set) {
+  const v = { ...SHADOW_SOFT, ...(set || {}) };
+  const hex = /^#[0-9a-fA-F]{6}$/.test(String(v.color || '')) ? v.color : '#000000';
+  const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const alpha = Math.max(0, Math.min(1, Number(v.alpha)));
+  const blur = Math.max(0, Number(v.blur) || 0);
+  const dist = Math.max(0, Number(v.dist) || 0);
+  const angle = Number(v.angle) || 0;
+  const a = (angle * Math.PI) / 180;
+  const sh = new Shadow({ color: `rgba(${rgb.join(',')},${alpha})`, blur, offsetX: Math.round(Math.cos(a) * dist * 100) / 100, offsetY: Math.round(Math.sin(a) * dist * 100) / 100, nonScaling: true });
+  sh.studio = { color: hex, alpha, blur, dist, angle };
+  return sh;
+}
+// A shadow from before the controls grew and shrank with its item (a logo at
+// a fifth of its file's size had a fifth of the blur): these are its settings
+// at the size it shows now, so it looks the same once it is made again.
+const oldShadow = (scale) => {
+  const k = Math.abs(Number(scale)) || 1;
+  return { ...SHADOW_SOFT, blur: Math.round(34 * k * 10) / 10, dist: Math.round(14 * k * 10) / 10 };
+};
+// The settings of an item's shadow (null: it has none).
+const shadowOf = (o) => (!o || !o.shadow ? null : o.shadow.studio ? { ...o.shadow.studio } : oldShadow(o.scaleX));
 
 const normHex = (v, fallback = '#ffffff') => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : fallback);
 
@@ -863,6 +906,7 @@ export default function CoverStudio({
   const cutBusyRef = useRef(false);
   const sharpenRef = useRef(null);
   const graphicTurnRef = useRef(new WeakMap()); // drawing -> the number of its latest settings change
+  const stretchGraphicRef = useRef(null); // (drawing) => made wider or taller after a side handle was dragged
   const sharpenTimer = useRef(null);
   const sharpeningRef = useRef(new WeakSet());
   const liveBarsRef = useRef(null);
@@ -1008,6 +1052,7 @@ export default function CoverStudio({
       angle: o.angle,
       opacity: o.opacity,
       shadowOn: !!o.shadow,
+      shadowSet: shadowOf(o),
     };
     // While several items are selected together, each one's own numbers are
     // relative to the selection. History must store where it really is on the
@@ -1076,10 +1121,10 @@ export default function CoverStudio({
       c.remove(...c.getObjects());
       h.stack[index].forEach(({ o, p }) => {
         // eslint-disable-next-line no-unused-vars
-        const { shadowOn, tint, tintColor, st, ...props } = p;
+        const { shadowOn, shadowSet, tint, tintColor, st, ...props } = p;
         if (props.styles) props.styles = copyStyles(props.styles);
         o.set(props);
-        o.set('shadow', shadowOn ? softShadow() : null);
+        o.set('shadow', shadowOn ? makeShadow(shadowSet) : null);
         if (st && o.studio) {
           const was = o.studio;
           o.studio = snapStudio(st);
@@ -1273,6 +1318,12 @@ export default function CoverStudio({
           scaleY: 1,
         });
         o.setCoords();
+      }
+      // A drawing dragged by a side handle is made again wider or taller (its
+      // own history step follows once it is drawn).
+      if (o && o.studio && o.studio.graphic && Math.abs(Math.abs(o.scaleX) - Math.abs(o.scaleY)) > 1e-4 * Math.abs(o.scaleY || 1) && stretchGraphicRef.current && stretchGraphicRef.current(o, e.transform && e.transform.corner)) {
+        autoLayoutRef.current.on = false;
+        return;
       }
       // A shape keeps its true width and height (and its corner rounding)
       // instead of a stretch factor.
@@ -2705,6 +2756,7 @@ export default function CoverStudio({
     const o = logoObject({ kind: 'logo', graphic: id, seal: false, symbol: '', name: def.name, tint: 'custom', tintColor: paletteColor(opt.color, bgRef.current.palette.a1), source, vector: { ...vec, crop: whole }, colors: [] });
     const sc = width / source.width;
     o.set({ scaleX: sc, scaleY: sc, left: opt.cx == null ? W / 2 : opt.cx, top: opt.cy == null ? H / 2 : opt.cy, angle: opt.angle || 0, opacity: opt.opacity == null ? 1 : opt.opacity });
+    pictureHandles(o);
     o.setCoords();
     c.add(o);
     return o;
@@ -2713,11 +2765,14 @@ export default function CoverStudio({
   // studioGraphics.js). The drawing is made again with them and takes the
   // place of the old one at the same width, so closer lines mean more lines
   // in the same space. A slider sends many changes: only the last one lands.
-  const setGraphic = async (patch) => {
+  const setGraphic = async (patch, target) => {
     const c = fabricRef.current;
-    const o = active1();
+    const o = target || active1();
     if (!c || !o || !o.studio || !o.studio.graphic) return;
     const st = o.studio;
+    // how large one unit of the drawing is on the cover, from the drawing as it is now
+    const was = graphicSvg(st.graphic, '#ffffff', st.gopt);
+    const unit = was ? o.getScaledHeight() / was.h : 1;
     st.gopt = { ...(st.gopt || {}), ...patch };
     bump();
     const turn = (graphicTurnRef.current.get(o) || 0) + 1;
@@ -2726,8 +2781,9 @@ export default function CoverStudio({
     const vec = made ? readSvg(made.svg) : null;
     if (!vec) return;
     const whole = { x: 0, y: 0, w: 1, h: 1 };
-    const shownW = o.getScaledWidth();
-    const shown = Math.max(shownW, (shownW * made.h) / made.w);
+    // the same unit size as before: a box made wider or taller is a larger item
+    const shownW = made.w * unit;
+    const shown = Math.max(shownW, made.h * unit);
     let next;
     try {
       next = await rasterVector(vec, whole, Math.min(VECTOR_MAX, Math.max(320, Math.ceil(shown * 2))));
@@ -2747,6 +2803,29 @@ export default function CoverStudio({
     if (gradSyncRef.current) gradSyncRef.current();
     commitSoon();
     bump();
+  };
+  // A side handle of a stretchable drawing was dragged: the drawing is made
+  // again that much wider or taller (more of it, not a stretched picture).
+  // The item is put back to an even scale first, at the size it had.
+  stretchGraphicRef.current = (o, corner) => {
+    const st = o.studio;
+    const way = graphicOptions(st.graphic).stretch;
+    const was = graphicSvg(st.graphic, '#ffffff', st.gopt);
+    if (!way || !was) return false;
+    const sx = Math.abs(o.scaleX || 1);
+    const sy = Math.abs(o.scaleY || 1);
+    // the side that was not dragged still has the scale the item had
+    const before = corner === 'mt' || corner === 'mb' ? sx : sy;
+    const g = st.gopt || {};
+    const clamp = (v) => Math.max(GRAPHIC_STRETCH.min, Math.min(GRAPHIC_STRETCH.max, v));
+    const patch = {};
+    if (Math.abs(sx - before) > 1e-6) patch.wide = clamp((g.wide || 1) * (sx / before));
+    if (way === 'both' && Math.abs(sy - before) > 1e-6) patch.tall = clamp((g.tall || 1) * (sy / before));
+    o.set({ scaleX: before * Math.sign(o.scaleX || 1), scaleY: before * Math.sign(o.scaleY || 1) });
+    o.setCoords();
+    if (!Object.keys(patch).length) return false;
+    setGraphic(patch, o);
+    return true;
   };
   // A gradient across a drawing in place of its one colour (null: back to the colour).
   const setGraphicGrad = (grad) => {
@@ -3547,7 +3626,7 @@ export default function CoverStudio({
     if (o.studio.gid) frame.studio.gid = o.studio.gid;
     if (o.studio.tpl) frame.studio.tpl = o.studio.tpl;
     frame.set({ angle: o.angle, opacity: o.opacity });
-    if (o.shadow) frame.set('shadow', softShadow());
+    if (o.shadow) frame.set('shadow', makeShadow(shadowOf(o)));
     repaintPhoto(frame);
     c.discardActiveObject();
     c.remove(o);
@@ -3958,6 +4037,19 @@ export default function CoverStudio({
     return list.length === 1 ? list[0] : null;
   };
 
+  // The selected item's shadow: null takes it off, anything else changes
+  // its settings (or puts a soft one on, to start from).
+  const setShadow = (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o) return;
+    o.set('shadow', patch === null ? null : makeShadow({ ...(shadowOf(o) || SHADOW_SOFT), ...patch }));
+    o.dirty = true;
+    c.requestRenderAll();
+    commitSoon();
+    bump();
+  };
+
   const change = (props) => {
     const c = fabricRef.current;
     const o = active1();
@@ -3993,9 +4085,10 @@ export default function CoverStudio({
   const cloneItem = async (o) => {
     const cl = await o.clone();
     cl.studio = snapStudio(o.studio);
+    if (o.shadow) cl.set('shadow', makeShadow(shadowOf(o)));
     cl.set({ left: o.left + 40, top: o.top + 40, originX: 'center', originY: 'center' });
     const k = o.studio.kind;
-    if (k === 'logo' || k === 'photo') cl.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+    if (k === 'logo' || k === 'photo') pictureHandles(cl);
     else if (k === 'text') cl.setControlsVisibility({ mt: false, mb: false });
     if (k === 'photo' || k === 'shape') cl.set({ objectCaching: false });
     if (k === 'photo') repaintPhoto(cl);
@@ -5020,7 +5113,7 @@ export default function CoverStudio({
   // One stored item back as a live one (not yet on the canvas).
   const buildItem = (kind, props, st) => {
     // eslint-disable-next-line no-unused-vars
-    const { shadowOn, tint, tintColor, ...p } = props || {};
+    const { shadowOn, shadowSet, tint, tintColor, ...p } = props || {};
     if (!st) return null;
     const centre = { originX: 'center', originY: 'center' };
     let o = null;
@@ -5048,9 +5141,11 @@ export default function CoverStudio({
     }
     if (!o) return null;
     o.studio = st;
+    if (kind === 'logo') pictureHandles(o); // a drawing that can be made wider or taller has side handles
     styleObject(o);
     applyLock(o);
-    if (shadowOn) o.set('shadow', softShadow());
+    // (a cover saved before shadows had settings: the shadow as it looked then)
+    if (shadowOn) o.set('shadow', makeShadow(shadowSet || oldShadow(p.scaleX)));
     if (kind === 'text') applyTextBox(o);
     o.setCoords();
     return o;
@@ -7020,7 +7115,7 @@ export default function CoverStudio({
                       )}
                       <Muted style={{ marginTop: 6 }}>This is a drawing, not a picture: it stays sharp at any size.</Muted>
                     </InsCell>
-                    {(graphicOptions(sel.studio.graphic).density || graphicOptions(sel.studio.graphic).weight) && (
+                    {(graphicOptions(sel.studio.graphic).density || graphicOptions(sel.studio.graphic).weight || graphicOptions(sel.studio.graphic).stretch) && (
                       <InsCell>
                         {graphicOptions(sel.studio.graphic).density && (
                           <Slider
@@ -7045,6 +7140,31 @@ export default function CoverStudio({
                           />
                         )}
                         {graphicOptions(sel.studio.graphic).density ? <Muted>The drawing keeps its size: a higher setting fits more into the same space.</Muted> : null}
+                        {graphicOptions(sel.studio.graphic).stretch && (
+                          <>
+                            <Slider
+                              label="Wider (adds more)"
+                              min={GRAPHIC_STRETCH.min}
+                              max={GRAPHIC_STRETCH.max}
+                              step={0.05}
+                              value={(sel.studio.gopt && sel.studio.gopt.wide) || 1}
+                              onChange={(v) => setGraphic({ wide: v })}
+                              fmt={(v) => `${Math.round(v * 100)}%`}
+                            />
+                            {graphicOptions(sel.studio.graphic).stretch === 'both' && (
+                              <Slider
+                                label="Taller (adds more)"
+                                min={GRAPHIC_STRETCH.min}
+                                max={GRAPHIC_STRETCH.max}
+                                step={0.05}
+                                value={(sel.studio.gopt && sel.studio.gopt.tall) || 1}
+                                onChange={(v) => setGraphic({ tall: v })}
+                                fmt={(v) => `${Math.round(v * 100)}%`}
+                              />
+                            )}
+                            <Muted>Wider or taller draws more of it at the same size; nothing is stretched. Dragging a handle on the item's side does the same, and a corner handle still sizes the whole drawing.</Muted>
+                          </>
+                        )}
                       </InsCell>
                     )}
                     <InsCell>
@@ -7215,10 +7335,37 @@ export default function CoverStudio({
 
                 <InsCell>
                   <Slider label="Opacity" min={0.05} max={1} step={0.01} value={sel.opacity} onChange={(v) => change({ opacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+                </InsCell>
+                <InsCell>
                   <Check>
-                    <input type="checkbox" checked={!!sel.shadow} onChange={(e) => change({ shadow: e.target.checked ? softShadow() : null })} />
-                    Soft shadow
+                    <input type="checkbox" checked={!!sel.shadow} onChange={(e) => setShadow(e.target.checked ? {} : null)} />
+                    Drop shadow
                   </Check>
+                  {sel.shadow &&
+                    (() => {
+                      const sh = shadowOf(sel);
+                      return (
+                        <>
+                          <Row style={{ marginTop: 8 }}>
+                            {SHADOW_LOOKS.map(([name, look]) => (
+                              <Ghost key={name} onClick={() => setShadow(name === 'Glow' ? { ...look, color: bg.palette.a1 } : look)}>{name}</Ghost>
+                            ))}
+                          </Row>
+                          <FieldLabel style={{ marginTop: 10 }}>Shadow colour</FieldLabel>
+                          <SwatchRow>
+                            <input type="color" value={normHex(sh.color, '#000000')} onChange={(e) => setShadow({ color: e.target.value })} />
+                            {['#000000', '#ffffff', bg.palette.a1, bg.palette.a2].map((col, i) => (
+                              <Swatch key={i} style={{ background: col }} onClick={() => setShadow({ color: col })} title={col} />
+                            ))}
+                          </SwatchRow>
+                          <Slider label="How strong" min={0.05} max={1} step={0.01} value={sh.alpha} onChange={(v) => setShadow({ alpha: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+                          <Slider label="Blur" min={0} max={120} step={1} value={sh.blur} onChange={(v) => setShadow({ blur: v })} fmt={(v) => `${Math.round(v)}px`} />
+                          <Slider label="Distance" min={0} max={120} step={1} value={sh.dist} onChange={(v) => setShadow({ dist: v })} fmt={(v) => `${Math.round(v)}px`} />
+                          <Slider label="Direction" min={0} max={359} step={1} value={((Math.round(sh.angle) % 360) + 360) % 360} onChange={(v) => setShadow({ angle: v })} fmt={(v) => `${Math.round(v)} deg`} />
+                          <Muted>Direction is the way the shadow falls: 0 to the right, 90 straight down, 180 to the left, 270 up. With Distance at 0 the shadow is a glow all round.</Muted>
+                        </>
+                      );
+                    })()}
                 </InsCell>
                 <InsCell>
                   <FieldLabel>Place on cover</FieldLabel>

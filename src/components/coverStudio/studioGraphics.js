@@ -17,8 +17,12 @@
 //      as many in the same box. Only drawings with a `density` label use it
 //      (the label is the slider's name in the Edit panel).
 //   t  line thickness, 1 as drawn. Every 'line' drawing uses it.
-// The box keeps its size whatever the settings, so an item on the cover
+// The box keeps its size whatever those two are, so an item on the cover
 // stays the size it is and simply shows more or fewer lines.
+//   sx, sy  how much wider and taller than drawn (owner 2026-11-25: "if i
+//      make it wider new barcode lines appear rather than scaling"). Only
+//      drawings with `stretch` ('both', or 'wide' for width alone) use them:
+//      their box grows and more of the same is drawn in it, at the same size.
 
 import { GENFINITY_MARK } from './genfinityMark';
 
@@ -99,6 +103,7 @@ const cnt = (base, d, least = 1) => Math.max(least, Math.round(base * d));
 
 export const GRAPHIC_DENSITY = { min: 0.4, max: 3, start: 1 };
 export const GRAPHIC_WEIGHT = { min: 0.3, max: 3, start: 1 };
+export const GRAPHIC_STRETCH = { min: 0.25, max: 6, start: 1 };
 const LINES = 'How close the lines are';
 // the thickness of the slanted lines of a fill, kept under the gap between them
 const hatchLine = (d, t) => f(Math.min((6.5 * t) / d, (0.86 * 15) / d / Math.SQRT2));
@@ -228,19 +233,21 @@ export const GRAPHICS = [
     kind: 'line',
     size: 420,
     density: LINES,
-    make: ({ d, t }) => {
+    stretch: 'wide',
+    make: ({ d, t, sx }) => {
       // more lines in the same height; each is a little finer the closer they are
       const n = cnt(4, d);
+      const turns = Math.max(1, Math.round(4 * sx)); // wider: more waves along it
       const sw = thin((5 * t) / Math.max(1, Math.sqrt(d)), n < 2 ? 40 : 90 / (n - 1));
       const top = 17 + sw / 2;
       const bottom = 113 - sw / 2;
       let s = '';
       for (let k = 0; k < n; k += 1) {
         let path = `M0 ${f(n < 2 ? 65 : top + ((bottom - top) * k) / (n - 1))}`;
-        for (let i = 0; i < 4; i += 1) path += 'q25 -32 50 0t50 0';
+        for (let i = 0; i < turns; i += 1) path += 'q25 -32 50 0t50 0';
         s += `<path d="${path}" fill="none" stroke-width="${f(sw)}"/>`;
       }
-      return { w: 400, h: 130, svg: s };
+      return { w: turns * 100, h: 130, svg: s };
     },
   },
   {
@@ -250,25 +257,27 @@ export const GRAPHICS = [
     kind: 'line',
     size: 420,
     density: 'How close the points are',
-    make: ({ d, t }) => {
-      const n = cnt(10, d, 2);
+    stretch: 'wide',
+    make: ({ d, t, sx }) => {
+      const base = cnt(10, d, 2);
       const sw = (7 * t) / Math.max(1, Math.sqrt(d));
       const x0 = Math.max(4, sw / 2 + 0.5);
-      const tw = (408 - 2 * x0) / n;
+      const tw = (408 - 2 * x0) / base;
+      const n = Math.max(2, Math.round(base * sx)); // wider: more points of the same size
       // room above and below for the sharp corners, which reach past the line itself
       const pad = Math.min(22, sw / 2 / Math.sin(Math.atan(tw / 2 / 52))) + 0.5;
       let path = `M${f(x0)} ${f(68 - pad)}`;
       for (let i = 0; i < n; i += 1) path += `L${f(x0 + i * tw + tw / 2)} ${f(pad)}L${f(x0 + (i + 1) * tw)} ${f(68 - pad)}`;
-      return { w: 408, h: 68, svg: `<path d="${path}" fill="none" stroke-width="${f(sw)}" stroke-linejoin="miter" stroke-miterlimit="12"/>` };
+      return { w: f(2 * x0 + n * tw), h: 68, svg: `<path d="${path}" fill="none" stroke-width="${f(sw)}" stroke-linejoin="miter" stroke-miterlimit="12"/>` };
     },
   },
 
   // ----- line fills and small parts -----
   // (closer lines are finer too, so a fill keeps its share of line and gap; and
 // a line is never so thick that the gaps close)
-  { group: 'parts', id: 'hatch-square', name: 'Square of lines', kind: 'line', size: 240, density: LINES, make: ({ d, t }) => ({ w: 200, h: 200, svg: hatch(200, 200, 15 / d, hatchLine(d, t), 'hs', '<rect width="200" height="200"/>') }) },
+  { group: 'parts', id: 'hatch-square', name: 'Square of lines', kind: 'line', size: 240, density: LINES, stretch: 'both', make: ({ d, t, sx, sy }) => ({ w: f(200 * sx), h: f(200 * sy), svg: hatch(f(200 * sx), f(200 * sy), 15 / d, hatchLine(d, t), 'hs', `<rect width="${f(200 * sx)}" height="${f(200 * sy)}"/>`) }) },
   { group: 'parts', id: 'hatch-circle', name: 'Circle of lines', kind: 'line', size: 240, density: LINES, make: ({ d, t }) => ({ w: 200, h: 200, svg: hatch(200, 200, 15 / d, hatchLine(d, t), 'hc', '<circle cx="100" cy="100" r="100"/>') }) },
-  { group: 'parts', id: 'hatch-bar', name: 'Bar of lines', kind: 'line', size: 520, density: LINES, make: ({ d, t }) => ({ w: 520, h: 70, svg: hatch(520, 70, 15 / d, hatchLine(d, t), 'hb', '<rect width="520" height="70"/>') }) },
+  { group: 'parts', id: 'hatch-bar', name: 'Bar of lines', kind: 'line', size: 520, density: LINES, stretch: 'both', make: ({ d, t, sx, sy }) => ({ w: f(520 * sx), h: f(70 * sy), svg: hatch(f(520 * sx), f(70 * sy), 15 / d, hatchLine(d, t), 'hb', `<rect width="${f(520 * sx)}" height="${f(70 * sy)}"/>`) }) },
   {
     group: 'parts',
     id: 'dots',
@@ -276,14 +285,18 @@ export const GRAPHICS = [
     kind: 'fill',
     size: 220,
     density: 'How close the dots are',
-    make: ({ d }) => {
+    stretch: 'both',
+    make: ({ d, sx, sy }) => {
       const n = cnt(6, d, 2);
       const r = Math.min(10, 35 / (n - 1));
       const m = Math.max(10, r + 1);
       const step = (200 - 2 * m) / (n - 1);
+      // wider or taller: more dots, the same distance apart
+      const nx = Math.max(1, Math.round(1 + (200 * sx - 2 * m) / step));
+      const ny = Math.max(1, Math.round(1 + (200 * sy - 2 * m) / step));
       let s = '';
-      for (let y = 0; y < n; y += 1) for (let x = 0; x < n; x += 1) s += `<circle cx="${f(m + x * step)}" cy="${f(m + y * step)}" r="${f(r)}"/>`;
-      return { w: 200, h: 200, svg: s };
+      for (let y = 0; y < ny; y += 1) for (let x = 0; x < nx; x += 1) s += `<circle cx="${f(m + x * step)}" cy="${f(m + y * step)}" r="${f(r)}"/>`;
+      return { w: f(2 * m + (nx - 1) * step), h: f(2 * m + (ny - 1) * step), svg: s };
     },
   },
   {
@@ -293,13 +306,15 @@ export const GRAPHICS = [
     kind: 'fill',
     size: 480,
     density: 'How small the squares are',
-    make: ({ d }) => {
-      const rows = cnt(2, d);
-      const cell = 80 / rows;
-      const cols = Math.round(480 / cell);
+    stretch: 'both',
+    make: ({ d, sx, sy }) => {
+      const cell = 80 / cnt(2, d);
+      // wider or taller: more squares of the same size
+      const rows = Math.max(1, Math.round((80 * sy) / cell));
+      const cols = Math.max(1, Math.round((480 * sx) / cell));
       let path = '';
       for (let x = 0; x < cols; x += 1) for (let y = 0; y < rows; y += 1) if ((x + y) % 2 === 0) path += `M${f(x * cell)} ${f(y * cell)}h${f(cell)}v${f(cell)}h${f(-cell)}Z`;
-      return { w: 480, h: 80, svg: `<path d="${path}"/>` };
+      return { w: f(cols * cell), h: f(rows * cell), svg: `<path d="${path}"/>` };
     },
   },
   {
@@ -309,16 +324,20 @@ export const GRAPHICS = [
     kind: 'fill',
     size: 320,
     density: 'How close the bars are',
-    make: ({ d }) => {
+    stretch: 'both',
+    make: ({ d, sx, sy }) => {
+      // wider: the same bars and then more of them; taller: longer bars
+      const W = 400 * sx;
+      const H = f(130 * sy);
       const r = rng(4);
       let x = 0;
       let s = '';
-      while (x < 392) {
-        const bw = Math.min([3, 3, 6, 9, 12][Math.floor(r() * 5)] / d, 400 - x);
-        s += `<rect x="${f(x)}" y="0" width="${f(bw)}" height="130"/>`;
+      while (x < W - 8 / d) {
+        const bw = Math.min([3, 3, 6, 9, 12][Math.floor(r() * 5)] / d, W - x);
+        s += `<rect x="${f(x)}" y="0" width="${f(bw)}" height="${H}"/>`;
         x += bw + [4, 6, 9][Math.floor(r() * 3)] / d;
       }
-      return { w: 400, h: 130, svg: s };
+      return { w: f(W), h: H, svg: s };
     },
   },
   {
@@ -347,20 +366,20 @@ export const GRAPHICS = [
 
 export const findGraphic = (id) => GRAPHICS.find((g) => g.id === id) || null;
 
-// Which settings a drawing has: { density: the slider's name or '', weight: true for a line drawing }.
+// Which settings a drawing has: { density: the slider's name or '', weight: true for a line drawing, stretch: 'both', 'wide' or '' }.
 export const graphicOptions = (id) => {
   const g = findGraphic(id);
-  return { density: (g && g.density) || '', weight: !!g && g.kind === 'line' };
+  return { density: (g && g.density) || '', weight: !!g && g.kind === 'line', stretch: (g && g.stretch) || '' };
 };
 // (nothing set, or not a number: as drawn)
 const within = (v, r) => (v == null || v === '' || !Number.isFinite(Number(v)) ? r.start : Math.max(r.min, Math.min(r.max, Number(v))));
 
 // The whole drawing as an SVG file's text, in one colour. w and h are the
-// drawing's own box (its proportions). opt: { density, weight } (see the top).
+// drawing's own box (its proportions). opt: { density, weight, wide, tall } (see the top).
 export function graphicSvg(id, color = '#ffffff', opt = null) {
   const g = findGraphic(id);
   if (!g) return null;
-  const m = g.make({ d: within(opt && opt.density, GRAPHIC_DENSITY), t: within(opt && opt.weight, GRAPHIC_WEIGHT) });
+  const m = g.make({ d: within(opt && opt.density, GRAPHIC_DENSITY), t: within(opt && opt.weight, GRAPHIC_WEIGHT), sx: g.stretch ? within(opt && opt.wide, GRAPHIC_STRETCH) : 1, sy: g.stretch === 'both' ? within(opt && opt.tall, GRAPHIC_STRETCH) : 1 });
   const paint = g.kind === 'fill' ? `fill="${color}"` : `stroke="${color}" fill="none"`;
   return { w: m.w, h: m.h, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(m.w)} ${f(m.h)}" width="${f(m.w)}" height="${f(m.h)}"><g ${paint}>${m.svg}</g></svg>` };
 }
