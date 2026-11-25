@@ -1013,6 +1013,41 @@ export default function CoverStudio({
   const [drafts, setDrafts] = useState([]);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
+  // A tab left open keeps running the version it loaded. When the site has a
+  // newer one, say so (owner 2026-11-25 looked three times for features that
+  // were live but not in the open tab). The page's own script name is
+  // compared with the one the site serves now: now and then, and whenever the
+  // tab is looked at again.
+  const [newBuild, setNewBuild] = useState(false);
+  useEffect(() => {
+    const nameIn = (text) => (String(text).match(/\/static\/js\/(main\.[a-z0-9]+\.js)/) || [])[1] || '';
+    const mine = Array.from(document.scripts)
+      .map((sc) => nameIn(sc.src))
+      .find(Boolean);
+    if (!mine) return undefined; // not a built site (a developer's copy): nothing to compare
+    let gone = false;
+    const look = async () => {
+      try {
+        const res = await fetch(`/?fresh=${Date.now()}`, { cache: 'no-store' });
+        const now = nameIn(await res.text());
+        if (!gone && now && now !== mine) setNewBuild(true);
+      } catch (e) {
+        // offline or blocked: try again later
+      }
+    };
+    const timer = setInterval(look, 3 * 60 * 1000);
+    const onShow = () => {
+      if (document.visibilityState === 'visible') look();
+    };
+    document.addEventListener('visibilitychange', onShow);
+    window.addEventListener('focus', onShow);
+    return () => {
+      gone = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onShow);
+      window.removeEventListener('focus', onShow);
+    };
+  }, []);
   const [draftAsk, setDraftAsk] = useState(null); // { title, text, run }: unsaved work is about to be replaced
   const [draftDelete, setDraftDelete] = useState(''); // id of the draft whose Delete was pressed once
   const draftRef = useRef(null);
@@ -7496,6 +7531,12 @@ export default function CoverStudio({
 
       {/* ------------------------------ canvas side ------------------------------ */}
       <Main>
+        {newBuild && (
+          <NewBuild>
+            <span>A newer version of the studio is ready. Reload to get it; the cover you have open is kept.</span>
+            <button type="button" onClick={() => window.location.reload()}>Reload now</button>
+          </NewBuild>
+        )}
         <FileBar>
           <ToolLabel>File</ToolLabel>
           <FileName
@@ -9378,6 +9419,29 @@ const Toolbar = styled.div`
   align-items: center;
   flex-wrap: wrap;
   gap: 0.6rem 1rem;
+`;
+
+const NewBuild = styled.div`
+  background: #10202a;
+  border: 1px solid #00d4ff;
+  border-radius: 12px;
+  padding: 0.55rem 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  color: #e8f7fb;
+  font-size: 0.86rem;
+  button {
+    background: #00d4ff;
+    color: #04141a;
+    border: none;
+    border-radius: 8px;
+    padding: 0.4rem 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
 `;
 
 const FileBar = styled.div`
