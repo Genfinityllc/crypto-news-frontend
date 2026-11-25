@@ -669,9 +669,7 @@ export const INTERVIEW_ELEMENTS = [
   { id: 'ecosystem', name: 'Ecosystem logo', note: 'A logo spot with the spaced ECOSYSTEM label under it.' },
   // from the owner's reference designs (2026-11-24); empty frames, not guests
   { id: 'frame-block', name: 'Photo on a colour block', note: 'A photo with rounded corners on a square colour block. Drop a picture on the frame.' },
-  { id: 'frame-pair', name: 'Photo pair, offset', note: 'A large photo with a smaller one over its corner. Drop a picture on each frame.' },
   { id: 'guest-block', name: 'Guest on a colour block', note: 'A guest photo with rounded corners on a colour block, with the name and title under it.' },
-  { id: 'guest-pair', name: 'Guest pair, offset', note: 'A large guest with a smaller one over its corner, each with a name and title on a bar.' },
 ];
 
 // Pieces with words (same tab, their own group): built from the studio's own
@@ -682,12 +680,9 @@ export const INTERVIEW_PIECES = [
   { id: 'numbers', name: 'Outline numbers', note: 'One filled number over three outlined ones.' },
 ];
 
-// Headlines, lines and labels in the look of the owner's reference designs.
+// Plain lines. (The headline, info-line and label pieces and the two offset
+// pairs of frames were taken out at the owner's request on 2026-11-25.)
 export const INTERVIEW_TYPE = [
-  { id: 'head-wide', name: 'Wide headline', note: 'Two lines of wide black type in the accent colour (Hubot Sans Expanded).' },
-  { id: 'head-block', name: 'Headline on a colour block', note: 'Dark headline on a block of the accent colour (Outfit Bold).' },
-  { id: 'info-lines', name: 'Info lines', note: 'Two small lines, a date in the accent colour and a rule between them.' },
-  { id: 'label-wide', name: 'Line and label', note: 'A thin line with a wide label under it.' },
   { id: 'rule-h', name: 'Line', note: 'A thin line across. Its length and thickness are the shape\'s Width and Height.' },
   { id: 'rule-v', name: 'Upright line', note: 'A thin upright line.' },
 ];
@@ -779,48 +774,11 @@ export function drawElementThumb(canvas, id, pal) {
   } else if (id === 'frame-block') {
     bar(cx, h / 2, 84, 108, pal.a1);
     round(cx, h / 2, 84, 108, 24, grey);
-  } else if (id === 'frame-pair') {
-    bar(cx - 14, h / 2 - 12, 104, 92, grey);
-    bar(cx + 34, h / 2 + 30, 62, 62, '#0d0d10');
-    bar(cx + 34, h / 2 + 30, 50, 50, '#aab1bd');
-    bar(cx - 70, h / 2 - 40, 5, 16);
   } else if (id === 'guest-block') {
     bar(cx, 58, 74, 92, pal.a1);
     round(cx, 58, 74, 92, 22, grey);
     bar(cx, 120, 74, 8);
     bar(cx, 134, 50, 4);
-  } else if (id === 'guest-pair') {
-    bar(cx - 20, 50, 92, 78, grey);
-    bar(cx - 20, 100, 92, 22, '#1c1c1c');
-    bar(cx - 30, 100, 58, 6);
-    bar(cx + 40, 92, 58, 58, '#0d0d10');
-    bar(cx + 40, 92, 46, 46, '#aab1bd');
-    bar(cx + 40, 128, 58, 16, '#1c1c1c');
-    bar(cx + 34, 128, 36, 4);
-  } else if (id === 'head-wide') {
-    g.fillStyle = pal.a1;
-    g.font = '900 27px "Hubot Sans Expanded", "Montserrat", sans-serif';
-    g.textBaseline = 'middle';
-    g.fillText('NEW', 22, 58);
-    g.fillText('INTERVIEW', 22, 92);
-  } else if (id === 'head-block') {
-    bar(cx, h / 2, 176, 100, pal.a1);
-    g.fillStyle = pal.base || '#000000';
-    g.font = '700 22px "Outfit", "Montserrat", sans-serif';
-    g.textBaseline = 'middle';
-    ['Your Headline', 'Goes Right', 'Here'].forEach((ln, i) => g.fillText(ln, cx - 76, 48 + i * 27));
-  } else if (id === 'info-lines') {
-    bar(cx - 26, 36, 110, 8);
-    bar(cx - 18, 62, 126, 14, pal.a1);
-    bar(cx, 88, 162, 2);
-    bar(cx - 28, 108, 106, 8);
-    bar(cx - 36, 124, 90, 8);
-  } else if (id === 'label-wide') {
-    bar(cx, 58, 170, 2);
-    g.fillStyle = white;
-    g.font = '900 24px "Hubot Sans Expanded", "Montserrat", sans-serif';
-    g.textBaseline = 'middle';
-    g.fillText('EPISODE', cx - 85, 86);
   } else if (id === 'rule-h') {
     bar(cx, h / 2, 170, 2);
   } else if (id === 'rule-v') {

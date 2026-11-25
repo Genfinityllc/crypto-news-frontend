@@ -2723,50 +2723,12 @@ export default function CoverStudio({
       const back = makeShape({ x: cx - w / 2, y: cy - h / 2, w, h, fill: 'a1', name: 'Colour block' });
       return [back, makeFrame({ shape: 'rect', aspect: w / h, rounding: 0.5, size: w, cx, cy })];
     }
-    if (id === 'frame-pair') {
-      // a large photo with a smaller one over its corner, edged in the cover's own colour
-      const big = makeFrame({ shape: 'rect', aspect: 1.1, size: 460, cx: cx - 60, cy: cy - 60 });
-      const small = makeFrame({ shape: 'rect', aspect: 1, size: 270, cx: cx + 150, cy: cy + 130, ring: 44, ringColor: 'base', maskFill: '#aab1bd' });
-      const tab = makeShape({ x: cx - 60 - 230 - 22, y: cy - 60 - 150, w: 22, h: 64, fill: '#ffffff', name: 'Tab' });
-      return [big, small, tab];
-    }
     if (id === 'guest-block') {
       // a guest with rounded corners on a colour block, name and title under it
       const w = 380;
       const h = 500;
       const back = makeShape({ x: cx - w / 2, y: cy - h / 2 - 60, w, h, fill: 'a1', name: 'Colour block' });
       return [back, makePhoto({ cx, cy: cy - 60, shape: 'rect', aspect: w / h, rounding: 0.5, size: w, style: 'below', align: 'center' })];
-    }
-    if (id === 'guest-pair') {
-      // a large guest with a smaller one over its corner, each on a label bar
-      const big = makePhoto({ cx: cx - 100, cy: cy - 120, size: 440, shape: 'rect', aspect: 0.95, style: 'bar', align: 'left', barFill: '#141414' });
-      const small = makePhoto({ cx: cx + 170, cy: cy + 120, size: 270, shape: 'rect', aspect: 1, ring: 44, ringColor: 'base', style: 'bar', align: 'left', barFill: '#141414' });
-      return [big, small];
-    }
-    if (id === 'head-wide') {
-      await ensureFont('Hubot Sans Expanded', 900);
-      return [makeText({ text: 'NEW\nINTERVIEW', cx, cy, w: 900, size: 92, family: 'Hubot Sans Expanded', weight: 900, fill: 'a1', align: 'left', spacing: 0, lineHeight: 1 })];
-    }
-    if (id === 'head-block') {
-      await ensureFont('Outfit', 700);
-      return [makeText({ text: 'Your Headline\nGoes Right\nHere', cx, cy, w: 760, size: 104, family: 'Outfit', weight: 700, fill: 'base', align: 'left', spacing: -10, lineHeight: 1.12, box: { color: 'a1', padX: 34, padY: 20, radius: 0 } })];
-    }
-    if (id === 'info-lines') {
-      // small lines, a date in the accent colour and a rule
-      await Promise.all([ensureFont('Mona Sans', 500), ensureFont('Mona Sans Expanded', 900)]);
-      const x = cx - 260;
-      const y = cy - 150;
-      const small = { w: 600, size: 40, family: 'Mona Sans', weight: 500, spacing: 0 };
-      return [
-        makeText({ ...small, text: 'Interview series', x, y }),
-        makeText({ text: '10.08.25', x, y: y + 60, w: 640, size: 62, family: 'Mona Sans Expanded', weight: 900, fill: 'a1', spacing: 0 }),
-        makeShape({ x, y: y + 164, w: 520, h: 4, fill: '#ffffff', name: 'Line' }),
-        makeText({ ...small, text: 'Every Tuesday\n7:00 PM EST', x, y: y + 194, lineHeight: 1.2 }),
-      ];
-    }
-    if (id === 'label-wide') {
-      await ensureFont('Hubot Sans Expanded', 900);
-      return [makeShape({ x: cx - 176, y: cy - 46, w: 352, h: 4, fill: '#ffffff', name: 'Line' }), makeText({ text: 'EPISODE', x: cx - 176, y: cy - 22, w: 380, size: 56, family: 'Hubot Sans Expanded', weight: 900, spacing: 0, lineHeight: 1 })];
     }
     if (id === 'rule-h') return [makeShape({ x: cx - 260, y: cy - 2, w: 520, h: 4, fill: '#ffffff', name: 'Line' })];
     if (id === 'rule-v') return [makeShape({ x: cx - 2, y: cy - 230, w: 4, h: 460, fill: '#ffffff', name: 'Line' })];
@@ -2824,7 +2786,7 @@ export default function CoverStudio({
     const c = fabricRef.current;
     if (!c) return;
     await ensureInterviewFonts();
-    if ([...INTERVIEW_PIECES, ...INTERVIEW_TYPE, ...INTERVIEW_PAPER].some((el) => el.id === id) || ['frame-block', 'frame-pair', 'guest-block', 'guest-pair'].includes(id)) {
+    if ([...INTERVIEW_PIECES, ...INTERVIEW_TYPE, ...INTERVIEW_PAPER].some((el) => el.id === id) || ['frame-block', 'guest-block'].includes(id)) {
       await addPiece(id);
       return;
     }
@@ -5645,7 +5607,7 @@ export default function CoverStudio({
               ))}
             </TemplateGrid>
             {[
-              ['Headlines, lines and labels', INTERVIEW_TYPE],
+              ['Lines', INTERVIEW_TYPE],
               ['Paper', INTERVIEW_PAPER],
             ].map(([title, list]) => (
               <div key={title}>
