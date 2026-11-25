@@ -47,6 +47,7 @@ import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } fro
 import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
 import { PAPER_COLOR, PAPER_COLORS, PAPER_STRENGTH, newPaper, paintPaper } from './paper';
+import { solidCanvas } from './solidLogo';
 import { GRAPHICS, GRAPHIC_DENSITY, GRAPHIC_GROUPS, GRAPHIC_WEIGHT, drawGraphicThumb, findGraphic, graphicOptions, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
@@ -1720,8 +1721,11 @@ export default function CoverStudio({
         }
       }
       // an SVG arrives already drawn and trimmed, with its vector to keep it sharp
-      const source = meta.vector ? img : prepareLogo(img);
       const isSeal = !!meta.seal;
+      // a logo from the library is made fully solid (solidLogo.js): some of the
+      // library's files let the background show through their colours
+      const solid = !isSeal && !!meta.symbol && !meta.vector;
+      const source = meta.vector ? img : solid ? solidCanvas(prepareLogo(img)) : prepareLogo(img);
       const existing = c.getObjects().filter((o) => o.studio && o.studio.kind === 'logo' && !o.studio.seal && !o.studio.graphic).length;
       const studio = {
         kind: 'logo',
@@ -1732,6 +1736,7 @@ export default function CoverStudio({
         tint: isSeal ? 'white' : 'original',
         tintColor: '#ffffff',
         source,
+        solid: solid || undefined,
         vector: meta.vector || undefined,
         mono: isSeal ? monoEmblem(source) : undefined,
         colors: isSeal ? [] : extractLogoColors(source),
@@ -3741,7 +3746,8 @@ export default function CoverStudio({
         if (shown * 1.25 <= have || want <= have) return;
         busy.add(o);
         try {
-          const next = await rasterVector(st.vector, st.vector.crop, want);
+          let next = await rasterVector(st.vector, st.vector.crop, want);
+          if (st.solid) next = solidCanvas(next);
           // only if nothing else changed the picture or the item meanwhile
           if (!c.getObjects().includes(o) || o.studio !== st || st.source !== from || o.group) return;
           if (c._currentTransform && c._currentTransform.target === o) return; // being dragged right now: the next change tries again
@@ -3777,8 +3783,9 @@ export default function CoverStudio({
     const box = st.placeholder && st.slotBox ? st.slotBox : { w: oldW, h: oldH };
     const leftEdge = o.left - oldW / 2;
     const topEdge = o.top - oldH / 2;
-    const source = meta.vector ? img : prepareLogo(img);
-    Object.assign(st, { source, vector: meta.vector || undefined, vectorOrig: undefined, sourceOrig: undefined, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
+    const solid = !!meta.symbol && !meta.vector; // from the library: fully solid (solidLogo.js)
+    const source = meta.vector ? img : solid ? solidCanvas(prepareLogo(img)) : prepareLogo(img);
+    Object.assign(st, { source, solid: solid || undefined, vector: meta.vector || undefined, vectorOrig: undefined, sourceOrig: undefined, mono: undefined, name: meta.name || meta.symbol || 'Logo', symbol: meta.symbol || '', placeholder: false, tint: 'original', colors: extractLogoColors(source) });
     const el = paintItem(st);
     o.setElement(el);
     const sc = Math.min(box.w / el.width, box.h / el.height);
@@ -3825,6 +3832,30 @@ export default function CoverStudio({
     const source = prepareLogo(cut); // also trims the empty margin that is left
     showLogoSource(o, source, o.studio.sourceOrig || o.studio.source);
     toast.success('Background removed. "Bring the background back" or Undo restores it.');
+  };
+
+  // Make a picture from the computer fully solid, as library logos are made
+  // on their own (solidLogo.js). The setting stays with the picture, so an SVG
+  // drawn again at a larger size is made solid again.
+  const solidifyLogo = () => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || o.studio.kind !== 'logo' || o.studio.graphic || o.studio.seal) return;
+    const st = o.studio;
+    const solid = solidCanvas(st.source);
+    if (solid === st.source) {
+      toast.info('Nothing to change: the colours of this picture are already solid.');
+      return;
+    }
+    st.source = solid;
+    if (st.sourceOrig) st.sourceOrig = solidCanvas(st.sourceOrig);
+    st.solid = true;
+    st.mono = undefined;
+    o.setElement(paintItem(st));
+    c.requestRenderAll();
+    commit();
+    bump();
+    toast.success('The see-through areas inside this picture are now solid. Undo brings them back.');
   };
 
   // Swap the picture inside a logo or a dropped image, keeping its place.
@@ -4999,6 +5030,12 @@ export default function CoverStudio({
       o.setControlsVisibility({ mt: false, mb: false });
     } else if (kind === 'logo') {
       if (!st.source) return null;
+      // a library logo placed before logos were made solid (2026-11-25) is made solid now
+      if (!st.seal && !st.graphic && !st.placeholder && (st.solid || st.symbol)) {
+        st.source = solidCanvas(st.source);
+        if (st.sourceOrig) st.sourceOrig = solidCanvas(st.sourceOrig);
+        st.solid = true;
+      }
       if (st.seal) st.mono = monoEmblem(st.source);
       o = new FabricImage(paintItem(st), { ...centre, objectCaching: false, ...p });
       o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
@@ -7042,6 +7079,14 @@ export default function CoverStudio({
                         <Muted style={{ marginTop: 6 }}>
                           "Remove the background" is for photos of people; it runs on your computer and the image is not uploaded. "Remove plain background" is for a logo on one flat colour.
                         </Muted>
+                        {!sel.studio.solid && (
+                          <>
+                            <Row style={{ marginTop: 10 }}>
+                              <Ghost onClick={solidifyLogo}>Make the colours fully solid</Ghost>
+                            </Row>
+                            <Muted style={{ marginTop: 6 }}>For a logo file whose colours let the cover show through them. Logos from the library are made solid on their own.</Muted>
+                          </>
+                        )}
                       </InsCell>
                     )}
                     {!sel.studio.placeholder && sel.studio.source && (
