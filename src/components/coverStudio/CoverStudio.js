@@ -47,7 +47,7 @@ import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } fro
 import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
 import { PAPER_COLOR, PAPER_COLORS, PAPER_STRENGTH, newPaper, paintPaper } from './paper';
-import { GRAPHICS, GRAPHIC_GROUPS, drawGraphicThumb, findGraphic, graphicSvg } from './studioGraphics';
+import { GRAPHICS, GRAPHIC_DENSITY, GRAPHIC_GROUPS, GRAPHIC_WEIGHT, drawGraphicThumb, findGraphic, graphicOptions, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
 import { makeStudioServer } from './studioServer';
 
@@ -387,9 +387,22 @@ function monoEmblem(source) {
 // The picture an item should show for its current colour setting.
 // Colour edits (st.adjust, see imageAdjust.js) show only in the picture's own
 // colours: White, Black and Custom replace every colour anyway.
+// A drawing (st.graphic) can take a gradient in place of its one colour
+// (st.grad, see gradients.js): the gradient is laid across the drawing's box
+// and shows only where the drawing is.
 const paintItem = (st) => {
   const base = st.tint === 'original' ? st.source : st.mono || st.source;
   const pic = st.tint === 'original' ? adjustedPicture(base, st.adjust) : base;
+  if (st.graphic && isGrad(st.grad)) {
+    const c = document.createElement('canvas');
+    c.width = base.width;
+    c.height = base.height;
+    const g = c.getContext('2d');
+    g.drawImage(pic, 0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-in';
+    paintGrad(g, st.grad, 0, 0, c.width, c.height);
+    return c;
+  }
   return tintedCanvas(pic, st.tint, st.tintColor, base.width, base.height);
 };
 
@@ -848,6 +861,7 @@ export default function CoverStudio({
   const gradSyncRef = useRef(null); // moves the dots to where the gradient's item is now
   const cutBusyRef = useRef(false);
   const sharpenRef = useRef(null);
+  const graphicTurnRef = useRef(new WeakMap()); // drawing -> the number of its latest settings change
   const sharpenTimer = useRef(null);
   const sharpeningRef = useRef(new WeakSet());
   const liveBarsRef = useRef(null);
@@ -1068,7 +1082,7 @@ export default function CoverStudio({
         if (st && o.studio) {
           const was = o.studio;
           o.studio = snapStudio(st);
-          if (st.kind === 'logo' && (was.tint !== st.tint || was.tintColor !== st.tintColor || was.source !== st.source || adjustKey(was.adjust) !== adjustKey(st.adjust))) {
+          if (st.kind === 'logo' && (was.tint !== st.tint || was.tintColor !== st.tintColor || was.source !== st.source || adjustKey(was.adjust) !== adjustKey(st.adjust) || gradKey(was.grad) !== gradKey(st.grad))) {
             const el = paintItem(o.studio);
             o.setElement(el);
             o.set({ width: el.width, height: el.height });
@@ -2690,6 +2704,59 @@ export default function CoverStudio({
     c.add(o);
     return o;
   };
+  // A drawing's own settings (studio.gopt: { density, weight }, see
+  // studioGraphics.js). The drawing is made again with them and takes the
+  // place of the old one at the same width, so closer lines mean more lines
+  // in the same space. A slider sends many changes: only the last one lands.
+  const setGraphic = async (patch) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || !o.studio.graphic) return;
+    const st = o.studio;
+    st.gopt = { ...(st.gopt || {}), ...patch };
+    bump();
+    const turn = (graphicTurnRef.current.get(o) || 0) + 1;
+    graphicTurnRef.current.set(o, turn);
+    const made = graphicSvg(st.graphic, '#ffffff', st.gopt);
+    const vec = made ? readSvg(made.svg) : null;
+    if (!vec) return;
+    const whole = { x: 0, y: 0, w: 1, h: 1 };
+    const shownW = o.getScaledWidth();
+    const shown = Math.max(shownW, (shownW * made.h) / made.w);
+    let next;
+    try {
+      next = await rasterVector(vec, whole, Math.min(VECTOR_MAX, Math.max(320, Math.ceil(shown * 2))));
+    } catch (e) {
+      return;
+    }
+    if (graphicTurnRef.current.get(o) !== turn || !c.getObjects().includes(o) || o.studio !== st) return;
+    st.source = next;
+    st.vector = { ...vec, crop: whole };
+    st.mono = undefined;
+    const el = paintItem(st);
+    o.setElement(el);
+    const k = shownW / el.width;
+    o.set({ width: el.width, height: el.height, scaleX: k * Math.sign(o.scaleX || 1), scaleY: k * Math.sign(o.scaleY || 1) });
+    o.setCoords();
+    c.requestRenderAll();
+    if (gradSyncRef.current) gradSyncRef.current();
+    commitSoon();
+    bump();
+  };
+  // A gradient across a drawing in place of its one colour (null: back to the colour).
+  const setGraphicGrad = (grad) => {
+    const c = fabricRef.current;
+    const o = active1();
+    if (!c || !o || !o.studio || !o.studio.graphic) return;
+    if (isGrad(grad)) o.studio.grad = grad;
+    else delete o.studio.grad;
+    o.setElement(paintItem(o.studio));
+    c.requestRenderAll();
+    if (gradSyncRef.current) gradSyncRef.current();
+    commitSoon();
+    bump();
+  };
+
   const addGraphic = async (id) => {
     const c = fabricRef.current;
     if (!c) return;
@@ -3580,6 +3647,7 @@ export default function CoverStudio({
     if (!o || !o.studio || o.group || o.isEditing) return null;
     const st = o.studio;
     if (st.kind === 'shape' && isGrad(st.grad)) return { o, key: 'fill', grad: st.grad, box: { x: -o.width / 2, y: -o.height / 2, w: o.width, h: o.height } };
+    if (st.kind === 'logo' && st.graphic && isGrad(st.grad)) return { o, key: 'graphic', grad: st.grad, box: { x: -o.width / 2, y: -o.height / 2, w: o.width, h: o.height } };
     if (st.kind === 'text' && st.box && st.box.on && isGrad(st.box.grad)) {
       const box = textBoxRect(o);
       return box ? { o, key: 'box', grad: st.box.grad, box } : null;
@@ -3603,7 +3671,10 @@ export default function CoverStudio({
     const c = fabricRef.current;
     const { o, key } = spec;
     if (key === 'fill') o.studio.grad = grad;
-    else if (key === 'bar') {
+    else if (key === 'graphic') {
+      o.studio.grad = grad;
+      o.setElement(paintItem(o.studio));
+    } else if (key === 'bar') {
       o.studio.grad = grad;
       if (spec.frame && spec.frame.studio) spec.frame.studio.barGrad = grad;
     } else if (key === 'box') o.studio.box = { ...o.studio.box, grad };
@@ -5631,7 +5702,7 @@ export default function CoverStudio({
         {leftTab === 'elements' && (
           <PanelBody>
             <Hint>
-              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel. The marks, spheres and line work further down are drawings, not pictures: they stay sharp at any size and take any colour. A paper shape shows real crumpled paper (a photograph) in any colour and at any size; any other shape can be made paper in its Edit panel too.
+              Ready-made pieces. One click adds the whole piece to the middle of the cover; every part of it is its own item, so it can be moved, restyled or deleted on its own. A guest's mask shape is changed in its Edit panel. The marks, spheres and line work further down are drawings, not pictures: they stay sharp at any size and take any colour or a gradient, and most have settings in their Edit panel for how close and how thick their lines are. A paper shape shows real crumpled paper (a photograph) in any colour and at any size; any other shape can be made paper in its Edit panel too.
             </Hint>
             <FieldLabel>Image frames</FieldLabel>
             <TemplateGrid>
@@ -6899,14 +6970,46 @@ export default function CoverStudio({
                   <>
                     <InsCell>
                       <FieldLabel>Colour</FieldLabel>
-                      <SwatchRow>
-                        <input type="color" value={normHex(sel.studio.tintColor)} onChange={(e) => setTint('custom', e.target.value)} />
-                        {['#ffffff', '#000000', bg.palette.a1, bg.palette.a2].map((col, i) => (
-                          <Swatch key={i} style={{ background: col }} onClick={() => setTint('custom', col)} title={col} />
-                        ))}
-                      </SwatchRow>
+                      <PaintMode grad={isGrad(sel.studio.grad)} onSolid={() => setGraphicGrad(null)} onGradient={() => !isGrad(sel.studio.grad) && setGraphicGrad(makeGrad(gradColours(sel.studio.tintColor), 2))} />
+                      {isGrad(sel.studio.grad) ? (
+                        <GradControls grad={sel.studio.grad} colours={gradColours(sel.studio.tintColor)} onChange={(g) => setGraphicGrad(g)} />
+                      ) : (
+                        <SwatchRow>
+                          <input type="color" value={normHex(sel.studio.tintColor)} onChange={(e) => setTint('custom', e.target.value)} />
+                          {['#ffffff', '#000000', bg.palette.a1, bg.palette.a2].map((col, i) => (
+                            <Swatch key={i} style={{ background: col }} onClick={() => setTint('custom', col)} title={col} />
+                          ))}
+                        </SwatchRow>
+                      )}
                       <Muted style={{ marginTop: 6 }}>This is a drawing, not a picture: it stays sharp at any size.</Muted>
                     </InsCell>
+                    {(graphicOptions(sel.studio.graphic).density || graphicOptions(sel.studio.graphic).weight) && (
+                      <InsCell>
+                        {graphicOptions(sel.studio.graphic).density && (
+                          <Slider
+                            label={graphicOptions(sel.studio.graphic).density}
+                            min={GRAPHIC_DENSITY.min}
+                            max={GRAPHIC_DENSITY.max}
+                            step={0.05}
+                            value={(sel.studio.gopt && sel.studio.gopt.density) || 1}
+                            onChange={(v) => setGraphic({ density: v })}
+                            fmt={(v) => `${Math.round(v * 100)}%`}
+                          />
+                        )}
+                        {graphicOptions(sel.studio.graphic).weight && (
+                          <Slider
+                            label="Line thickness"
+                            min={GRAPHIC_WEIGHT.min}
+                            max={GRAPHIC_WEIGHT.max}
+                            step={0.05}
+                            value={(sel.studio.gopt && sel.studio.gopt.weight) || 1}
+                            onChange={(v) => setGraphic({ weight: v })}
+                            fmt={(v) => `${Math.round(v * 100)}%`}
+                          />
+                        )}
+                        {graphicOptions(sel.studio.graphic).density ? <Muted>The drawing keeps its size: a higher setting fits more into the same space.</Muted> : null}
+                      </InsCell>
+                    )}
                     <InsCell>
                       <Slider
                         label="Size"
@@ -7327,7 +7430,7 @@ export default function CoverStudio({
         </Stage>
 
         <FootHint>
-          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Shift while dragging to keep an item on the line it started on, across or up and down. Hold Option/Alt and drag to pull off a copy (with Shift, the copy stays in line with the original). Items snap to the cover's centre lines and margins (pink line) and to the edges and centres of other items (blue line). A shape, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+G groups the selected items (a click on one then selects them all; double-click one to work on it alone), Cmd/Ctrl+[ sends the selected layer one step back and Cmd/Ctrl+] one step forward, Cmd/Ctrl+Z undoes.
+          Click anything on the cover to edit it in the side panel. Drag a corner to scale, hold Shift to scale from the centre. Hold Shift while dragging to keep an item on the line it started on, across or up and down. Hold Option/Alt and drag to pull off a copy (with Shift, the copy stays in line with the original). Items snap to the cover's centre lines and margins (pink line) and to the edges and centres of other items (blue line). A shape, a drawing, a text box, a photo's border and the colour behind a cut-out photo can each be a gradient: choose Gradient in the side panel, then drag its numbered dots on the cover. Hold Cmd while dragging to place freely without snapping. Double-click text to type. Arrow keys nudge, Delete removes, Cmd/Ctrl+D duplicates, Cmd/Ctrl+G groups the selected items (a click on one then selects them all; double-click one to work on it alone), Cmd/Ctrl+[ sends the selected layer one step back and Cmd/Ctrl+] one step forward, Cmd/Ctrl+Z undoes.
         </FootHint>
       </Main>
     </Wrap>
