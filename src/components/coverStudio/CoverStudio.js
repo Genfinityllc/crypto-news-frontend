@@ -46,7 +46,7 @@ import { BANDS, MAP_MAX, MAP_MIN, adjustKey, adjustedPicture, bandOf, clearBand,
 import { PATTERNS, drawPatternThumb, paintPattern, patternCell, patternDef } from './patterns';
 import { RING_DEFAULT, hasMarks, hasRing, lookAt, paintRing, retextRing, ringFaces, scaleRing, styleRing } from './ringText';
 import { cutOutPerson } from './photoCutout';
-import { PAPER_COLOR, PAPER_COLORS, PAPER_STRENGTH, newPaper, paintPaper } from './paper';
+import { PAPER_COLOR, PAPER_COLORS, PAPER_STRENGTH, PAPER_ZOOM, newPaper, paintPaper } from './paper';
 import { solidCanvas } from './solidLogo';
 import { GRAPHICS, GRAPHIC_DENSITY, GRAPHIC_GROUPS, GRAPHIC_STRETCH, GRAPHIC_WEIGHT, drawGraphicThumb, findGraphic, graphicOptions, graphicSvg } from './studioGraphics';
 import { clearWorking, deleteDraft, getDraftCover, getWorking, linkItems, listDrafts, makeThumb, newDraftId, packCover, putDraft, putWorking, unpackCover } from './drafts';
@@ -7111,7 +7111,8 @@ export default function CoverStudio({
                               ))}
                             </SwatchRow>
                             <Slider label="How strong the wrinkles are" min={PAPER_STRENGTH.min} max={PAPER_STRENGTH.max} step={0.05} value={sel.studio.paper.strength == null ? 1 : sel.studio.paper.strength} onChange={(v) => setShape({ paper: { strength: v } })} fmt={(v) => `${Math.round(v * 100)}%`} />
-                            <Muted style={{ marginTop: 6 }}>One page of real crumpled paper lies over the whole cover, and this shape shows the part of it that it sits over. Make the shape any size: the paper is never stretched or repeated. Move the shape to show another part of the page. Any colour works, from "Fill colour" above too.</Muted>
+                            <Slider label="Paper zoom" min={PAPER_ZOOM.min} max={PAPER_ZOOM.max} step={0.01} value={sel.studio.paper.zoom || 1} onChange={(v) => setShape({ paper: { zoom: Math.abs(v - 1) < 0.015 ? 1 : v } })} fmt={(v) => `${Math.round(v * 100)}%`} />
+                            <Muted style={{ marginTop: 6 }}>One page of real crumpled paper lies over the whole cover, and this shape shows the part of it that it sits over. Make the shape any size: the paper is never stretched or repeated. Move the shape to show another part of the page. A lower zoom makes the wrinkles smaller, so a small piece shows more of them; it stops where the page would no longer fill the shape. Any colour works, from "Fill colour" above too.</Muted>
                           </>
                         ) : (
                           <Muted style={{ marginTop: 6 }}>Turns this shape into a piece of real crumpled paper in its own colour.</Muted>

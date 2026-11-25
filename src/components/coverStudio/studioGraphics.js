@@ -20,9 +20,15 @@
 // The box keeps its size whatever those two are, so an item on the cover
 // stays the size it is and simply shows more or fewer lines.
 //   sx, sy  how much wider and taller than drawn (owner 2026-11-25: "if i
-//      make it wider new barcode lines appear rather than scaling"). Only
-//      drawings with `stretch` ('both', or 'wide' for width alone) use them:
-//      their box grows and more of the same is drawn in it, at the same size.
+//      make it wider new barcode lines appear rather than scaling", then a
+//      list of twelve more: "some will need added lines some will need their
+//      lines to extend for instance pill will need to extend its line where
+//      star column would need a repeated shape"). Only drawings with
+//      `stretch: 'both'` use them. Their box grows and the drawing fills it
+//      at the same size: a pattern gets more lines, dots or rows, a single
+//      shape is repeated (stars, arrows), an outline is drawn longer (the
+//      pill). Nothing is ever stretched like a picture. Where the drawing is
+//      made of whole shapes the box moves in steps of one shape.
 
 import { GENFINITY_MARK } from './genfinityMark';
 
@@ -125,9 +131,39 @@ export const GRAPHICS = [
   { group: 'marks', id: 'x-pair', name: 'Bold X pair', kind: 'fill', size: 420, make: () => ({ w: 440, h: 200, svg: xMark(100, 100, 200, 68) + xMark(340, 100, 200, 68) }) },
   { group: 'marks', id: 'star', name: 'Four-point star', kind: 'fill', size: 200, make: () => ({ w: 200, h: 200, svg: `<path d="${star4(100, 100, 100, 0.2)}"/>` }) },
   { group: 'marks', id: 'star-outline', name: 'Star outline', kind: 'line', size: 200, make: ({ t }) => ({ w: 200, h: 200, svg: `<path d="${star4(100, 100, 100 - 4 * t, 0.2)}" fill="none" stroke-width="${f(4 * t)}" stroke-linejoin="round"/>` }) },
-  { group: 'marks', id: 'star-column', name: 'Star column', kind: 'line', size: 110, make: ({ t }) => ({ w: 120, h: 510, svg: [0, 1, 2, 3].map((i) => `<path d="${star4(60, 60 + i * 130, 60 - 4 * t, 0.2)}" fill="none" stroke-width="${f(3.5 * t)}" stroke-linejoin="round"/>`).join('') }) },
+  {
+    group: 'marks',
+    id: 'star-column',
+    name: 'Star column',
+    kind: 'line',
+    size: 110,
+    stretch: 'both',
+    make: ({ t, sx, sy }) => {
+      // taller: more stars down the column; wider: more columns
+      const cols = Math.max(1, Math.round((120 * sx - 120) / 130) + 1);
+      const rows = Math.max(1, Math.round((510 * sy - 120) / 130) + 1);
+      let s = '';
+      for (let x = 0; x < cols; x += 1) for (let y = 0; y < rows; y += 1) s += `<path d="${star4(60 + x * 130, 60 + y * 130, 60 - 4 * t, 0.2)}" fill="none" stroke-width="${f(3.5 * t)}" stroke-linejoin="round"/>`;
+      return { w: (cols - 1) * 130 + 120, h: (rows - 1) * 130 + 120, svg: s };
+    },
+  },
   { group: 'marks', id: 'star-tile', name: 'Star tile', kind: 'fill', size: 220, make: () => ({ w: 200, h: 200, svg: `<path fill-rule="evenodd" d="M0 0H200V200H0ZM100 22A78 78 0 1 0 100 178A78 78 0 1 0 100 22Z"/><path d="${star4(100, 100, 74, 0.3)}"/>` }) },
-  { group: 'marks', id: 'arrows', name: 'Arrow row', kind: 'fill', size: 300, make: () => ({ w: 430, h: 70, svg: [0, 1, 2, 3].map((i) => `<path d="M${i * 120} 0L${i * 120 + 70} 35L${i * 120} 70Z"/>`).join('') }) },
+  {
+    group: 'marks',
+    id: 'arrows',
+    name: 'Arrow row',
+    kind: 'fill',
+    size: 300,
+    stretch: 'both',
+    make: ({ sx, sy }) => {
+      // wider: more arrows in the row; taller: more rows
+      const cols = Math.max(1, Math.round((430 * sx - 70) / 120) + 1);
+      const rows = Math.max(1, Math.round((70 * sy - 70) / 100) + 1);
+      let s = '';
+      for (let y = 0; y < rows; y += 1) for (let x = 0; x < cols; x += 1) s += `<path d="M${x * 120} ${y * 100}L${x * 120 + 70} ${y * 100 + 35}L${x * 120} ${y * 100 + 70}Z"/>`;
+      return { w: (cols - 1) * 120 + 70, h: (rows - 1) * 100 + 70, svg: s };
+    },
+  },
   { group: 'marks', id: 'arrow', name: 'Bold arrow', kind: 'fill', size: 200, make: () => ({ w: 200, h: 200, svg: '<path d="M60 0H200V140H152V82L34 200L0 166L118 48H60Z"/>' }) },
   { group: 'marks', id: 'asterisk', name: 'Asterisk', kind: 'fill', size: 200, make: () => ({ w: 200, h: 200, svg: [0, 60, 120].map((a) => `<rect x="78" y="0" width="44" height="200" rx="4" transform="rotate(${a} 100 100)"/>`).join('') }) },
   {
@@ -178,14 +214,25 @@ export const GRAPHICS = [
     kind: 'line',
     size: 520,
     density: LINES,
-    make: ({ d, t }) => {
-      const n = cnt(7, d, 2);
+    stretch: 'both',
+    make: ({ d, t, sx, sy }) => {
+      const base = cnt(7, d, 2);
+      const gap = 96 / (base - 1);
+      // taller: more diamonds down, the same distance apart
+      const n = Math.max(2, Math.round(base + (196 * sy - 196) / gap));
+      const W = f(400 * sx);
+      const H = f(196 + (n - base) * gap);
+      // wider: the diamonds go on side by side, corner to corner, cut off at the edge
+      // (a new one starts only once a good piece of it shows)
       let path = '';
-      for (let i = 0; i < n; i += 1) {
-        const y = f(50 + (96 * i) / (n - 1));
-        path += `M4 ${y}L200 ${f(y - 46)}L396 ${y}L200 ${f(y + 46)}Z`;
+      for (let j = 0; 4 + 392 * j < W - 30 || j === 0; j += 1) {
+        const x = 392 * j;
+        for (let i = 0; i < n; i += 1) {
+          const y = f(50 + gap * i);
+          path += `M${4 + x} ${y}L${200 + x} ${f(y - 46)}L${396 + x} ${y}L${200 + x} ${f(y + 46)}Z`;
+        }
       }
-      return { w: 400, h: 196, svg: `<path d="${path}" fill="none" stroke-width="${f(thin(2.2 * t, 96 / (n - 1), 0.6))}" stroke-linejoin="round"/>` };
+      return { w: W, h: H, svg: `<defs><clipPath id="dm"><rect width="${W}" height="${H}"/></clipPath></defs><path d="${path}" fill="none" stroke-width="${f(thin(2.2 * t, gap, 0.6))}" stroke-linejoin="round" clip-path="url(#dm)"/>` };
     },
   },
   {
@@ -213,17 +260,23 @@ export const GRAPHICS = [
     kind: 'line',
     size: 300,
     density: LINES,
-    make: ({ d, t }) => {
-      const n = cnt(6, d);
-      const sw = thin(4 * t, 196 / (n - 0.235));
+    stretch: 'both',
+    make: ({ d, t, sx, sy }) => {
+      const base = cnt(6, d);
+      const sw = thin(4 * t, 196 / (base - 0.235));
       const out = 198 - sw / 2;
-      const step = out / (n - 0.235);
+      const step = out / (base - 0.235);
+      // wider or taller: the fan goes on with more arcs, the same distance
+      // apart, out to the longer side; the box cuts them off on the shorter
+      const W = f(200 * sx);
+      const H = f(200 * sy);
+      const reach = Math.max(W, H) - 2 - sw / 2;
       let s = '';
-      for (let i = 0; i < n; i += 1) {
-        const r = f(out - i * step);
-        s += `<path d="M${f(200 - r)} 200A${r} ${r} 0 0 1 200 ${f(200 - r)}" fill="none" stroke-width="${f(sw)}"/>`;
+      for (let r = out - (base - 1) * step; r <= reach + 0.01; r += step) {
+        const q = f(r);
+        s += `<path d="M${f(W - r)} ${H}A${q} ${q} 0 0 1 ${W} ${f(H - r)}" fill="none" stroke-width="${f(sw)}"/>`;
       }
-      return { w: 200, h: 200, svg: s };
+      return { w: W, h: H, svg: `<defs><clipPath id="qf"><rect width="${W}" height="${H}"/></clipPath></defs><g clip-path="url(#qf)">${s}</g>` };
     },
   },
   {
@@ -233,21 +286,22 @@ export const GRAPHICS = [
     kind: 'line',
     size: 420,
     density: LINES,
-    stretch: 'wide',
-    make: ({ d, t, sx }) => {
-      // more lines in the same height; each is a little finer the closer they are
-      const n = cnt(4, d);
-      const turns = Math.max(1, Math.round(4 * sx)); // wider: more waves along it
-      const sw = thin((5 * t) / Math.max(1, Math.sqrt(d)), n < 2 ? 40 : 90 / (n - 1));
+    stretch: 'both',
+    make: ({ d, t, sx, sy }) => {
+      // closer: more lines in the same height, each a little finer
+      const base = cnt(4, d);
+      const sw = thin((5 * t) / Math.max(1, Math.sqrt(d)), base < 2 ? 40 : 90 / (base - 1));
       const top = 17 + sw / 2;
-      const bottom = 113 - sw / 2;
+      const gap = base < 2 ? 30 : (113 - sw / 2 - top) / (base - 1);
+      const turns = Math.max(1, Math.round(4 * sx)); // wider: more waves along each line
+      const n = Math.max(1, Math.round(base + (130 * sy - 130) / gap)); // taller: more lines, the same distance apart
       let s = '';
       for (let k = 0; k < n; k += 1) {
-        let path = `M0 ${f(n < 2 ? 65 : top + ((bottom - top) * k) / (n - 1))}`;
+        let path = `M0 ${f(base < 2 && n < 2 ? 65 : top + gap * k)}`;
         for (let i = 0; i < turns; i += 1) path += 'q25 -32 50 0t50 0';
         s += `<path d="${path}" fill="none" stroke-width="${f(sw)}"/>`;
       }
-      return { w: turns * 100, h: 130, svg: s };
+      return { w: turns * 100, h: f(130 + (n - base) * gap), svg: s };
     },
   },
   {
@@ -257,8 +311,8 @@ export const GRAPHICS = [
     kind: 'line',
     size: 420,
     density: 'How close the points are',
-    stretch: 'wide',
-    make: ({ d, t, sx }) => {
+    stretch: 'both',
+    make: ({ d, t, sx, sy }) => {
       const base = cnt(10, d, 2);
       const sw = (7 * t) / Math.max(1, Math.sqrt(d));
       const x0 = Math.max(4, sw / 2 + 0.5);
@@ -266,9 +320,16 @@ export const GRAPHICS = [
       const n = Math.max(2, Math.round(base * sx)); // wider: more points of the same size
       // room above and below for the sharp corners, which reach past the line itself
       const pad = Math.min(22, sw / 2 / Math.sin(Math.atan(tw / 2 / 52))) + 0.5;
-      let path = `M${f(x0)} ${f(68 - pad)}`;
-      for (let i = 0; i < n; i += 1) path += `L${f(x0 + i * tw + tw / 2)} ${f(pad)}L${f(x0 + (i + 1) * tw)} ${f(68 - pad)}`;
-      return { w: f(2 * x0 + n * tw), h: 68, svg: `<path d="${path}" fill="none" stroke-width="${f(sw)}" stroke-linejoin="miter" stroke-miterlimit="12"/>` };
+      // taller: the same zigzag again underneath, half its height lower each time
+      const rows = Math.max(1, Math.round((68 * sy - 68) / 34) + 1);
+      let s = '';
+      for (let r = 0; r < rows; r += 1) {
+        const y = r * 34;
+        let path = `M${f(x0)} ${f(y + 68 - pad)}`;
+        for (let i = 0; i < n; i += 1) path += `L${f(x0 + i * tw + tw / 2)} ${f(y + pad)}L${f(x0 + (i + 1) * tw)} ${f(y + 68 - pad)}`;
+        s += `<path d="${path}" fill="none" stroke-width="${f(sw)}" stroke-linejoin="miter" stroke-miterlimit="12"/>`;
+      }
+      return { w: f(2 * x0 + n * tw), h: 68 + (rows - 1) * 34, svg: s };
     },
   },
 
@@ -276,7 +337,8 @@ export const GRAPHICS = [
   // (closer lines are finer too, so a fill keeps its share of line and gap; and
 // a line is never so thick that the gaps close)
   { group: 'parts', id: 'hatch-square', name: 'Square of lines', kind: 'line', size: 240, density: LINES, stretch: 'both', make: ({ d, t, sx, sy }) => ({ w: f(200 * sx), h: f(200 * sy), svg: hatch(f(200 * sx), f(200 * sy), 15 / d, hatchLine(d, t), 'hs', `<rect width="${f(200 * sx)}" height="${f(200 * sy)}"/>`) }) },
-  { group: 'parts', id: 'hatch-circle', name: 'Circle of lines', kind: 'line', size: 240, density: LINES, make: ({ d, t }) => ({ w: 200, h: 200, svg: hatch(200, 200, 15 / d, hatchLine(d, t), 'hc', '<circle cx="100" cy="100" r="100"/>') }) },
+  // (wider or taller, the circle becomes an oval with more lines in it)
+  { group: 'parts', id: 'hatch-circle', name: 'Circle of lines', kind: 'line', size: 240, density: LINES, stretch: 'both', make: ({ d, t, sx, sy }) => ({ w: f(200 * sx), h: f(200 * sy), svg: hatch(f(200 * sx), f(200 * sy), 15 / d, hatchLine(d, t), 'hc', `<ellipse cx="${f(100 * sx)}" cy="${f(100 * sy)}" rx="${f(100 * sx)}" ry="${f(100 * sy)}"/>`) }) },
   { group: 'parts', id: 'hatch-bar', name: 'Bar of lines', kind: 'line', size: 520, density: LINES, stretch: 'both', make: ({ d, t, sx, sy }) => ({ w: f(520 * sx), h: f(70 * sy), svg: hatch(f(520 * sx), f(70 * sy), 15 / d, hatchLine(d, t), 'hb', `<rect width="${f(520 * sx)}" height="${f(70 * sy)}"/>`) }) },
   {
     group: 'parts',
@@ -357,9 +419,13 @@ export const GRAPHICS = [
     name: 'Pill outline',
     kind: 'line',
     size: 400,
-    make: ({ t }) => {
+    stretch: 'both',
+    make: ({ t, sx, sy }) => {
+      // wider: the straight sides run on; taller: a taller pill. The line keeps its thickness.
       const i = 2.5 * t + 0.5;
-      return { w: 400, h: 120, svg: `<rect x="${f(i)}" y="${f(i)}" width="${f(400 - 2 * i)}" height="${f(120 - 2 * i)}" rx="${f(60 - i)}" fill="none" stroke-width="${f(5 * t)}"/>` };
+      const W = 400 * sx;
+      const H = 120 * sy;
+      return { w: f(W), h: f(H), svg: `<rect x="${f(i)}" y="${f(i)}" width="${f(W - 2 * i)}" height="${f(H - 2 * i)}" rx="${f(Math.min(W, H) / 2 - i)}" fill="none" stroke-width="${f(5 * t)}"/>` };
     },
   },
 ];
@@ -379,7 +445,7 @@ const within = (v, r) => (v == null || v === '' || !Number.isFinite(Number(v)) ?
 export function graphicSvg(id, color = '#ffffff', opt = null) {
   const g = findGraphic(id);
   if (!g) return null;
-  const m = g.make({ d: within(opt && opt.density, GRAPHIC_DENSITY), t: within(opt && opt.weight, GRAPHIC_WEIGHT), sx: g.stretch ? within(opt && opt.wide, GRAPHIC_STRETCH) : 1, sy: g.stretch === 'both' ? within(opt && opt.tall, GRAPHIC_STRETCH) : 1 });
+  const m = g.make({ d: within(opt && opt.density, GRAPHIC_DENSITY), t: within(opt && opt.weight, GRAPHIC_WEIGHT), sx: g.stretch ? within(opt && opt.wide, GRAPHIC_STRETCH) : 1, sy: g.stretch ? within(opt && opt.tall, GRAPHIC_STRETCH) : 1 });
   const paint = g.kind === 'fill' ? `fill="${color}"` : `stroke="${color}" fill="none"`;
   return { w: m.w, h: m.h, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(m.w)} ${f(m.h)}" width="${f(m.w)}" height="${f(m.h)}"><g ${paint}>${m.svg}</g></svg>` };
 }

@@ -18,9 +18,17 @@
 // (multiply) and its catches of light brighten it by the same share
 // (color-dodge). Both passes scale the colour, as light on a real sheet does,
 // so the paper takes any colour, a dark one included, and switching it off
-// leaves the plain shape. `studio.paper = { id, strength }`; a paper object is
-// never changed in place. (Settings saved before 2026-11-25 also carry scale,
-// ox and oy; they are not used any more.)
+// leaves the plain shape. `studio.paper = { id, strength, zoom }`; a paper
+// object is never changed in place. (Settings saved before 2026-11-25 also
+// carry scale, ox and oy; they are not used any more.)
+//
+// Zoom (owner 2026-11-25: "if i have a small circle i would like a zoom where
+// the paper texture can get smaller within the mask"). At 100% the page is
+// the cover-sized one above. Below that the page is made smaller about the
+// middle of the shape, so a small piece shows more of the sheet's wrinkles;
+// it then travels partly with the shape. It never goes so small that the page
+// would no longer fill the shape (the page is not repeated), and it is slid
+// just enough to keep the shape covered.
 //
 // The file is 2880 px across for a cover of 1920, so the photograph is drawn
 // smaller than its own pixels and stays sharp.
@@ -36,6 +44,7 @@ const RATIO = 2 / 3; // the page's height over its width
 export const PAPER_COLOR = '#48484b';
 export const PAPER_COLORS = ['#48484b', '#2b2b2d', '#8d8d8f', '#c9c7c2', '#f1efea'];
 export const PAPER_STRENGTH = { min: 0.2, max: BOOST, start: 1 };
+export const PAPER_ZOOM = { min: 0.12, max: 1.5, start: 1 }; // (1.5: the file's own pixels)
 
 export const newPaper = () => ({ id: 'folds', strength: PAPER_STRENGTH.start });
 
@@ -137,9 +146,21 @@ function pageOver(W, H) {
 // (origin at its top left corner), already clipped to the shape. box: the
 // part of the cover that needs drawing (the shape's bounds), or nothing for
 // the whole cover.
-function paintPage(ctx, m, W, H, box, amount) {
+function paintPage(ctx, m, W, H, box, amount, zoom = 1) {
   if (!(W > 0 && H > 0) || amount <= 0) return;
-  const pg = pageOver(W, H);
+  let pg = pageOver(W, H);
+  if (box && zoom !== 1 && box.w > 0 && box.h > 0) {
+    // the page at this zoom, about the middle of the shape, never smaller than the shape
+    const z = Math.min(PAPER_ZOOM.max, Math.max(zoom, PAPER_ZOOM.min, (box.w + 4) / pg.w, (box.h + 4) / pg.h));
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    const w = pg.w * z;
+    const h = pg.h * z;
+    // slid just enough to keep the whole shape on the page
+    const x = Math.max(box.x + box.w + 2 - w, Math.min(box.x - 2, cx + z * (pg.x - cx)));
+    const y = Math.max(box.y + box.h + 2 - h, Math.min(box.y - 2, cy + z * (pg.y - cy)));
+    pg = { x, y, w, h };
+  }
   const x0 = Math.max(pg.x, box ? box.x - 2 : pg.x);
   const y0 = Math.max(pg.y, box ? box.y - 2 : pg.y);
   const x1 = Math.min(pg.x + pg.w, box ? box.x + box.w + 2 : pg.x + pg.w);
@@ -175,7 +196,7 @@ export function paintPaper(ctx, paper, W, H, box, ready) {
   const m = sheetOf(false, ready);
   if (!m) return false;
   const strength = paper && paper.strength != null ? paper.strength : 1;
-  paintPage(ctx, m, W, H, box, Math.max(0, Math.min(1, strength / BOOST)));
+  paintPage(ctx, m, W, H, box, Math.max(0, Math.min(1, strength / BOOST)), Number(paper && paper.zoom) || 1);
   return true;
 }
 
