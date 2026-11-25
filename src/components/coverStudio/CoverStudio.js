@@ -437,7 +437,9 @@ const SHADOW_LOOKS = [
   ['Long', { color: '#000000', alpha: 0.55, blur: 18, dist: 44, angle: 60 }],
   ['Glow', { alpha: 0.9, blur: 46, dist: 0, angle: 90 }],
 ];
-function makeShadow(set) {
+// A shadow's settings made whole and worked out: its colour as the canvas
+// wants it, and how far it falls each way.
+function shadowParts(set) {
   const v = { ...SHADOW_SOFT, ...(set || {}) };
   const hex = /^#[0-9a-fA-F]{6}$/.test(String(v.color || '')) ? v.color : '#000000';
   const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -446,9 +448,77 @@ function makeShadow(set) {
   const dist = Math.max(0, Number(v.dist) || 0);
   const angle = Number(v.angle) || 0;
   const a = (angle * Math.PI) / 180;
-  const sh = new Shadow({ color: `rgba(${rgb.join(',')},${alpha})`, blur, offsetX: Math.round(Math.cos(a) * dist * 100) / 100, offsetY: Math.round(Math.sin(a) * dist * 100) / 100, nonScaling: true });
-  sh.studio = { color: hex, alpha, blur, dist, angle };
+  return { set: { color: hex, alpha, blur, dist, angle }, css: `rgba(${rgb.join(',')},${alpha})`, blur, dx: Math.round(Math.cos(a) * dist * 100) / 100, dy: Math.round(Math.sin(a) * dist * 100) / 100 };
+}
+function makeShadow(set) {
+  const q = shadowParts(set);
+  const sh = new Shadow({ color: q.css, blur: q.blur, offsetX: q.dx, offsetY: q.dy, nonScaling: true });
+  sh.studio = q.set;
   return sh;
+}
+// ---------- one shadow for a whole group ----------
+// (owner 2026-11-25: "a full grouped element drop shadow controls".) The
+// items of a group (studio.gid) can share one shadow, studio.gshadow, the
+// same settings on each of them. It is the shadow of the group as one piece:
+// the items are drawn together on a spare sheet and that sheet's shadow alone
+// is laid on the cover just under the group's lowest item, so the items cast
+// nothing on one another. The sheet is drawn far off to the side with the
+// shadow pushed back by the same distance, which leaves only the shadow.
+let groupSheet = null;
+function paintGroupShadow(ctx, items, set) {
+  const cv = ctx.canvas;
+  if (!cv || !items.length) return;
+  const q = shadowParts(set);
+  if (!groupSheet) groupSheet = document.createElement('canvas');
+  if (groupSheet.width !== cv.width || groupSheet.height !== cv.height) {
+    groupSheet.width = cv.width;
+    groupSheet.height = cv.height;
+  }
+  const og = groupSheet.getContext('2d');
+  const t = ctx.getTransform();
+  og.setTransform(1, 0, 0, 1, 0, 0);
+  og.clearRect(0, 0, groupSheet.width, groupSheet.height);
+  og.setTransform(t);
+  items.forEach((o) => o.render(og));
+  const k = Math.hypot(t.a, t.b) || 1; // screen pixels per cover pixel
+  const far = cv.width + cv.height + 4000;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.shadowColor = q.css;
+  ctx.shadowBlur = q.blur * k;
+  ctx.shadowOffsetX = far + q.dx * k;
+  ctx.shadowOffsetY = q.dy * k;
+  ctx.drawImage(groupSheet, -far, 0);
+  ctx.restore();
+}
+// Draw the canvas's items in order, laying each group's shadow under the
+// group's lowest item. (A name, title or label bar counts with its owner.)
+function drawWithGroupShadows(ctx, objects) {
+  const groups = new Map(); // gid -> { first, items, set }
+  objects.forEach((o) => {
+    const st = o && o.studio;
+    if (!st) return;
+    const owner = st.attach && st.attach.to && st.attach.to.studio ? st.attach.to.studio : st;
+    if (!owner.gid || !owner.gshadow) return;
+    let g = groups.get(owner.gid);
+    if (!g) {
+      g = { first: o, items: [], set: owner.gshadow };
+      groups.set(owner.gid, g);
+    }
+    g.items.push(o);
+  });
+  objects.forEach((o) => {
+    if (!o) return;
+    if (groups.size) {
+      const st = o.studio;
+      const owner = st && st.attach && st.attach.to && st.attach.to.studio ? st.attach.to.studio : st;
+      const g = owner && owner.gid ? groups.get(owner.gid) : null;
+      if (g && g.first === o) paintGroupShadow(ctx, g.items, g.set);
+    }
+    o.render(ctx);
+  });
 }
 // A shadow from before the controls grew and shrank with its item (a logo at
 // a fifth of its file's size had a fifth of the blur): these are its settings
@@ -1195,6 +1265,9 @@ export default function CoverStudio({
       altActionKey: null,
     });
     fabricRef.current = c;
+    // items are drawn with their groups' shared shadows (see paintGroupShadow);
+    // the exported file is drawn the same way
+    c._renderObjects = (ctx, objects) => drawWithGroupShadows(ctx, objects);
 
     const bgC = bgCanvasRef.current; // the visible background layer
     const exC = document.createElement('canvas'); // background for the exported file
@@ -4416,6 +4489,12 @@ export default function CoverStudio({
       if (x.studio && (roots.has(x) || (x.studio.gid && old.has(x.studio.gid)))) x.studio.gid = gid;
     });
     const mates = c.getObjects().filter((x) => x.studio && x.studio.gid === gid);
+    // a group that had one shadow keeps it, now for every item of the new group
+    const shared = (mates.find((x) => x.studio.gshadow) || { studio: {} }).studio.gshadow;
+    mates.forEach((x) => {
+      if (shared) x.studio.gshadow = shared;
+      else delete x.studio.gshadow;
+    });
     const tabWas = leftTab;
     c.discardActiveObject();
     c.setActiveObject(new ActiveSelection(mates, { canvas: c }));
@@ -4430,9 +4509,42 @@ export default function CoverStudio({
     const ids = new Set(c.getActiveObjects().map((x) => x.studio && x.studio.gid).filter(Boolean));
     if (!ids.size) return;
     c.getObjects().forEach((x) => {
-      if (x.studio && ids.has(x.studio.gid)) delete x.studio.gid;
+      if (!x.studio || !ids.has(x.studio.gid)) return;
+      // the group's one shadow becomes each item's own
+      if (x.studio.gshadow) {
+        x.set('shadow', makeShadow(x.studio.gshadow));
+        x.dirty = true;
+        delete x.studio.gshadow;
+      }
+      delete x.studio.gid;
     });
+    c.requestRenderAll();
     commit();
+    bump();
+  };
+  // One shadow for the whole selected group: null takes it off, anything else
+  // changes its settings (or puts a soft one on). The items' own shadows are
+  // taken off when it goes on, so nothing is shadowed twice.
+  const setGroupShadow = (patch) => {
+    const c = fabricRef.current;
+    if (!c) return;
+    const ids = new Set(c.getActiveObjects().map((x) => x.studio && !x.studio.attach && x.studio.gid).filter(Boolean));
+    if (ids.size !== 1) return;
+    const gid = [...ids][0];
+    const mates = c.getObjects().filter((x) => x.studio && x.studio.gid === gid);
+    const was = (mates.find((x) => x.studio.gshadow) || { studio: {} }).studio.gshadow;
+    const next = patch === null ? null : shadowParts({ ...(was || SHADOW_SOFT), ...patch }).set;
+    mates.forEach((x) => {
+      if (next) {
+        x.studio.gshadow = next;
+        if (!was && x.shadow) {
+          x.set('shadow', null);
+          x.dirty = true;
+        }
+      } else delete x.studio.gshadow;
+    });
+    c.requestRenderAll();
+    commitSoon();
     bump();
   };
   groupRef.current = { group: groupSelected, ungroup: ungroupSelected };
@@ -5756,6 +5868,8 @@ export default function CoverStudio({
   const selRoots = new Set(selection.filter((o) => o.studio).map((o) => (o.studio.attach ? o.studio.attach.to : o)));
   const oneGroup = selGids.size === 1 && [...selRoots].every((o) => o && o.studio && o.studio.gid && selGids.has(o.studio.gid));
   const canGroup = selRoots.size >= 2 && !oneGroup;
+  // the one shadow the selected group shares, if it has one
+  const groupShadow = oneGroup ? (selection.find((o) => o.studio && o.studio.gshadow) || { studio: {} }).studio.gshadow || null : null;
   const canUngroup = selGids.size > 0;
   // Guests that show a name plate, in reading order, for the name strip.
   const plateGuests = guestList
@@ -6491,6 +6605,22 @@ export default function CoverStudio({
                   ? 'This is a group: a click on one of its items selects them all, and they move and snap to the guides as one. Double-click an item to work on it alone.'
                   : 'A group moves as one piece: its middle and edges snap to the centre of the cover and to other items.'}
               </Muted>
+              <FieldLabel style={{ marginTop: 10 }}>Shadow of the whole group</FieldLabel>
+              {oneGroup ? (
+                <>
+                  <Check>
+                    <input type="checkbox" checked={!!groupShadow} onChange={(e) => setGroupShadow(e.target.checked ? {} : null)} />
+                    Drop shadow
+                  </Check>
+                  {groupShadow ? (
+                    <ShadowFields sh={groupShadow} onSet={setGroupShadow} palette={bg.palette} />
+                  ) : (
+                    <Muted style={{ marginTop: 6 }}>One shadow cast by the group as a single piece: its items do not shadow one another.</Muted>
+                  )}
+                </>
+              ) : (
+                <Muted>Group these items first, and they can share one shadow, cast by the group as a single piece.</Muted>
+              )}
               <FieldLabel style={{ marginTop: 10 }}>Place on cover (all of them as one block)</FieldLabel>
               <Seg>
                 {[['left', 'Left'], ['hcenter', 'Centre'], ['right', 'Right']].map(([id, label]) => (
@@ -7341,31 +7471,7 @@ export default function CoverStudio({
                     <input type="checkbox" checked={!!sel.shadow} onChange={(e) => setShadow(e.target.checked ? {} : null)} />
                     Drop shadow
                   </Check>
-                  {sel.shadow &&
-                    (() => {
-                      const sh = shadowOf(sel);
-                      return (
-                        <>
-                          <Row style={{ marginTop: 8 }}>
-                            {SHADOW_LOOKS.map(([name, look]) => (
-                              <Ghost key={name} onClick={() => setShadow(name === 'Glow' ? { ...look, color: bg.palette.a1 } : look)}>{name}</Ghost>
-                            ))}
-                          </Row>
-                          <FieldLabel style={{ marginTop: 10 }}>Shadow colour</FieldLabel>
-                          <SwatchRow>
-                            <input type="color" value={normHex(sh.color, '#000000')} onChange={(e) => setShadow({ color: e.target.value })} />
-                            {['#000000', '#ffffff', bg.palette.a1, bg.palette.a2].map((col, i) => (
-                              <Swatch key={i} style={{ background: col }} onClick={() => setShadow({ color: col })} title={col} />
-                            ))}
-                          </SwatchRow>
-                          <Slider label="How strong" min={0.05} max={1} step={0.01} value={sh.alpha} onChange={(v) => setShadow({ alpha: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
-                          <Slider label="Blur" min={0} max={120} step={1} value={sh.blur} onChange={(v) => setShadow({ blur: v })} fmt={(v) => `${Math.round(v)}px`} />
-                          <Slider label="Distance" min={0} max={120} step={1} value={sh.dist} onChange={(v) => setShadow({ dist: v })} fmt={(v) => `${Math.round(v)}px`} />
-                          <Slider label="Direction" min={0} max={359} step={1} value={((Math.round(sh.angle) % 360) + 360) % 360} onChange={(v) => setShadow({ angle: v })} fmt={(v) => `${Math.round(v)} deg`} />
-                          <Muted>Direction is the way the shadow falls: 0 to the right, 90 straight down, 180 to the left, 270 up. With Distance at 0 the shadow is a glow all round.</Muted>
-                        </>
-                      );
-                    })()}
+                  {sel.shadow && <ShadowFields sh={shadowOf(sel)} onSet={setShadow} palette={bg.palette} />}
                 </InsCell>
                 <InsCell>
                   <FieldLabel>Place on cover</FieldLabel>
@@ -7986,6 +8092,32 @@ function GradControls({ grad, colours, onChange, onTouch }) {
 
 // The numbered dots on the cover for the gradient being edited. Each one is a
 // colour; dragging it moves that colour inside its shape.
+// The settings of a shadow (an item's own, or a group's shared one).
+// sh: { color, alpha, blur, dist, angle }; onSet(patch) changes them.
+function ShadowFields({ sh, onSet, palette }) {
+  return (
+    <>
+      <Row style={{ marginTop: 8 }}>
+        {SHADOW_LOOKS.map(([name, look]) => (
+          <Ghost key={name} onClick={() => onSet(name === 'Glow' ? { ...look, color: palette.a1 } : look)}>{name}</Ghost>
+        ))}
+      </Row>
+      <FieldLabel style={{ marginTop: 10 }}>Shadow colour</FieldLabel>
+      <SwatchRow>
+        <input type="color" value={normHex(sh.color, '#000000')} onChange={(e) => onSet({ color: e.target.value })} />
+        {['#000000', '#ffffff', palette.a1, palette.a2].map((col, i) => (
+          <Swatch key={i} style={{ background: col }} onClick={() => onSet({ color: col })} title={col} />
+        ))}
+      </SwatchRow>
+      <Slider label="How strong" min={0.05} max={1} step={0.01} value={sh.alpha} onChange={(v) => onSet({ alpha: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+      <Slider label="Blur" min={0} max={120} step={1} value={sh.blur} onChange={(v) => onSet({ blur: v })} fmt={(v) => `${Math.round(v)}px`} />
+      <Slider label="Distance" min={0} max={120} step={1} value={sh.dist} onChange={(v) => onSet({ dist: v })} fmt={(v) => `${Math.round(v)}px`} />
+      <Slider label="Direction" min={0} max={359} step={1} value={((Math.round(sh.angle) % 360) + 360) % 360} onChange={(v) => onSet({ angle: v })} fmt={(v) => `${Math.round(v)} deg`} />
+      <Muted>Direction is the way the shadow falls: 0 to the right, 90 straight down, 180 to the left, 270 up. With Distance at 0 the shadow is a glow all round.</Muted>
+    </>
+  );
+}
+
 // specRef.current(): -> { o, grad, box } or null (see gradSpecRef).
 // syncRef: this layer puts its "move the dots" function there, and the editor
 // calls it after every redraw so the dots stay on their item.
